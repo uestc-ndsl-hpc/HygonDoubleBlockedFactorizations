@@ -53,6 +53,17 @@ set(SYRK_SOURCES
 )
 
 # =========================================================
+# POTRF Sources
+# =========================================================
+
+set(POTRF_SOURCES
+    src/potrf/recursive_potrf.cpp
+    src/potrf/test_potrf.cpp
+    src/trsm/recursive_trsm.cpp
+    src/syrk/batched_syrk.cpp
+)
+
+# =========================================================
 # TRSM Executable
 # =========================================================
 
@@ -87,6 +98,27 @@ target_compile_options(benchmark_syrk PRIVATE
 
 target_link_libraries(benchmark_syrk
     rocblas
+    hipblas
+    amdhip64
+    hsa-runtime64
+)
+
+# =========================================================
+# POTRF Executable
+# =========================================================
+
+add_executable(benchmark_potrf
+    ${POTRF_SOURCES}
+)
+
+target_compile_options(benchmark_potrf PRIVATE
+    -O3
+    -Wall
+)
+
+target_link_libraries(benchmark_potrf
+    rocblas
+    rocsolver
     hipblas
     amdhip64
     hsa-runtime64
