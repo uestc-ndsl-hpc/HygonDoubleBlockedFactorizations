@@ -55,14 +55,14 @@ double calculate_gflops(int n, double time_ms)
 template <typename T>
 void generate_spd_matrix(T* A, int n, int lda)
 {
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < n; ++i) {
-            A[j * lda + i] = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
+    for (size_t j = 0; j < (size_t)n; ++j) {
+        for (size_t i = 0; i < (size_t)n; ++i) {
+            A[j * (size_t)lda + i] = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
         }
     }
     // Make it diagonally dominant to ensure positive definiteness
-    for (int i = 0; i < n; ++i) {
-        A[i * lda + i] += static_cast<T>(n);
+    for (size_t i = 0; i < (size_t)n; ++i) {
+        A[i * (size_t)lda + i] += static_cast<T>(n);
     }
 }
 
@@ -76,10 +76,12 @@ double verify_potrf_against_double_ref(
     double diff_norm_sq = 0.0;
     double ref_norm_sq  = 0.0;
 
-    for (int j = 0; j < n; ++j) {
-        for (int i = j; i < n; ++i) {
-            double val_res = static_cast<double>(L_res[j * lda + i]);
-            double val_ref = L_ref_double[j * lda + i];
+    for (size_t j = 0; j < (size_t)n; ++j) {
+        for (size_t i = j; i < (size_t)n; ++i) {
+            size_t idx = j * (size_t)lda + i;
+            
+            double val_res = static_cast<double>(L_res[idx]);
+            double val_ref = L_ref_double[idx];
             
             double diff = val_res - val_ref;
             diff_norm_sq += diff * diff;

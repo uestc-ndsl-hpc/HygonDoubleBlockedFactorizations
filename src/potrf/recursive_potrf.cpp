@@ -49,7 +49,7 @@ void recursive_potrf(rocblas_handle handle,
 
     float* A21 = A + n1;
 
-    float* A22 = A + n1 * lda + n1;
+     float* A22 = A + (size_t)n1 * (size_t)lda + n1;
 
     // ==================================================
     // POTRF(A11)
@@ -138,7 +138,7 @@ void recursive_potrf_double(rocblas_handle handle,
 
     double* A21 = A + n1;
 
-    double* A22 = A + n1 * lda + n1;
+    double* A22 = A + (size_t)n1 * (size_t)lda + n1;
 
     recursive_potrf_double(
         handle,
