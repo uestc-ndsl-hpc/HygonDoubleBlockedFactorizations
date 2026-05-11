@@ -138,7 +138,7 @@ void run_all_benchmarks(
 
     if (enable_error_check) {
         cout << ">>> Generating Golden Reference for Error Verification...\n";
-        bool do_fp64_verify = (n <= 4096);
+        bool do_fp64_verify = (n <= 16384);
         
         if (do_fp64_verify) {
             double *d_A_d, *d_C_d;
