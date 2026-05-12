@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <cmath>
 #include <string>
+#include <algorithm>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -40,13 +41,14 @@ using namespace std;
 // UTILITIES
 // ============================================================================
 
-// Calculate GFLOPS for TRSM
+// Calculate GFLOPS for Right-TRSM: X(n x m) * L^T(m x m) = B(n x m)
 double calculate_gflops(int n, int m, double time_ms)
 {
     if (time_ms <= 0.0) return 0.0;
 
+    // Right-TRSM 运算量为 n * m^2
     double total_flops =
-        static_cast<double>(n) * n * m;
+        static_cast<double>(n) * m * m;
 
     return (total_flops / (time_ms / 1000.0)) / 1e9;
 }
@@ -54,18 +56,18 @@ double calculate_gflops(int n, int m, double time_ms)
 // Generate Stable Lower Triangular Matrix
 void generate_stable_lower_triangular(
     float* A,
-    int n,
+    int dim,
     int lda)
 {
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
+    for (int j = 0; j < dim; j++) {
+        for (int i = 0; i < dim; i++) {
 
             if (i < j) {
                 A[j * lda + i] = 0.0f;
             }
             else if (i == j) {
                 A[j * lda + i] =
-                    n + static_cast<float>(rand()) / RAND_MAX;
+                    dim + static_cast<float>(rand()) / RAND_MAX;
             }
             else {
                 A[j * lda + i] =
@@ -82,9 +84,11 @@ void generate_random_matrix(
     int m,
     int ldb)
 {
-    for (int i = 0; i < n * m; i++) {
-        B[i] =
-            static_cast<float>(rand()) / RAND_MAX - 0.5f;
+    for (int j = 0; j < m; j++) {
+        for (int i = 0; i < n; i++) {
+            B[j * ldb + i] =
+                static_cast<float>(rand()) / RAND_MAX - 0.5f;
+        }
     }
 }
 
@@ -118,10 +122,8 @@ double verify_relative_error(
 
 // Struct to store benchmark results
 struct BenchmarkResult {
-
     string method;
     string nb_str;
-
     double time_ms;
     double gflops;
     double speedup;
@@ -146,9 +148,10 @@ void run_all_benchmarks(
     ROCBLAS_CHECK(
         rocblas_create_handle(&handle));
 
+    // Right-TRSM 中，矩阵 A (即 L) 的维度为 m x m
     size_t size_A =
-        static_cast<size_t>(n) *
-        n *
+        static_cast<size_t>(m) *
+        m *
         sizeof(float);
 
     size_t size_B =
@@ -156,20 +159,20 @@ void run_all_benchmarks(
         m *
         sizeof(float);
 
-    int lda = n;
-    int ldb = n;
+    int lda = m; // L 的 leading dimension
+    int ldb = n; // B 的 leading dimension
 
     // ========================================================================
     // 1. Host Memory
     // ========================================================================
 
-    vector<float> h_A(n * n);
+    vector<float> h_A(m * m);
     vector<float> h_B(n * m);
     vector<float> h_X(n * m);
 
     generate_stable_lower_triangular(
         h_A.data(),
-        n,
+        m,
         lda);
 
     generate_random_matrix(
@@ -214,7 +217,8 @@ void run_all_benchmarks(
 
         cout << ">>> Generating Golden Reference...\n";
 
-        bool do_fp64_verify = (n <= 16384);
+        // 防止矩阵过大致显存溢出
+        bool do_fp64_verify = (std::max(n, m) <= 16384);
 
         // --------------------------------------------------------------------
         // FP64 Reference
@@ -225,7 +229,7 @@ void run_all_benchmarks(
             double* d_A_d = nullptr;
             double* d_B_d = nullptr;
 
-            vector<double> h_A_d(n * n);
+            vector<double> h_A_d(m * m);
             vector<double> h_B_d(n * m);
 
             for (size_t i = 0; i < h_A.size(); ++i)
@@ -237,8 +241,8 @@ void run_all_benchmarks(
             HIP_CHECK(
                 hipMalloc(
                     &d_A_d,
-                    static_cast<size_t>(n) *
-                    n *
+                    static_cast<size_t>(m) *
+                    m *
                     sizeof(double)));
 
             HIP_CHECK(
@@ -252,8 +256,8 @@ void run_all_benchmarks(
                 hipMemcpy(
                     d_A_d,
                     h_A_d.data(),
-                    static_cast<size_t>(n) *
-                    n *
+                    static_cast<size_t>(m) *
+                    m *
                     sizeof(double),
                     hipMemcpyHostToDevice));
 
@@ -268,12 +272,13 @@ void run_all_benchmarks(
 
             double alpha_d = 1.0;
 
+            // 调用 FP64 Right-TRSM Baseline 作为标答参考
             ROCBLAS_CHECK(
                 rocblas_dtrsm(
                     handle,
-                    rocblas_side_left,
+                    rocblas_side_right,          // 右乘
                     rocblas_fill_lower,
-                    rocblas_operation_none,
+                    rocblas_operation_transpose, // 转置 (L^T)
                     rocblas_diagonal_non_unit,
                     n,
                     m,
@@ -311,12 +316,13 @@ void run_all_benchmarks(
                     size_B,
                     hipMemcpyHostToDevice));
 
+            // 调用 FP32 Right-TRSM Baseline 作为标答参考
             ROCBLAS_CHECK(
                 rocblas_strsm(
                     handle,
-                    rocblas_side_left,
+                    rocblas_side_right,          // 右乘
                     rocblas_fill_lower,
-                    rocblas_operation_none,
+                    rocblas_operation_transpose, // 转置 (L^T)
                     rocblas_diagonal_non_unit,
                     n,
                     m,
@@ -475,12 +481,13 @@ void run_all_benchmarks(
             execute_benchmark(
                 [&]() {
 
+                    // 右乘、转置
                     ROCBLAS_CHECK(
                         rocblas_strsm(
                             handle,
-                            rocblas_side_left,
+                            rocblas_side_right,
                             rocblas_fill_lower,
-                            rocblas_operation_none,
+                            rocblas_operation_transpose,
                             rocblas_diagonal_non_unit,
                             n,
                             m,
@@ -557,8 +564,8 @@ void run_all_benchmarks(
     cout << string(85, '=') << "\n";
 
     cout
-        << "TRSM Benchmark Summary "
-        << "(N = " << n
+        << "TRSM Benchmark Summary (Right-TRSM: X * L^T = B) "
+        << "\n(N = " << n
         << ", M = " << m
         << ")\n";
 
