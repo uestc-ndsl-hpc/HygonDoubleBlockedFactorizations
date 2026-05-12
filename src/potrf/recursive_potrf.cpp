@@ -69,13 +69,9 @@ void recursive_potrf(rocblas_handle handle,
 
     recursive_trsm(
         handle,
-        A11,
-        lda,
-        A21,
-        lda,
-        n1,
-        n2,
-        nb);
+        A11, lda,
+        A21, lda,
+        n2, n1, nb);
 
     // ==================================================
     // SYRK
@@ -150,13 +146,9 @@ void recursive_potrf_double(rocblas_handle handle,
 
     recursive_trsm_double(
         handle,
-        A11,
-        lda,
-        A21,
-        lda,
-        n1,
-        n2,
-        nb);
+        A11, lda,
+        A21, lda,
+        n2, n1, nb);
 
     batched_syrk_bottom_up_double(
         handle,
