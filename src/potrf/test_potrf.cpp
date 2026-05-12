@@ -43,7 +43,6 @@ using namespace std;
 // UTILITIES
 // ============================================================================
 
-// Calculate GFLOPS for POTRF
 double calculate_gflops(int n, double time_ms)
 {
     if (time_ms <= 0.0) return 0.0;
@@ -60,45 +59,93 @@ void generate_spd_matrix(T* A, int n, int lda)
             A[j * (size_t)lda + i] = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
         }
     }
-    // Make it diagonally dominant to ensure positive definiteness
+
     for (size_t i = 0; i < (size_t)n; ++i) {
         A[i * (size_t)lda + i] += static_cast<T>(n);
     }
 }
 
-// FP64 Reference Error
+// ============================================================================
+// FORWARD ERROR
+// ============================================================================
+
 template <typename T>
 double verify_potrf_against_double_ref(
     const T* L_res,
     const double* L_ref_double,
-    int n, int lda)
+    int n,
+    int lda)
 {
     double diff_norm_sq = 0.0;
     double ref_norm_sq  = 0.0;
 
-    for (size_t j = 0; j < (size_t)n; ++j) {
-        for (size_t i = j; i < (size_t)n; ++i) {
-            size_t idx = j * (size_t)lda + i;
-            
+    for (int j = 0; j < n; ++j) {
+        for (int i = j; i < n; ++i) {
+            size_t idx = (size_t)j * lda + i;
+
             double val_res = static_cast<double>(L_res[idx]);
             double val_ref = L_ref_double[idx];
-            
+
             double diff = val_res - val_ref;
+
             diff_norm_sq += diff * diff;
             ref_norm_sq  += val_ref * val_ref;
         }
     }
-    return std::sqrt(diff_norm_sq) / (std::sqrt(ref_norm_sq) + 1e-12);
+
+    return sqrt(diff_norm_sq) / (sqrt(ref_norm_sq) + 1e-12);
 }
 
-// Struct to store benchmark results for the final table
+// ============================================================================
+// BACKWARD ERROR
+// ============================================================================
+
+template <typename T>
+double verify_backward_error(
+    const T* L_res,
+    const T* A_orig,
+    int n,
+    int lda)
+{
+    double diff_norm_sq = 0.0;
+    double a_norm_sq    = 0.0;
+
+    for (int j = 0; j < n; ++j) {
+        for (int i = j; i < n; ++i) {
+
+            double dot_product = 0.0;
+
+            for (int k = 0; k <= j; ++k) {
+                double Lik = static_cast<double>(L_res[k * lda + i]);
+                double Ljk = static_cast<double>(L_res[k * lda + j]);
+                dot_product += Lik * Ljk;
+            }
+
+            double a_val = static_cast<double>(A_orig[j * lda + i]);
+            double diff = a_val - dot_product;
+
+            double factor = (i == j) ? 1.0 : 2.0;
+
+            diff_norm_sq += factor * diff * diff;
+            a_norm_sq    += factor * a_val * a_val;
+        }
+    }
+
+    return sqrt(diff_norm_sq) / (sqrt(a_norm_sq) + 1e-12);
+}
+
+// ============================================================================
+// RESULT STRUCT
+// ============================================================================
+
 struct BenchmarkResult {
     string method;
     string nb_str;
     double time_ms;
     double gflops;
     double speedup;
-    double error;
+    double forward_error;
+    double backward_error;
 };
 
 // ============================================================================
@@ -106,7 +153,13 @@ struct BenchmarkResult {
 // ============================================================================
 
 template <typename T>
-void call_rocsolver_potrf(rocblas_handle handle, rocblas_fill uplo, int n, T* A, int lda, int* info)
+void call_rocsolver_potrf(
+    rocblas_handle handle,
+    rocblas_fill uplo,
+    int n,
+    T* A,
+    int lda,
+    int* info)
 {
     if constexpr (std::is_same_v<T, float>) {
         ROCBLAS_CHECK(rocsolver_spotrf(handle, uplo, n, A, lda, info));
@@ -116,7 +169,13 @@ void call_rocsolver_potrf(rocblas_handle handle, rocblas_fill uplo, int n, T* A,
 }
 
 template <typename T>
-void call_recursive_potrf(rocblas_handle handle, T* A, int n, int lda, int nb, int* info)
+void call_recursive_potrf(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int* info)
 {
     if constexpr (std::is_same_v<T, float>) {
         recursive_potrf(handle, A, lda, n, nb, info);
@@ -126,16 +185,17 @@ void call_recursive_potrf(rocblas_handle handle, T* A, int n, int lda, int nb, i
 }
 
 // ============================================================================
-// MAIN UNIFIED BENCHMARK RUNNER
+// MAIN BENCHMARK
 // ============================================================================
 
 template <typename T>
 void run_all_benchmarks(
-    int n, 
+    int n,
     const vector<int>& nbs,
     bool enable_error,
     bool test_rocsolver,
-    bool test_recursive)
+    bool test_recursive,
+    int error_type)
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
@@ -146,44 +206,49 @@ void run_all_benchmarks(
     int* d_info = nullptr;
     HIP_CHECK(hipMalloc(&d_info, sizeof(int)));
 
-    // ========================================================================
-    // 1. Host Memory Allocation & Initialization
-    // ========================================================================
     vector<T> h_A(num_elements);
     generate_spd_matrix(h_A.data(), n, n);
 
-    // ========================================================================
-    // 2. Device Memory Allocation
-    // ========================================================================
     T* d_A = nullptr;
     HIP_CHECK(hipMalloc(&d_A, bytes));
 
-    // ========================================================================
-    // 3. Golden Reference Generation (for Error Verification)
-    // ========================================================================
     vector<double> h_L_ref_double;
 
-    if (enable_error) {
-        cout << ">>> Generating FP64 Golden Reference for Error Verification...\n";
+    if (enable_error && (error_type == 0 || error_type == 2)) {
+        cout << ">>> Generating FP64 Golden Reference...\n";
+
         h_L_ref_double.resize(num_elements);
         vector<double> h_A_double(num_elements);
-        
-        for (size_t i = 0; i < num_elements; ++i) {
+
+        for (size_t i = 0; i < num_elements; ++i)
             h_A_double[i] = static_cast<double>(h_A[i]);
-        }
 
         double* d_A_double = nullptr;
         HIP_CHECK(hipMalloc(&d_A_double, num_elements * sizeof(double)));
-        HIP_CHECK(hipMemcpy(d_A_double, h_A_double.data(), num_elements * sizeof(double), hipMemcpyHostToDevice));
 
-        ROCBLAS_CHECK(rocsolver_dpotrf(handle, rocblas_fill_lower, n, d_A_double, n, d_info));
-        HIP_CHECK(hipMemcpy(h_L_ref_double.data(), d_A_double, num_elements * sizeof(double), hipMemcpyDeviceToHost));
+        HIP_CHECK(hipMemcpy(
+            d_A_double,
+            h_A_double.data(),
+            num_elements * sizeof(double),
+            hipMemcpyHostToDevice));
+
+        ROCBLAS_CHECK(rocsolver_dpotrf(
+            handle,
+            rocblas_fill_lower,
+            n,
+            d_A_double,
+            n,
+            d_info));
+
+        HIP_CHECK(hipMemcpy(
+            h_L_ref_double.data(),
+            d_A_double,
+            num_elements * sizeof(double),
+            hipMemcpyDeviceToHost));
+
         HIP_CHECK(hipFree(d_A_double));
     }
 
-    // ========================================================================
-    // 4. Benchmark Preparation
-    // ========================================================================
     hipEvent_t start, stop;
     HIP_CHECK(hipEventCreate(&start));
     HIP_CHECK(hipEventCreate(&stop));
@@ -191,18 +256,15 @@ void run_all_benchmarks(
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
 
-    auto execute_benchmark = [&](auto func, const string& name, const string& nb_str) {
-        
-        // Reset Input for Warmup
+    auto execute_benchmark = [&](auto func, const string& name, const string& nb_str)
+    {
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
-        func(); // Warmup
+        func();
 
-        // Reset Input for Actual Run
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
 
-        // Timing
         HIP_CHECK(hipEventRecord(start, 0));
         func();
         HIP_CHECK(hipEventRecord(stop, 0));
@@ -212,31 +274,53 @@ void run_all_benchmarks(
         HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
 
         double gflops = calculate_gflops(n, ms);
-        double error = -1.0;
+
+        double forward_error  = -1.0;
+        double backward_error = -1.0;
 
         if (enable_error) {
             vector<T> h_res(num_elements);
             HIP_CHECK(hipMemcpy(h_res.data(), d_A, bytes, hipMemcpyDeviceToHost));
-            error = verify_potrf_against_double_ref(h_res.data(), h_L_ref_double.data(), n, n);
+
+            if (error_type == 0 || error_type == 2) {
+                forward_error = verify_potrf_against_double_ref(
+                    h_res.data(),
+                    h_L_ref_double.data(),
+                    n,
+                    n);
+            }
+
+            if (error_type == 1 || error_type == 2) {
+                backward_error = verify_backward_error(
+                    h_res.data(),
+                    h_A.data(),
+                    n,
+                    n);
+            }
         }
 
         double speedup = (baseline_time > 0.0) ? (baseline_time / ms) : 0.0;
-        results.push_back({name, nb_str, static_cast<double>(ms), gflops, speedup, error});
+
+        results.push_back({
+            name,
+            nb_str,
+            static_cast<double>(ms),
+            gflops,
+            speedup,
+            forward_error,
+            backward_error
+        });
 
         return static_cast<double>(ms);
     };
 
-    // ========================================================================
-    // 5. Run Tests
-    // ========================================================================
-    cout << ">>> Running Benchmarks..." << endl;
+    cout << ">>> Running Benchmarks...\n";
 
     if (test_rocsolver) {
         baseline_time = execute_benchmark([&]() {
             call_rocsolver_potrf<T>(handle, rocblas_fill_lower, n, d_A, n, d_info);
         }, "rocSOLVER", "N/A");
 
-        // Fix speedup for baseline itself
         results.back().speedup = 1.0;
     }
 
@@ -248,53 +332,68 @@ void run_all_benchmarks(
         }
     }
 
-    // ========================================================================
-    // 6. Print Summary Table
-    // ========================================================================
+    // =========================================================================
+    // PRINT
+    // =========================================================================
+
     cout << "\n";
-    cout << string(85, '=') << "\n";
-    cout << "POTRF Benchmark Summary (N = " << n 
-         << ", Precision = " << (std::is_same_v<T, float> ? "FP32" : "FP64") << ")\n";
-    cout << string(85, '=') << "\n";
+    cout << string(110, '=') << "\n";
+    cout << "POTRF Benchmark Summary (N = " << n << ")\n";
+    cout << string(110, '=') << "\n";
 
-    // Table Header
-    cout << left 
-         << setw(15) << "Method" 
-         << " | " << setw(5) << "NB"
-         << " | " << setw(11) << "Time (ms)"
-         << " | " << setw(11) << "GFLOPS"
-         << " | " << setw(9) << "Speedup"
-         << " | " << "Error (vs FP64)\n";
-    cout << string(85, '-') << "\n";
+    cout << left
+         << setw(15) << "Method"
+         << " | " << setw(6) << "NB"
+         << " | " << setw(12) << "Time(ms)"
+         << " | " << setw(12) << "GFLOPS"
+         << " | " << setw(10) << "Speedup"
+         << " | ";
 
-    // Table Rows
+    if (error_type == 0)
+        cout << "Forward Error\n";
+    else if (error_type == 1)
+        cout << "Backward Error\n";
+    else
+        cout << "Forward / Backward\n";
+
+    cout << string(110, '-') << "\n";
+
     for (const auto& res : results) {
-        cout << left 
-             << setw(15) << res.method
-             << " | " << setw(5) << res.nb_str
-             << " | " << right << setw(9) << fixed << setprecision(3) << res.time_ms << "  "
-             << " | " << right << setw(9) << fixed << setprecision(2) << res.gflops << "  "
+        cout << left << setw(15) << res.method
+             << " | " << setw(6) << res.nb_str
+             << " | " << right << setw(10) << fixed << setprecision(3) << res.time_ms << "  "
+             << " | " << right << setw(10) << fixed << setprecision(2) << res.gflops << "  "
              << " | ";
-             
-        if (res.speedup > 0) {
-            cout << right << setw(7) << fixed << setprecision(2) << res.speedup << "x ";
-        } else {
-            cout << right << setw(8) << "N/A ";
-        }
-        
+
+        if (res.speedup > 0)
+            cout << right << setw(8) << fixed << setprecision(2) << res.speedup << "x ";
+        else
+            cout << setw(9) << "N/A ";
+
         cout << " | ";
-        if (enable_error) {
-            cout << scientific << setprecision(2) << res.error;
-        } else {
+
+        if (!enable_error) {
             cout << "N/A";
         }
+        else {
+            if (error_type == 0) {
+                cout << scientific << setprecision(2) << res.forward_error;
+            }
+            else if (error_type == 1) {
+                cout << scientific << setprecision(2) << res.backward_error;
+            }
+            else {
+                cout << scientific << setprecision(2)
+                     << res.forward_error << " / "
+                     << res.backward_error;
+            }
+        }
+
         cout << "\n";
     }
-    cout << string(85, '=') << "\n";
 
-    // ========================================================================
-    // 7. Cleanup
-    // ========================================================================
+    cout << string(110, '=') << "\n";
+
     HIP_CHECK(hipEventDestroy(start));
     HIP_CHECK(hipEventDestroy(stop));
     HIP_CHECK(hipFree(d_A));
@@ -309,10 +408,11 @@ void run_all_benchmarks(
 int main(int argc, char** argv)
 {
     int n = 4096;
-    
+
     bool enable_error   = false;
     bool test_rocsolver = true;
     bool test_recursive = true;
+    int error_type      = 0;
 
     vector<int> nbs;
 
@@ -320,10 +420,12 @@ int main(int argc, char** argv)
     if (argc >= 3) enable_error = atoi(argv[2]);
     if (argc >= 4) test_rocsolver = atoi(argv[3]);
     if (argc >= 5) test_recursive = atoi(argv[4]);
+    if (argc >= 6) error_type = atoi(argv[5]);
 
-    for (int i = 5; i < argc; ++i) {
+    for (int i = 6; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
+
     if (nbs.empty()) {
         nbs.push_back(256);
     }
@@ -331,11 +433,12 @@ int main(int argc, char** argv)
     srand(2026);
 
     run_all_benchmarks<float>(
-        n, 
-        nbs, 
+        n,
+        nbs,
         enable_error,
         test_rocsolver,
-        test_recursive);
+        test_recursive,
+        error_type);
 
     return 0;
 }
