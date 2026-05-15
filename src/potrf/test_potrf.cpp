@@ -414,6 +414,9 @@ int main(int argc, char** argv)
     bool test_recursive = true;
     int error_type      = 0;
 
+    // 新增：0=float, 1=double
+    int precision_type = 0;
+
     vector<int> nbs;
 
     if (argc >= 2) n = atoi(argv[1]);
@@ -421,8 +424,10 @@ int main(int argc, char** argv)
     if (argc >= 4) test_rocsolver = atoi(argv[3]);
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) error_type = atoi(argv[5]);
+    if (argc >= 7) precision_type = atoi(argv[6]);
 
-    for (int i = 6; i < argc; ++i) {
+    // nb 从第 7 个参数后开始
+    for (int i = 7; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
 
@@ -432,13 +437,26 @@ int main(int argc, char** argv)
 
     srand(2026);
 
-    run_all_benchmarks<float>(
-        n,
-        nbs,
-        enable_error,
-        test_rocsolver,
-        test_recursive,
-        error_type);
+    if (precision_type == 1) {
+        cout << "Running benchmark in DOUBLE precision\n";
+        run_all_benchmarks<double>(
+            n,
+            nbs,
+            enable_error,
+            test_rocsolver,
+            test_recursive,
+            error_type);
+    }
+    else {
+        cout << "Running benchmark in FLOAT precision\n";
+        run_all_benchmarks<float>(
+            n,
+            nbs,
+            enable_error,
+            test_rocsolver,
+            test_recursive,
+            error_type);
+    }
 
     return 0;
 }

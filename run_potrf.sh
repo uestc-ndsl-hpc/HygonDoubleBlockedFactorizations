@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=potrf_backward
+#SBATCH --job-name=potrf_backward_fp64
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --gres=dcu:1
@@ -27,7 +27,7 @@ ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_potrf
 
-RESULT_DIR=${ROOT_DIR}/results/potrf_backward
+RESULT_DIR=${ROOT_DIR}/results/potrf_backward_fp64
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -50,10 +50,16 @@ TEST_RECURSIVE=1
 # 2 -> both
 ERROR_TYPE=1
 
+# 精度:
+# 0 -> float
+# 1 -> double
+PRECISION=1
+
 echo "==================================================" | tee ${SUMMARY_LOG}
-echo "POTRF Backward Error Benchmark Start" | tee -a ${SUMMARY_LOG}
+echo "POTRF Backward Error Benchmark (FP64) Start" | tee -a ${SUMMARY_LOG}
 echo "Enable Error Check : ${ENABLE_ERROR}" | tee -a ${SUMMARY_LOG}
 echo "Error Type         : ${ERROR_TYPE} (Backward)" | tee -a ${SUMMARY_LOG}
+echo "Precision          : ${PRECISION} (Double)" | tee -a ${SUMMARY_LOG}
 echo "Test rocSOLVER     : ${TEST_ROCSOLVER}" | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "NBs                : ${NBS}" | tee -a ${SUMMARY_LOG}
@@ -87,6 +93,7 @@ do
         ${TEST_ROCSOLVER} \
         ${TEST_RECURSIVE} \
         ${ERROR_TYPE} \
+        ${PRECISION} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 
