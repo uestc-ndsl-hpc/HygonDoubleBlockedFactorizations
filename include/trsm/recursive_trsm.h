@@ -9,10 +9,6 @@ extern "C" {
 #endif
 
 // 单精度递归TRSM
-// 求解 L * X = B，L为n×n下三角矩阵（列主序）
-// A: L矩阵，n×n，下三角部分有效
-// B: 输入B矩阵，输出被X覆盖，n×m
-// n: L的维度，m: B的列数，nb: 递归停止阈值
 void recursive_trsm(rocblas_handle handle,
                     float* A, int lda,
                     float* B, int ldb,
