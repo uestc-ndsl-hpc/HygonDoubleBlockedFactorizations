@@ -1,27 +1,28 @@
 #include "trsm/recursive_trsm.h"
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
+#include <algorithm>
 
 extern "C" {
 
 // ======================================================
-// 单精度 Right-TRSM: 求解 X * L^T = B
-// n: 目标矩阵 B 的行数
-// m: 目标矩阵 B 的列数 (同时也是下三角矩阵 L 的维度)
+// Internal recursive kernel (float)
 // ======================================================
-void recursive_trsm(rocblas_handle handle,
-                    float* A, int lda,
-                    float* B, int ldb,
-                    int n, int m, int nb) {
+static void recursive_trsm_internal(
+    rocblas_handle handle,
+    float* A, int lda,
+    float* B, int ldb,
+    int n, int m, int nb)
+{
     if (n <= 0 || m <= 0) return;
 
-    // 递归终止条件：当规模小于阈值时，调用 rocblas 原生接口
+    // leaf
     if (m <= nb) {
         float alpha = 1.0f;
         rocblas_strsm(handle,
-                      rocblas_side_right,          // 右乘 (侧重点)
-                      rocblas_fill_lower,          // 下三角矩阵
-                      rocblas_operation_transpose, // 转置 (L^T)
+                      rocblas_side_right,
+                      rocblas_fill_lower,
+                      rocblas_operation_transpose,
                       rocblas_diagonal_non_unit,
                       n, m, &alpha,
                       A, lda,
@@ -29,47 +30,130 @@ void recursive_trsm(rocblas_handle handle,
         return;
     }
 
-    // 对于 Right-TRSM，我们是对三角矩阵的维度 m 进行切分
     int m1 = m / 2;
     int m2 = m - m1;
 
-    // 数学推导：X * [L11^T, L21^T; 0, L22^T] = [B1, B2]
-    // 拆分后产生两个方程：
-    // 1) X1 * L11^T = B1
-    // 2) X1 * L21^T + X2 * L22^T = B2  ==>  X2 * L22^T = B2 - X1 * L21^T
+    // --------------------------------------------------
+    // Step 1
+    // X1 * L11^T = B1
+    // --------------------------------------------------
+    recursive_trsm_internal(handle, A, lda, B, ldb, n, m1, nb);
 
-    // 步骤 1: 求解 X1 * L11^T = B1
-    // B1 占据 B 的前 m1 列，维度为 n x m1
-    recursive_trsm(handle, A, lda, B, ldb, n, m1, nb);
-
-    // 步骤 2: 更新 B2 = B2 - X1 * L21^T (使用 GEMM)
-    // B2 位于 B 的后 m2 列。指针偏移 = B + m1 * ldb
-    // X1 刚刚在 B1 的位置被求出，指针直接是 B
-    // L21 位于 A 的左下角，指针偏移 = A + m1
     float alpha_gemm = -1.0f;
-    float beta_gemm = 1.0f;
-    rocblas_sgemm(handle,
-                  rocblas_operation_none,
-                  rocblas_operation_transpose, // 核心：对 L21 进行转置
-                  n, m2, m1,
-                  &alpha_gemm,
-                  B, ldb,                      // X1
-                  A + m1, lda,                 // L21
-                  &beta_gemm,
-                  B + (size_t)m1 * ldb, ldb);  // B2
+    float beta_gemm  =  1.0f;
 
-    // 步骤 3: 求解 X2 * L22^T = B2
-    // L22 位于 A 的右下角。指针偏移 = A + m1 * lda + m1
-    recursive_trsm(handle, A + (size_t)m1 * lda + m1, lda, B + (size_t)m1 * ldb, ldb, n, m2, nb);
+    // ==================================================
+    // Paper-style overlap:
+    // split rows of B into:
+    //   n_small = nb
+    //   n_large = n - nb
+    // ==================================================
+    const bool use_pipeline = (n > nb && m >= 4096);
+
+    if (use_pipeline) {
+
+        int n_small = std::min(nb, n);
+        int n_large = n - n_small;
+
+        hipStream_t stream1, stream2;
+        hipStreamCreate(&stream1);
+        hipStreamCreate(&stream2);
+
+        rocblas_handle h1, h2;
+        rocblas_create_handle(&h1);
+        rocblas_create_handle(&h2);
+
+        rocblas_set_stream(h1, stream1);
+        rocblas_set_stream(h2, stream2);
+
+        // ----------------------------------------------
+        // stream1:
+        // small GEMM
+        // small recursive TRSM
+        // ----------------------------------------------
+        rocblas_sgemm(
+            h1,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            n_small, m2, m1,
+            &alpha_gemm,
+            B, ldb,
+            A + m1, lda,
+            &beta_gemm,
+            B + (size_t)m1 * ldb, ldb);
+
+        recursive_trsm_internal(
+            h1,
+            A + (size_t)m1 * lda + m1, lda,
+            B + (size_t)m1 * ldb, ldb,
+            n_small, m2, nb);
+
+        // ----------------------------------------------
+        // stream2:
+        // large GEMM
+        // ----------------------------------------------
+        if (n_large > 0) {
+            rocblas_sgemm(
+                h2,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                n_large, m2, m1,
+                &alpha_gemm,
+                B + n_small, ldb,
+                A + m1, lda,
+                &beta_gemm,
+                B + (size_t)m1 * ldb + n_small, ldb);
+        }
+
+        hipStreamSynchronize(stream2);
+
+        // ----------------------------------------------
+        // large recursive TRSM
+        // ----------------------------------------------
+        if (n_large > 0) {
+            recursive_trsm_internal(
+                handle,
+                A + (size_t)m1 * lda + m1, lda,
+                B + (size_t)m1 * ldb + n_small, ldb,
+                n_large, m2, nb);
+        }
+
+        rocblas_destroy_handle(h1);
+        rocblas_destroy_handle(h2);
+        hipStreamDestroy(stream1);
+        hipStreamDestroy(stream2);
+    }
+    else {
+        // ----------------------------------------------
+        // original path
+        // ----------------------------------------------
+        rocblas_sgemm(handle,
+                      rocblas_operation_none,
+                      rocblas_operation_transpose,
+                      n, m2, m1,
+                      &alpha_gemm,
+                      B, ldb,
+                      A + m1, lda,
+                      &beta_gemm,
+                      B + (size_t)m1 * ldb, ldb);
+
+        recursive_trsm_internal(
+            handle,
+            A + (size_t)m1 * lda + m1, lda,
+            B + (size_t)m1 * ldb, ldb,
+            n, m2, nb);
+    }
 }
 
 // ======================================================
-// 双精度 Right-TRSM
+// Internal recursive kernel (double)
 // ======================================================
-void recursive_trsm_double(rocblas_handle handle,
-                           double* A, int lda,
-                           double* B, int ldb,
-                           int n, int m, int nb) {
+static void recursive_trsm_double_internal(
+    rocblas_handle handle,
+    double* A, int lda,
+    double* B, int ldb,
+    int n, int m, int nb)
+{
     if (n <= 0 || m <= 0) return;
 
     if (m <= nb) {
@@ -88,21 +172,110 @@ void recursive_trsm_double(rocblas_handle handle,
     int m1 = m / 2;
     int m2 = m - m1;
 
-    recursive_trsm_double(handle, A, lda, B, ldb, n, m1, nb);
+    recursive_trsm_double_internal(handle, A, lda, B, ldb, n, m1, nb);
 
     double alpha_gemm = -1.0;
-    double beta_gemm = 1.0;
-    rocblas_dgemm(handle,
-                  rocblas_operation_none,
-                  rocblas_operation_transpose,
-                  n, m2, m1,
-                  &alpha_gemm,
-                  B, ldb,
-                  A + m1, lda,
-                  &beta_gemm,
-                  B + (size_t)m1 * ldb, ldb);
+    double beta_gemm  =  1.0;
 
-    recursive_trsm_double(handle, A + (size_t)m1 * lda + m1, lda, B + (size_t)m1 * ldb, ldb, n, m2, nb);
+    const bool use_pipeline = (n > nb && m >= 4096);
+
+    if (use_pipeline) {
+
+        int n_small = std::min(nb, n);
+        int n_large = n - n_small;
+
+        hipStream_t stream1, stream2;
+        hipStreamCreate(&stream1);
+        hipStreamCreate(&stream2);
+
+        rocblas_handle h1, h2;
+        rocblas_create_handle(&h1);
+        rocblas_create_handle(&h2);
+
+        rocblas_set_stream(h1, stream1);
+        rocblas_set_stream(h2, stream2);
+
+        rocblas_dgemm(
+            h1,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            n_small, m2, m1,
+            &alpha_gemm,
+            B, ldb,
+            A + m1, lda,
+            &beta_gemm,
+            B + (size_t)m1 * ldb, ldb);
+
+        recursive_trsm_double_internal(
+            h1,
+            A + (size_t)m1 * lda + m1, lda,
+            B + (size_t)m1 * ldb, ldb,
+            n_small, m2, nb);
+
+        if (n_large > 0) {
+            rocblas_dgemm(
+                h2,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                n_large, m2, m1,
+                &alpha_gemm,
+                B + n_small, ldb,
+                A + m1, lda,
+                &beta_gemm,
+                B + (size_t)m1 * ldb + n_small, ldb);
+        }
+
+        hipStreamSynchronize(stream2);
+
+        if (n_large > 0) {
+            recursive_trsm_double_internal(
+                handle,
+                A + (size_t)m1 * lda + m1, lda,
+                B + (size_t)m1 * ldb + n_small, ldb,
+                n_large, m2, nb);
+        }
+
+        rocblas_destroy_handle(h1);
+        rocblas_destroy_handle(h2);
+        hipStreamDestroy(stream1);
+        hipStreamDestroy(stream2);
+    }
+    else {
+        rocblas_dgemm(handle,
+                      rocblas_operation_none,
+                      rocblas_operation_transpose,
+                      n, m2, m1,
+                      &alpha_gemm,
+                      B, ldb,
+                      A + m1, lda,
+                      &beta_gemm,
+                      B + (size_t)m1 * ldb, ldb);
+
+        recursive_trsm_double_internal(
+            handle,
+            A + (size_t)m1 * lda + m1, lda,
+            B + (size_t)m1 * ldb, ldb,
+            n, m2, nb);
+    }
+}
+
+// ======================================================
+// External API
+// ======================================================
+void recursive_trsm(rocblas_handle handle,
+                    float* A, int lda,
+                    float* B, int ldb,
+                    int n, int m, int nb)
+{
+    recursive_trsm_internal(handle, A, lda, B, ldb, n, m, nb);
+}
+
+void recursive_trsm_double(rocblas_handle handle,
+                           double* A, int lda,
+                           double* B, int ldb,
+                           int n, int m, int nb)
+{
+    recursive_trsm_double_internal(handle, A, lda, B, ldb, n, m, nb);
 }
 
 } // extern "C"
