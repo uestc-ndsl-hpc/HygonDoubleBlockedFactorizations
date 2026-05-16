@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <algorithm>
+#include <random>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -99,6 +100,50 @@ double verify_relative_error(
            (sqrt(ref_norm) + 1e-20);
 }
 
+double verify_backward_error_sampled(
+    const vector<float>& A,
+    const vector<float>& B_original,
+    const vector<float>& X_result,
+    int n,
+    int m,
+    int lda,
+    int ldb,
+    int sample_count = 4096)
+{
+    long long total = static_cast<long long>(n) * m;
+    sample_count = std::min(static_cast<long long>(sample_count), total);
+
+    double diff_norm = 0.0;
+    double ref_norm  = 0.0;
+
+    std::mt19937 gen(2026); 
+    std::uniform_int_distribution<int> dist_row(0, n - 1);
+    std::uniform_int_distribution<int> dist_col(0, m - 1);
+
+    for (int s = 0; s < sample_count; ++s) {
+        
+        int row = dist_row(gen);
+        int col = dist_col(gen);
+
+        double reconstructed = 0.0;
+
+        for (int k = 0; k <= col; ++k) {
+            reconstructed +=
+                static_cast<double>(X_result[k * ldb + row]) *
+                static_cast<double>(A[k * lda + col]);
+        }
+
+        double ref = static_cast<double>(B_original[col * ldb + row]);
+
+        double diff = reconstructed - ref;
+
+        diff_norm += diff * diff;
+        ref_norm  += ref * ref;
+    }
+
+    return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
+}
+
 // Struct to store benchmark results
 struct BenchmarkResult {
     string method;
@@ -106,7 +151,8 @@ struct BenchmarkResult {
     double time_ms;
     double gflops;
     double speedup;
-    double error;
+    double forward_error;
+    double backward_error;
 };
 
 // ============================================================================
@@ -117,7 +163,7 @@ void run_all_benchmarks(
     int n,
     int m,
     const vector<int>& nbs,
-    bool enable_error,
+    int error_mode,
     bool test_recursive,
     bool test_rocblas,
     bool test_iterative)
@@ -194,7 +240,7 @@ void run_all_benchmarks(
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (enable_error) {
+    if (error_mode == 1 || error_mode == 3) {
 
         cout << ">>> Generating Golden Reference...\n";
 
@@ -398,14 +444,14 @@ void run_all_benchmarks(
         double gflops =
             calculate_gflops(n, m, ms);
 
-        double error = -1.0;
+        double forward_error = -1.0;
+        double backward_error = -1.0;
 
         // --------------------------------------------------------------------
         // Error Verification
         // --------------------------------------------------------------------
 
-        if (enable_error) {
-
+        if (error_mode != 0) {
             HIP_CHECK(
                 hipMemcpy(
                     h_X.data(),
@@ -413,19 +459,36 @@ void run_all_benchmarks(
                     size_B,
                     hipMemcpyDeviceToHost));
 
-            if (has_fp64_ref) {
+            // 前向误差
+            if (error_mode == 1 || error_mode == 3) {
 
-                error =
-                    verify_relative_error(
-                        h_X_gold,
-                        h_X);
+                if (has_fp64_ref) {
+                    forward_error =
+                        verify_relative_error(
+                            h_X_gold,
+                            h_X);
+                }
+                else if (has_f32_ref) {
+                    forward_error =
+                        verify_relative_error(
+                            h_X_ref_f32,
+                            h_X);
+                }
             }
-            else if (has_f32_ref) {
 
-                error =
-                    verify_relative_error(
-                        h_X_ref_f32,
-                        h_X);
+            // 后向误差
+            if (error_mode == 2 || error_mode == 3) {
+
+                backward_error =
+                    verify_backward_error_sampled(
+                        h_A,
+                        h_B,
+                        h_X,
+                        n,
+                        m,
+                        lda,
+                        ldb,
+                        4096);
             }
         }
 
@@ -440,7 +503,8 @@ void run_all_benchmarks(
             static_cast<double>(ms),
             gflops,
             speedup,
-            error
+            forward_error,
+            backward_error
         });
 
         return static_cast<double>(ms);
@@ -554,7 +618,7 @@ void run_all_benchmarks(
          << " | "
          << setw(9)  << "Speedup"
          << " | "
-         << "Relative Error\n";
+         << "Forward Error | Backward Error\n";
 
     cout << string(85, '-') << "\n";
 
@@ -594,15 +658,17 @@ void run_all_benchmarks(
 
         cout << " | ";
 
-        if (enable_error) {
-
-            cout
-                << scientific
-                << setprecision(2)
-                << res.error;
+        if (error_mode == 1 || error_mode == 3) {
+            cout << scientific << setprecision(2) << res.forward_error;
+        } else {
+            cout << "N/A";
         }
-        else {
 
+        cout << " | ";
+
+        if (error_mode == 2 || error_mode == 3) {
+            cout << scientific << setprecision(2) << res.backward_error;
+        } else {
             cout << "N/A";
         }
 
@@ -640,7 +706,7 @@ int main(int argc, char** argv)
     int n = 4096;
     int m = 4096;
 
-    bool enable_error   = false;
+    int error_mode = 0;
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_iterative = true;
@@ -651,7 +717,7 @@ int main(int argc, char** argv)
     if (argc >= 3) m = atoi(argv[2]);
 
     if (argc >= 4)
-        enable_error = atoi(argv[3]);
+        error_mode = atoi(argv[3]);
 
     if (argc >= 5)
         test_recursive = atoi(argv[4]);
@@ -676,7 +742,7 @@ int main(int argc, char** argv)
         n,
         m,
         nbs,
-        enable_error,
+        error_mode,
         test_recursive,
         test_rocblas,
         test_iterative);

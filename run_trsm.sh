@@ -54,14 +54,14 @@ USE_EQUAL_M=1
 NBS="256 512 1024 2048"
 
 # 功能开关
-ENABLE_ERROR=0
+ERROR_MODE=2
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_ITERATIVE=1
 
 echo "==================================================" | tee ${SUMMARY_LOG}
 echo "TRSM Benchmark Start" | tee -a ${SUMMARY_LOG}
-echo "Enable Error Check : ${ENABLE_ERROR}" | tee -a ${SUMMARY_LOG}
+echo "Error Mode         : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
 echo "Test rocBLAS       : ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Iterative     : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
@@ -99,7 +99,7 @@ do
     ${EXEC} \
         ${N} \
         ${M} \
-        ${ENABLE_ERROR} \
+        ${ERROR_MODE} \
         ${TEST_RECURSIVE} \
         ${TEST_ROCBLAS} \
         ${TEST_ITERATIVE} \
