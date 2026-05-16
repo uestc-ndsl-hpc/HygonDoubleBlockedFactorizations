@@ -1,33 +1,34 @@
-#ifndef RECURSIVE_TRSM_H
-#define RECURSIVE_TRSM_H
+#pragma once
 
-#include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
+#include "utils/stream_pool.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// 单精度递归TRSM
-void recursive_trsm(rocblas_handle handle,
-                    float* A, int lda,
-                    float* B, int ldb,
-                    int n, int m, int nb);
+// ======================================================
+// Recursive TRSM (float)
+// ======================================================
 
-// 双精度递归TRSM
-void recursive_trsm_double(rocblas_handle handle,
-                           double* A, int lda,
-                           double* B, int ldb,
-                           int n, int m, int nb);
+void recursive_trsm(
+    rocblas_handle handle,
+    StreamPool* pool,
+    float* A, int lda,
+    float* B, int ldb,
+    int n, int m, int nb);
 
-// 测试函数
-void test_trsm_performance(int n, int m, int nb, int warmup, int iter);
-void test_trsm_accuracy(int n, int m, int nb);
-double compute_residual(float* A, float* X, float* B, int n, int m, int lda, int ldb);
-double compute_residual_double(double* A, double* X, double* B, int n, int m, int lda, int ldb);
+// ======================================================
+// Recursive TRSM (double)
+// ======================================================
+
+void recursive_trsm_double(
+    rocblas_handle handle,
+    StreamPool* pool,
+    double* A, int lda,
+    double* B, int ldb,
+    int n, int m, int nb);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

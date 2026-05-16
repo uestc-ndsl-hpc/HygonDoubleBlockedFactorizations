@@ -1,5 +1,6 @@
 #include "trsm/recursive_trsm.h"
 #include "utils/error_check.h"
+#include "utils/stream_pool.h"
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
 #include <vector>
@@ -96,12 +97,16 @@ void recursive_trsm_double_internal(rocblas_handle handle,
 }
 
 // ======================================================
-// 外部包装器: 单精度
+// Public API (float)
 // ======================================================
-void recursive_trsm(rocblas_handle handle,
-                    float* A, int lda,
-                    float* B, int ldb,
-                    int n, int m, int nb) {
+
+void recursive_trsm(
+    rocblas_handle handle,
+    StreamPool* pool,
+    float* A, int lda,
+    float* B, int ldb,
+    int n, int m, int nb)
+{
     const int N_LIMIT = 8192;
 
     if (n <= N_LIMIT) {
@@ -114,52 +119,48 @@ void recursive_trsm(rocblas_handle handle,
 
     int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
 
-    std::vector<hipStream_t> streams(num_chunks);
-    std::vector<rocblas_handle> handles(num_chunks);
-    std::vector<hipEvent_t> events(num_chunks);
+    std::vector<hipEvent_t> events(num_chunks, nullptr);
 
     for (int i = 0; i < num_chunks; i++) {
-        if (i == 0) {
-            handles[i] = handle;
-            streams[i] = orig_stream;
-        } else {
-            HIP_CHECK(hipStreamCreate(&streams[i]));
-            ROCBLAS_CHECK(rocblas_create_handle(&handles[i]));
-            ROCBLAS_CHECK(rocblas_set_stream(handles[i], streams[i]));
-            HIP_CHECK(hipEventCreate(&events[i]));
-        }
-    }
 
-    for (int i = 0; i < num_chunks; i++) {
         int row_start = i * N_LIMIT;
         int current_n = std::min(N_LIMIT, n - row_start);
 
-        recursive_trsm_internal(handles[i],
-                                A, lda,
-                                B + row_start, ldb,
-                                current_n, m, nb);
+        auto &ctx = pool->get(i);
 
         if (i > 0) {
-            HIP_CHECK(hipEventRecord(events[i], streams[i]));
+            HIP_CHECK(hipEventCreate(&events[i]));
+        }
+
+        recursive_trsm_internal(
+            ctx.handle,
+            A, lda,
+            B + row_start, ldb,
+            current_n, m, nb);
+
+        if (i > 0) {
+            HIP_CHECK(hipEventRecord(events[i], ctx.stream));
         }
     }
 
     for (int i = 1; i < num_chunks; i++) {
         HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
-        HIP_CHECK(hipStreamSynchronize(streams[i]));
-        ROCBLAS_CHECK(rocblas_destroy_handle(handles[i]));
-        HIP_CHECK(hipStreamDestroy(streams[i]));
+        HIP_CHECK(hipStreamSynchronize(pool->get(i).stream));
         HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 
 // ======================================================
-// 外部包装器: 双精度
+// Public API (double)
 // ======================================================
-void recursive_trsm_double(rocblas_handle handle,
-                           double* A, int lda,
-                           double* B, int ldb,
-                           int n, int m, int nb) {
+
+void recursive_trsm_double(
+    rocblas_handle handle,
+    StreamPool* pool,
+    double* A, int lda,
+    double* B, int ldb,
+    int n, int m, int nb)
+{
     const int N_LIMIT = 8192;
 
     if (n <= N_LIMIT) {
@@ -172,41 +173,33 @@ void recursive_trsm_double(rocblas_handle handle,
 
     int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
 
-    std::vector<hipStream_t> streams(num_chunks);
-    std::vector<rocblas_handle> handles(num_chunks);
-    std::vector<hipEvent_t> events(num_chunks);
+    std::vector<hipEvent_t> events(num_chunks, nullptr);
 
     for (int i = 0; i < num_chunks; i++) {
-        if (i == 0) {
-            handles[i] = handle;
-            streams[i] = orig_stream;
-        } else {
-            HIP_CHECK(hipStreamCreate(&streams[i]));
-            ROCBLAS_CHECK(rocblas_create_handle(&handles[i]));
-            ROCBLAS_CHECK(rocblas_set_stream(handles[i], streams[i]));
-            HIP_CHECK(hipEventCreate(&events[i]));
-        }
-    }
 
-    for (int i = 0; i < num_chunks; i++) {
         int row_start = i * N_LIMIT;
         int current_n = std::min(N_LIMIT, n - row_start);
 
-        recursive_trsm_double_internal(handles[i],
-                                       A, lda,
-                                       B + row_start, ldb,
-                                       current_n, m, nb);
+        auto &ctx = pool->get(i);
 
         if (i > 0) {
-            HIP_CHECK(hipEventRecord(events[i], streams[i]));
+            HIP_CHECK(hipEventCreate(&events[i]));
+        }
+
+        recursive_trsm_double_internal(
+            ctx.handle,
+            A, lda,
+            B + row_start, ldb,
+            current_n, m, nb);
+
+        if (i > 0) {
+            HIP_CHECK(hipEventRecord(events[i], ctx.stream));
         }
     }
 
     for (int i = 1; i < num_chunks; i++) {
         HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
-        HIP_CHECK(hipStreamSynchronize(streams[i]));
-        ROCBLAS_CHECK(rocblas_destroy_handle(handles[i]));
-        HIP_CHECK(hipStreamDestroy(streams[i]));
+        HIP_CHECK(hipStreamSynchronize(pool->get(i).stream));
         HIP_CHECK(hipEventDestroy(events[i]));
     }
 }

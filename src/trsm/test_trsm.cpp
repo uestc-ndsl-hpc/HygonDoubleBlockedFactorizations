@@ -12,6 +12,7 @@
 #include "trsm/iterative_trsm.h"
 
 #include "utils/error_check.h"
+#include "utils/stream_pool.h"
 
 using namespace std;
 
@@ -139,6 +140,8 @@ void run_all_benchmarks(
 
     int lda = m; // L 的 leading dimension
     int ldb = n; // B 的 leading dimension
+
+    StreamPool pool(4);
 
     // ========================================================================
     // 1. Host Memory
@@ -486,24 +489,14 @@ void run_all_benchmarks(
     // ------------------------------------------------------------------------
 
     if (test_recursive) {
-
         for (int nb : nbs) {
-
-            execute_benchmark(
-                [&]() {
-
-                    recursive_trsm(
-                        handle,
-                        d_A,
-                        lda,
-                        d_B,
-                        ldb,
-                        n,
-                        m,
-                        nb);
-                },
-                "Recursive",
-                to_string(nb));
+            execute_benchmark([&]() {
+                recursive_trsm(handle,
+                            &pool,
+                            d_A, lda,
+                            d_B, ldb,
+                            n, m, nb);
+            }, "Recursive", to_string(nb));
         }
     }
 
