@@ -10,28 +10,9 @@
 #include "syrk/recursive_syrk.h"
 #include "syrk/batched_syrk.h"
 
+#include "utils/error_check.h"
+
 using namespace std;
-
-// Error checking macros for HIP and rocBLAS
-#define HIP_CHECK(cmd) \
-    do { \
-        hipError_t error = (cmd); \
-        if (error != hipSuccess) { \
-            cerr << "HIP error at " << __FILE__ << ":" << __LINE__ \
-                 << " : " << hipGetErrorString(error) << endl; \
-            exit(EXIT_FAILURE); \
-        } \
-    } while(0)
-
-#define ROCBLAS_CHECK(cmd) \
-    do { \
-        rocblas_status status = (cmd); \
-        if (status != rocblas_status_success) { \
-            cerr << "rocBLAS error at " << __FILE__ << ":" << __LINE__ \
-                 << " : " << rocblas_status_to_string(status) << endl; \
-            exit(EXIT_FAILURE); \
-        } \
-    } while(0)
 
 // Calculate GFLOPS for SYRK
 double calculate_gflops(int n, int k, double time_ms) {

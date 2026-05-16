@@ -12,32 +12,9 @@
 
 #include "potrf/recursive_potrf.h"
 
+#include "utils/error_check.h"
+
 using namespace std;
-
-// ============================================================================
-// HIP & ROCBLAS CHECK MACROS
-// ============================================================================
-
-#define HIP_CHECK(cmd)                                                     \
-    do {                                                                   \
-        hipError_t error = (cmd);                                          \
-        if (error != hipSuccess) {                                         \
-            cerr << "HIP error at " << __FILE__ << ":" << __LINE__         \
-                 << " -> " << hipGetErrorString(error) << endl;            \
-            exit(EXIT_FAILURE);                                            \
-        }                                                                  \
-    } while (0)
-
-#define ROCBLAS_CHECK(cmd)                                                 \
-    do {                                                                   \
-        rocblas_status status = (cmd);                                     \
-        if (status != rocblas_status_success) {                            \
-            cerr << "rocBLAS/rocSOLVER error at "                          \
-                 << __FILE__ << ":" << __LINE__                            \
-                 << " -> status = " << status << endl;                     \
-            exit(EXIT_FAILURE);                                            \
-        }                                                                  \
-    } while (0)
 
 // ============================================================================
 // UTILITIES

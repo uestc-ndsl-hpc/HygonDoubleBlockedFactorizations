@@ -1,4 +1,5 @@
 #include "trsm/recursive_trsm.h"
+#include "utils/error_check.h"
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
 #include <vector>
@@ -95,29 +96,24 @@ void recursive_trsm_double_internal(rocblas_handle handle,
 }
 
 // ======================================================
-// 外部包装器: 单精度 Right-TRSM 
-// 参考原文 5.1.4 节：利用流并发以及限制 GEMM 规模防止颠簸与误差爆炸
+// 外部包装器: 单精度
 // ======================================================
 void recursive_trsm(rocblas_handle handle,
                     float* A, int lda,
                     float* B, int ldb,
                     int n, int m, int nb) {
-    const int N_LIMIT = 8192; 
+    const int N_LIMIT = 8192;
 
-    // 如果未达到阈值，直接调用常规递归即可
     if (n <= N_LIMIT) {
         recursive_trsm_internal(handle, A, lda, B, ldb, n, m, nb);
         return;
     }
 
-    // 获取原始流
     hipStream_t orig_stream;
-    rocblas_get_stream(handle, &orig_stream);
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
 
-    // 计算切块数量
     int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
-    
-    // 创建流、句柄、事件资源池
+
     std::vector<hipStream_t> streams(num_chunks);
     std::vector<rocblas_handle> handles(num_chunks);
     std::vector<hipEvent_t> events(num_chunks);
@@ -127,35 +123,38 @@ void recursive_trsm(rocblas_handle handle,
             handles[i] = handle;
             streams[i] = orig_stream;
         } else {
-            hipStreamCreate(&streams[i]);
-            rocblas_create_handle(&handles[i]);
-            rocblas_set_stream(handles[i], streams[i]);
-            hipEventCreate(&events[i]);
+            HIP_CHECK(hipStreamCreate(&streams[i]));
+            ROCBLAS_CHECK(rocblas_create_handle(&handles[i]));
+            ROCBLAS_CHECK(rocblas_set_stream(handles[i], streams[i]));
+            HIP_CHECK(hipEventCreate(&events[i]));
         }
     }
 
     for (int i = 0; i < num_chunks; i++) {
         int row_start = i * N_LIMIT;
         int current_n = std::min(N_LIMIT, n - row_start);
-        
-        recursive_trsm_internal(handles[i], A, lda, B + row_start, ldb, current_n, m, nb);
-        
+
+        recursive_trsm_internal(handles[i],
+                                A, lda,
+                                B + row_start, ldb,
+                                current_n, m, nb);
+
         if (i > 0) {
-            hipEventRecord(events[i], streams[i]);
+            HIP_CHECK(hipEventRecord(events[i], streams[i]));
         }
     }
 
     for (int i = 1; i < num_chunks; i++) {
-        hipStreamWaitEvent(orig_stream, events[i], 0);
-        hipStreamSynchronize(streams[i]);
-        rocblas_destroy_handle(handles[i]);
-        hipStreamDestroy(streams[i]);
-        hipEventDestroy(events[i]);
+        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
+        HIP_CHECK(hipStreamSynchronize(streams[i]));
+        ROCBLAS_CHECK(rocblas_destroy_handle(handles[i]));
+        HIP_CHECK(hipStreamDestroy(streams[i]));
+        HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 
 // ======================================================
-// 外部包装器: 双精度 Right-TRSM 
+// 外部包装器: 双精度
 // ======================================================
 void recursive_trsm_double(rocblas_handle handle,
                            double* A, int lda,
@@ -169,9 +168,10 @@ void recursive_trsm_double(rocblas_handle handle,
     }
 
     hipStream_t orig_stream;
-    rocblas_get_stream(handle, &orig_stream);
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
 
     int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
+
     std::vector<hipStream_t> streams(num_chunks);
     std::vector<rocblas_handle> handles(num_chunks);
     std::vector<hipEvent_t> events(num_chunks);
@@ -181,29 +181,33 @@ void recursive_trsm_double(rocblas_handle handle,
             handles[i] = handle;
             streams[i] = orig_stream;
         } else {
-            hipStreamCreate(&streams[i]);
-            rocblas_create_handle(&handles[i]);
-            rocblas_set_stream(handles[i], streams[i]);
-            hipEventCreate(&events[i]);
+            HIP_CHECK(hipStreamCreate(&streams[i]));
+            ROCBLAS_CHECK(rocblas_create_handle(&handles[i]));
+            ROCBLAS_CHECK(rocblas_set_stream(handles[i], streams[i]));
+            HIP_CHECK(hipEventCreate(&events[i]));
         }
     }
 
     for (int i = 0; i < num_chunks; i++) {
         int row_start = i * N_LIMIT;
         int current_n = std::min(N_LIMIT, n - row_start);
-        recursive_trsm_double_internal(handles[i], A, lda, B + row_start, ldb, current_n, m, nb);
-        
+
+        recursive_trsm_double_internal(handles[i],
+                                       A, lda,
+                                       B + row_start, ldb,
+                                       current_n, m, nb);
+
         if (i > 0) {
-            hipEventRecord(events[i], streams[i]);
+            HIP_CHECK(hipEventRecord(events[i], streams[i]));
         }
     }
 
     for (int i = 1; i < num_chunks; i++) {
-        hipStreamWaitEvent(orig_stream, events[i], 0);
-        hipStreamSynchronize(streams[i]);
-        rocblas_destroy_handle(handles[i]);
-        hipStreamDestroy(streams[i]);
-        hipEventDestroy(events[i]);
+        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
+        HIP_CHECK(hipStreamSynchronize(streams[i]));
+        ROCBLAS_CHECK(rocblas_destroy_handle(handles[i]));
+        HIP_CHECK(hipStreamDestroy(streams[i]));
+        HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 
