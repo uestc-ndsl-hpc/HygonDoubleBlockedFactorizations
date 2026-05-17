@@ -11,6 +11,7 @@
 #include "syrk/batched_syrk.h"
 
 #include "utils/error_check.h"
+#include "utils/stream_pool.h"
 
 using namespace std;
 
@@ -84,6 +85,8 @@ void run_all_benchmarks(
 
     int lda = n;
     int ldc = n;
+
+    StreamPool pool(4);
 
     // ========================================================================
     // 1. Host Memory Allocation & Initialization
@@ -227,7 +230,7 @@ void run_all_benchmarks(
     if (test_batched) {
         for (int nb : nbs) {
             execute_benchmark([&]() {
-                batched_syrk_bottom_up(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
+                batched_syrk_bottom_up(handle, &pool, d_A_f, lda, d_C_f, ldc, n, k, nb);
             }, "Batched", to_string(nb));
         }
     }

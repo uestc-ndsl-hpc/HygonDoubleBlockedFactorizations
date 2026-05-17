@@ -1,4 +1,6 @@
 #include "syrk/batched_syrk.h"
+#include "utils/stream_pool.h"
+#include "utils/error_check.h"
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -149,7 +151,8 @@ static inline void gemm_update_double(
 // ============================================================================
 
 void batched_syrk_bottom_up(
-    rocblas_handle handle,
+    rocblas_handle main_handle,
+    StreamPool* pool,
     float* A,
     int lda,
     float* C,
@@ -171,7 +174,7 @@ void batched_syrk_bottom_up(
         float beta  = 1.0f;
 
         rocblas_ssyrk(
-            handle,
+            main_handle,
             rocblas_fill_lower,
             rocblas_operation_none,
             n,
@@ -186,6 +189,15 @@ void batched_syrk_bottom_up(
         return;
     }
 
+     // =========================================================================
+    // Lambda：任务轮询获取对应的 rocblas_handle。如果未传入pool，回退到串行
+    // =========================================================================
+
+    int task_id = 0;
+    auto get_handle = [&](int id) -> rocblas_handle {
+        return (pool && pool->size() > 0) ? pool->get(id % pool->size()).handle : main_handle;
+    };
+
     // =========================================================================
     // 阶段1：Diagonal Leaf Updates
     // =========================================================================
@@ -197,7 +209,7 @@ void batched_syrk_bottom_up(
         int offset = b * nb;
 
         gemm_update_float(
-            handle,
+            get_handle(task_id++),
             A + offset,
             A + offset,
             C + offset + offset * ldc,
@@ -205,25 +217,6 @@ void batched_syrk_bottom_up(
             ldc,
             nb,
             nb,
-            k);
-    }
-
-    // Tail
-    int tail = n % nb;
-
-    if (tail > 0)
-    {
-        int offset = num_blocks * nb;
-
-        gemm_update_float(
-            handle,
-            A + offset,
-            A + offset,
-            C + offset + offset * ldc,
-            lda,
-            ldc,
-            tail,
-            tail,
             k);
     }
 
@@ -256,7 +249,7 @@ void batched_syrk_bottom_up(
                 float beta  = (kk == 0) ? 1.0f : 1.0f;
 
                 rocblas_sgemm_strided_batched(
-                    handle,
+                    main_handle,
                     rocblas_operation_none,
                     rocblas_operation_transpose,
                     S,
@@ -295,7 +288,7 @@ void batched_syrk_bottom_up(
                 int offset = b * 2 * S;
 
                 gemm_update_float(
-                    handle,
+                    get_handle(task_id++),
                     A + offset + S,
                     A + offset,
                     C + (offset + S) + offset * ldc,
@@ -306,30 +299,20 @@ void batched_syrk_bottom_up(
                     k);
             }
         }
+    }
 
-        // =====================================================================
-        // Tail Processing
-        // =====================================================================
+    if (pool && pool->size() > 0) 
+    {
+        hipStream_t main_stream;
+        rocblas_get_stream(main_handle, &main_stream);
 
-        int rem = n % (2 * S);
-
-        if (rem > S)
+        for (int i = 0; i < pool->size(); ++i) 
         {
-            int offset = batch_count * 2 * S;
-
-            int tail_M = rem - S;
-            int tail_N = S;
-
-            gemm_update_float(
-                handle,
-                A + offset + S,
-                A + offset,
-                C + (offset + S) + offset * ldc,
-                lda,
-                ldc,
-                tail_M,
-                tail_N,
-                k);
+            hipEvent_t event;
+            HIP_CHECK(hipEventCreateWithFlags(&event, hipEventDisableTiming));
+            HIP_CHECK(hipEventRecord(event, pool->get(i).stream));
+            HIP_CHECK(hipStreamWaitEvent(main_stream, event, 0));
+            HIP_CHECK(hipEventDestroy(event));
         }
     }
 }
@@ -340,7 +323,8 @@ void batched_syrk_bottom_up(
 // ============================================================================
 
 void batched_syrk_bottom_up_double(
-    rocblas_handle handle,
+    rocblas_handle main_handle,
+    StreamPool* pool,
     double* A,
     int lda,
     double* C,
@@ -358,7 +342,7 @@ void batched_syrk_bottom_up_double(
         double beta  = 1.0;
 
         rocblas_dsyrk(
-            handle,
+            main_handle,
             rocblas_fill_lower,
             rocblas_operation_none,
             n,
@@ -373,6 +357,11 @@ void batched_syrk_bottom_up_double(
         return;
     }
 
+    int task_id = 0;
+    auto get_handle = [&](int id) -> rocblas_handle {
+        return (pool && pool->size() > 0) ? pool->get(id % pool->size()).handle : main_handle;
+    };
+
     int num_blocks = n / nb;
 
     for (int b = 0; b < num_blocks; b++)
@@ -380,7 +369,7 @@ void batched_syrk_bottom_up_double(
         int offset = b * nb;
 
         gemm_update_double(
-            handle,
+            get_handle(task_id++),
             A + offset,
             A + offset,
             C + offset + offset * ldc,
@@ -388,24 +377,6 @@ void batched_syrk_bottom_up_double(
             ldc,
             nb,
             nb,
-            k);
-    }
-
-    int tail = n % nb;
-
-    if (tail > 0)
-    {
-        int offset = num_blocks * nb;
-
-        gemm_update_double(
-            handle,
-            A + offset,
-            A + offset,
-            C + offset + offset * ldc,
-            lda,
-            ldc,
-            tail,
-            tail,
             k);
     }
 
@@ -429,7 +400,7 @@ void batched_syrk_bottom_up_double(
                 double beta  = (kk == 0) ? 1.0 : 1.0;
 
                 rocblas_dgemm_strided_batched(
-                    handle,
+                    main_handle,
                     rocblas_operation_none,
                     rocblas_operation_transpose,
                     S,
@@ -461,7 +432,7 @@ void batched_syrk_bottom_up_double(
                 int offset = b * 2 * S;
 
                 gemm_update_double(
-                    handle,
+                    get_handle(task_id++),
                     A + offset + S,
                     A + offset,
                     C + (offset + S) + offset * ldc,
@@ -472,26 +443,18 @@ void batched_syrk_bottom_up_double(
                     k);
             }
         }
+    }
+    
 
-        int rem = n % (2 * S);
-
-        if (rem > S)
-        {
-            int offset = batch_count * 2 * S;
-
-            int tail_M = rem - S;
-            int tail_N = S;
-
-            gemm_update_double(
-                handle,
-                A + offset + S,
-                A + offset,
-                C + (offset + S) + offset * ldc,
-                lda,
-                ldc,
-                tail_M,
-                tail_N,
-                k);
+    if (pool && pool->size() > 0) {
+        hipStream_t main_stream;
+        rocblas_get_stream(main_handle, &main_stream);
+        for (int i = 0; i < pool->size(); ++i) {
+            hipEvent_t event;
+            HIP_CHECK(hipEventCreateWithFlags(&event, hipEventDisableTiming));
+            HIP_CHECK(hipEventRecord(event, pool->get(i).stream));
+            HIP_CHECK(hipStreamWaitEvent(main_stream, event, 0));
+            HIP_CHECK(hipEventDestroy(event));
         }
     }
 }
