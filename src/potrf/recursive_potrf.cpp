@@ -11,7 +11,7 @@ extern "C" {
 // 单精度
 // ======================================================
 
-void recursive_potrf(rocblas_handle handle,
+void recursive_potrf(rocblas_handle handle, StreamPool* pool,
                      float* A,
                      int lda,
                      int n,
@@ -56,7 +56,7 @@ void recursive_potrf(rocblas_handle handle,
     // ==================================================
 
     recursive_potrf(
-        handle,
+        handle, pool,
         A11,
         lda,
         n1,
@@ -68,7 +68,7 @@ void recursive_potrf(rocblas_handle handle,
     // ==================================================
 
     recursive_trsm(
-        handle,
+        handle, pool,
         A11, lda,
         A21, lda,
         n2, n1, nb);
@@ -92,7 +92,7 @@ void recursive_potrf(rocblas_handle handle,
     // ==================================================
 
     recursive_potrf(
-        handle,
+        handle, pool,
         A22,
         lda,
         n2,
@@ -104,7 +104,7 @@ void recursive_potrf(rocblas_handle handle,
 // 双精度
 // ======================================================
 
-void recursive_potrf_double(rocblas_handle handle,
+void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
                             double* A,
                             int lda,
                             int n,
@@ -137,7 +137,7 @@ void recursive_potrf_double(rocblas_handle handle,
     double* A22 = A + (size_t)n1 * (size_t)lda + n1;
 
     recursive_potrf_double(
-        handle,
+        handle, pool,
         A11,
         lda,
         n1,
@@ -145,7 +145,7 @@ void recursive_potrf_double(rocblas_handle handle,
         info);
 
     recursive_trsm_double(
-        handle,
+        handle, pool,
         A11, lda,
         A21, lda,
         n2, n1, nb);
@@ -161,7 +161,7 @@ void recursive_potrf_double(rocblas_handle handle,
         nb);
 
     recursive_potrf_double(
-        handle,
+        handle, pool,
         A22,
         lda,
         n2,

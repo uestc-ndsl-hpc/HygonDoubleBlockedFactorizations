@@ -147,7 +147,7 @@ void call_rocsolver_potrf(
 
 template <typename T>
 void call_recursive_potrf(
-    rocblas_handle handle,
+    rocblas_handle handle, StreamPool* pool,
     T* A,
     int n,
     int lda,
@@ -155,9 +155,9 @@ void call_recursive_potrf(
     int* info)
 {
     if constexpr (std::is_same_v<T, float>) {
-        recursive_potrf(handle, A, lda, n, nb, info);
+        recursive_potrf(handle, pool, A, lda, n, nb, info);
     } else {
-        recursive_potrf_double(handle, A, lda, n, nb, info);
+        recursive_potrf_double(handle, pool, A, lda, n, nb, info);
     }
 }
 
@@ -176,6 +176,8 @@ void run_all_benchmarks(
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
+
+    StreamPool pool(4);
 
     size_t num_elements = (size_t)n * (size_t)n;
     size_t bytes = num_elements * sizeof(T);
@@ -304,7 +306,7 @@ void run_all_benchmarks(
     if (test_recursive) {
         for (int nb : nbs) {
             execute_benchmark([&]() {
-                call_recursive_potrf<T>(handle, d_A, n, n, nb, d_info);
+                call_recursive_potrf<T>(handle, &pool, d_A, n, n, nb, d_info);
             }, "Recursive", to_string(nb));
         }
     }

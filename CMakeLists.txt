@@ -39,6 +39,7 @@ add_compile_definitions(
 set(TRSM_SOURCES
     src/trsm/iterative_trsm.cpp
     src/trsm/recursive_trsm.cpp
+    src/utils/stream_pool.cpp
     src/trsm/test_trsm.cpp
 )
 
@@ -60,6 +61,7 @@ set(POTRF_SOURCES
     src/potrf/recursive_potrf.cpp
     src/potrf/test_potrf.cpp
     src/trsm/recursive_trsm.cpp
+    src/utils/stream_pool.cpp
     src/syrk/batched_syrk.cpp
 )
 
