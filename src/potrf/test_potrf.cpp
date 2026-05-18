@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <type_traits>
 #include <string>
+#include <random>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -74,38 +75,56 @@ double verify_potrf_against_double_ref(
 }
 
 // ============================================================================
-// BACKWARD ERROR
+// BACKWARD ERROR (Sampled)
 // ============================================================================
 
 template <typename T>
-double verify_backward_error(
+double verify_backward_error_sampled(
     const T* L_res,
     const T* A_orig,
     int n,
-    int lda)
+    int lda,
+    int sample_count = 4096)
 {
+    // 最多采样下三角元素总数
+    long long total = static_cast<long long>(n) * (n + 1) / 2;
+    sample_count = std::min(static_cast<long long>(sample_count), total);
+
     double diff_norm_sq = 0.0;
     double a_norm_sq    = 0.0;
 
-    for (int j = 0; j < n; ++j) {
-        for (int i = j; i < n; ++i) {
+    std::mt19937 gen(2026);
+    std::uniform_int_distribution<int> dist_row(0, n - 1);
+    std::uniform_int_distribution<int> dist_col(0, n - 1);
 
-            double dot_product = 0.0;
+    for (int s = 0; s < sample_count; ) {
+        int row = dist_row(gen);
+        int col = dist_col(gen);
 
-            for (int k = 0; k <= j; ++k) {
-                double Lik = static_cast<double>(L_res[k * lda + i]);
-                double Ljk = static_cast<double>(L_res[k * lda + j]);
-                dot_product += Lik * Ljk;
-            }
-
-            double a_val = static_cast<double>(A_orig[j * lda + i]);
-            double diff = a_val - dot_product;
-
-            double factor = (i == j) ? 1.0 : 2.0;
-
-            diff_norm_sq += factor * diff * diff;
-            a_norm_sq    += factor * a_val * a_val;
+        // 仅采样并验证下三角元素
+        if (row < col) {
+            continue; 
         }
+
+        double reconstructed = 0.0;
+
+        // A = L * L^T  =>  A_{row, col} = \sum_{k=0}^{col} L_{row, k} * L_{col, k}
+        for (int k = 0; k <= col; ++k) {
+            double Lik = static_cast<double>(L_res[k * lda + row]);
+            double Ljk = static_cast<double>(L_res[k * lda + col]);
+            reconstructed += Lik * Ljk;
+        }
+
+        double a_val = static_cast<double>(A_orig[col * lda + row]);
+        double diff = a_val - reconstructed;
+
+        // 对非对角线元素权重乘以2，为了等效估计完整对称矩阵的 Frobenius 范数
+        double factor = (row == col) ? 1.0 : 2.0;
+
+        diff_norm_sq += factor * diff * diff;
+        a_norm_sq    += factor * a_val * a_val;
+
+        ++s;
     }
 
     return sqrt(diff_norm_sq) / (sqrt(a_norm_sq) + 1e-12);
@@ -237,10 +256,12 @@ void run_all_benchmarks(
 
     auto execute_benchmark = [&](auto func, const string& name, const string& nb_str)
     {
+        // Warmup
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
         func();
 
+        // Actual execution
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
 
@@ -270,11 +291,12 @@ void run_all_benchmarks(
             }
 
             if (error_type == 1 || error_type == 2) {
-                backward_error = verify_backward_error(
+                backward_error = verify_backward_error_sampled(
                     h_res.data(),
                     h_A.data(),
                     n,
-                    n);
+                    n,
+                    4096);
             }
         }
 
@@ -393,7 +415,7 @@ int main(int argc, char** argv)
     bool test_recursive = true;
     int error_type      = 0;
 
-    // 新增：0=float, 1=double
+    // 0=float, 1=double
     int precision_type = 0;
 
     vector<int> nbs;

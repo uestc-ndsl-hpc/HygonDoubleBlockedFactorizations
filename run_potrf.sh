@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=potrf_backward_fp64
+#SBATCH --job-name=potrf_fp32
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --gres=dcu:1
@@ -27,7 +27,7 @@ ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_potrf
 
-RESULT_DIR=${ROOT_DIR}/results/potrf_backward_fp64
+RESULT_DIR=${ROOT_DIR}/results/fp32/potrf
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -36,7 +36,7 @@ mkdir -p ${RESULT_DIR}
 # Benchmark Config
 # =========================================================
 
-NS=($(seq 8192 8192 40960))
+NS=($(seq 8192 8192 57344))
 
 NBS="256 512 1024 2048"
 
@@ -48,12 +48,12 @@ TEST_RECURSIVE=1
 # 0 -> forward
 # 1 -> backward
 # 2 -> both
-ERROR_TYPE=1
+ERROR_TYPE=2
 
 # 精度:
 # 0 -> float
 # 1 -> double
-PRECISION=1
+PRECISION=0
 
 echo "==================================================" | tee ${SUMMARY_LOG}
 echo "POTRF Backward Error Benchmark (FP64) Start" | tee -a ${SUMMARY_LOG}
