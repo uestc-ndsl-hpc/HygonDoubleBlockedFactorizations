@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trsm_benchmark
+#SBATCH --job-name=trsm_fp32
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --gres=dcu:1
@@ -27,7 +27,7 @@ ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_trsm
 
-RESULT_DIR=${ROOT_DIR}/results/trsm
+RESULT_DIR=${ROOT_DIR}/results/fp32/trsm
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -54,7 +54,7 @@ USE_EQUAL_M=1
 NBS="256 512 1024 2048"
 
 # 功能开关
-ERROR_MODE=2
+ERROR_MODE=3
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_ITERATIVE=1
