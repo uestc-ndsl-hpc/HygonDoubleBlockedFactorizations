@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <cmath>
 #include <string>
+#include <algorithm>
+#include <random>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -59,6 +61,64 @@ double verify_relative_error_lower(
     return sqrt(diff_norm) / (sqrt(ref_norm) + 1e-20);
 }
 
+// Sampled backward error verification (Sampled Reconstructed Forward Error)
+double verify_backward_error_sampled(
+    const vector<float>& A,
+    const vector<float>& C_original,
+    const vector<float>& C_result,
+    int n,
+    int k,
+    int lda,
+    int ldc,
+    float alpha = -1.0f,
+    float beta = 1.0f,
+    int sample_count = 4096)
+{
+    long long total = static_cast<long long>(n) * (n + 1) / 2;
+    sample_count = std::min(static_cast<long long>(sample_count), total);
+
+    double diff_norm = 0.0;
+    double ref_norm  = 0.0;
+
+    std::mt19937 gen(2026);
+    std::uniform_int_distribution<int> dist_row(0, n - 1);
+    std::uniform_int_distribution<int> dist_col(0, n - 1);
+
+    for (int s = 0; s < sample_count; ) {
+        
+        int row = dist_row(gen);
+        int col = dist_col(gen);
+
+        if (row < col) {
+            continue; // Only sample lower triangular elements
+        }
+
+        double reconstructed = 0.0;
+
+        for (int l = 0; l < k; ++l) {
+            // A is col-major. Compute dot product of A's rows.
+            reconstructed +=
+                static_cast<double>(A[l * lda + row]) *
+                static_cast<double>(A[l * lda + col]);
+        }
+
+        reconstructed =
+            static_cast<double>(alpha) * reconstructed +
+            static_cast<double>(beta) * static_cast<double>(C_original[col * ldc + row]);
+
+        double res = static_cast<double>(C_result[col * ldc + row]);
+
+        double diff = res - reconstructed;
+
+        diff_norm += diff * diff;
+        ref_norm  += reconstructed * reconstructed;
+
+        ++s;
+    }
+
+    return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
+}
+
 // Struct to store benchmark results for the final table
 struct BenchmarkResult {
     string method;
@@ -66,7 +126,8 @@ struct BenchmarkResult {
     double time_ms;
     double gflops;
     double speedup;
-    double error;
+    double forward_error;
+    double backward_error;
 };
 
 // ============================================================================
@@ -74,7 +135,7 @@ struct BenchmarkResult {
 // ============================================================================
 void run_all_benchmarks(
     int n, int k, const vector<int>& nbs,
-    bool enable_error_check,
+    int error_mode,
     bool test_recursive,
     bool test_rocblas,
     bool test_batched)
@@ -97,9 +158,11 @@ void run_all_benchmarks(
     // ========================================================================
     // 2. Device Memory Allocation
     // ========================================================================
-    float *d_A_f, *d_C_f;
-    size_t bytes_A = (size_t)n * k * sizeof(float);
-    size_t bytes_C = (size_t)n * n * sizeof(float);
+    float *d_A_f = nullptr;
+    float *d_C_f = nullptr;
+    
+    size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
+    size_t bytes_C = static_cast<size_t>(n) * n * sizeof(float);
 
     HIP_CHECK(hipMalloc(&d_A_f, bytes_A));
     HIP_CHECK(hipMalloc(&d_C_f, bytes_C));
@@ -110,45 +173,57 @@ void run_all_benchmarks(
     float beta_f  = 1.0f;
 
     // ========================================================================
-    // 3. Golden Reference Generation (for Error Verification)
+    // 3. Golden Reference Generation
     // ========================================================================
     vector<double> h_C_gold(n * n);
     vector<float>  h_C_ref_f32(n * n);
+    
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (enable_error_check) {
+    if (error_mode == 1 || error_mode == 3) {
+        
         cout << ">>> Generating Golden Reference for Error Verification...\n";
-        bool do_fp64_verify = (n <= 16384);
+        bool do_fp64_verify = (std::max(n, k) <= 16384);
         
         if (do_fp64_verify) {
-            double *d_A_d, *d_C_d;
+            double *d_A_d = nullptr;
+            double *d_C_d = nullptr;
+            
             vector<double> h_A_d(n * k);
             vector<double> h_C_d(n * n);
 
             for (size_t i = 0; i < h_A_f.size(); ++i) h_A_d[i] = h_A_f[i];
             for (size_t i = 0; i < h_C_f.size(); ++i) h_C_d[i] = h_C_f[i];
 
-            HIP_CHECK(hipMalloc(&d_A_d, (size_t)n * k * sizeof(double)));
-            HIP_CHECK(hipMalloc(&d_C_d, (size_t)n * n * sizeof(double)));
-            HIP_CHECK(hipMemcpy(d_A_d, h_A_d.data(), (size_t)n * k * sizeof(double), hipMemcpyHostToDevice));
-            HIP_CHECK(hipMemcpy(d_C_d, h_C_d.data(), (size_t)n * n * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMalloc(&d_A_d, static_cast<size_t>(n) * k * sizeof(double)));
+            HIP_CHECK(hipMalloc(&d_C_d, static_cast<size_t>(n) * n * sizeof(double)));
+            
+            HIP_CHECK(hipMemcpy(d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy(d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
 
             double alpha_d = -1.0;
             double beta_d  = 1.0;
 
-            ROCBLAS_CHECK(rocblas_dsyrk(handle, rocblas_fill_lower, rocblas_operation_none,
-                                        n, k, &alpha_d, d_A_d, lda, &beta_d, d_C_d, ldc));
+            ROCBLAS_CHECK(
+                rocblas_dsyrk(
+                    handle, rocblas_fill_lower, rocblas_operation_none,
+                    n, k, &alpha_d, d_A_d, lda, &beta_d, d_C_d, ldc));
 
-            HIP_CHECK(hipMemcpy(h_C_gold.data(), d_C_d, (size_t)n * n * sizeof(double), hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(h_C_gold.data(), d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
+            
             HIP_CHECK(hipFree(d_A_d));
             HIP_CHECK(hipFree(d_C_d));
             has_fp64_ref = true;
         } else {
             // Use standard rocBLAS FP32 as reference if N is too large for FP64
             HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
-            ROCBLAS_CHECK(rocblas_ssyrk(handle, rocblas_fill_lower, rocblas_operation_none,
-                                        n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+            
+            ROCBLAS_CHECK(
+                rocblas_ssyrk(
+                    handle, rocblas_fill_lower, rocblas_operation_none,
+                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+                    
             HIP_CHECK(hipMemcpy(h_C_ref_f32.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
             has_f32_ref = true;
         }
@@ -170,10 +245,12 @@ void run_all_benchmarks(
 
         // Warmup
         HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
+        HIP_CHECK(hipDeviceSynchronize()); // Sync device to avoid caching noise before running func
         func();
 
         // Actual Run
         HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
+        HIP_CHECK(hipDeviceSynchronize());
         
         HIP_CHECK(hipEventRecord(start));
         func();
@@ -182,23 +259,47 @@ void run_all_benchmarks(
 
         float ms = 0;
         HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
-        HIP_CHECK(hipMemcpy(h_C_out.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
 
         double gflops = calculate_gflops(n, k, ms);
-        double error = -1.0;
+        
+        double forward_error = -1.0;
+        double backward_error = -1.0;
 
-        if (enable_error_check) {
-            if (has_fp64_ref) {
-                error = verify_relative_error_lower(h_C_gold, h_C_out, n);
-            } else if (has_f32_ref) {
-                error = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
+        // --------------------------------------------------------------------
+        // Error Verification
+        // --------------------------------------------------------------------
+        if (error_mode != 0) {
+            HIP_CHECK(hipMemcpy(h_C_out.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
+
+            // Forward Error (Full matrix exact comparison)
+            if (error_mode == 1 || error_mode == 3) {
+                if (has_fp64_ref) {
+                    forward_error = verify_relative_error_lower(h_C_gold, h_C_out, n);
+                } else if (has_f32_ref) {
+                    forward_error = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
+                }
+            }
+
+            // Backward Error (Sampled reconstructed verification)
+            if (error_mode == 2 || error_mode == 3) {
+                backward_error = verify_backward_error_sampled(
+                    h_A_f, h_C_f, h_C_out, n, k, lda, ldc, alpha_f, beta_f, 4096);
             }
         }
 
         double speedup = (baseline_time > 0.0) ? (baseline_time / ms) : 0.0;
-        results.push_back({name, nb_str, static_cast<double>(ms), gflops, speedup, error});
         
-        return ms;
+        results.push_back({
+            name, 
+            nb_str, 
+            static_cast<double>(ms), 
+            gflops, 
+            speedup, 
+            forward_error, 
+            backward_error
+        });
+        
+        return static_cast<double>(ms);
     };
 
     // ========================================================================
@@ -208,8 +309,10 @@ void run_all_benchmarks(
 
     if (test_rocblas) {
         baseline_time = execute_benchmark([&]() {
-            ROCBLAS_CHECK(rocblas_ssyrk(handle, rocblas_fill_lower, rocblas_operation_none,
-                                        n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+            ROCBLAS_CHECK(
+                rocblas_ssyrk(
+                    handle, rocblas_fill_lower, rocblas_operation_none,
+                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
         }, "rocBLAS", "N/A");
         
         // Fix speedup for baseline itself
@@ -247,7 +350,7 @@ void run_all_benchmarks(
          << " | " << setw(11) << "Time (ms)"
          << " | " << setw(11) << "GFLOPS"
          << " | " << setw(9) << "Speedup"
-         << " | " << "Error\n";
+         << " | " << "Forward Error | Backward Error\n";
     cout << string(85, '-') << "\n";
 
     // Table Rows
@@ -266,8 +369,14 @@ void run_all_benchmarks(
         }
         
         cout << " | ";
-        if (enable_error_check) {
-            cout << scientific << setprecision(2) << res.error;
+        if (error_mode == 1 || error_mode == 3) {
+            cout << scientific << setprecision(2) << res.forward_error;
+        } else {
+            cout << "N/A          "; // pad for formatting alignment
+        }
+        cout << " | ";
+        if (error_mode == 2 || error_mode == 3) {
+            cout << scientific << setprecision(2) << res.backward_error;
         } else {
             cout << "N/A";
         }
@@ -293,7 +402,7 @@ int main(int argc, char** argv)
     int n = 4096;
     int k = 4096;
 
-    bool enable_error_check = false;
+    int error_mode      = 0;
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_batched   = true;
@@ -302,7 +411,7 @@ int main(int argc, char** argv)
 
     if (argc >= 2) n = atoi(argv[1]);
     if (argc >= 3) k = atoi(argv[2]);
-    if (argc >= 4) enable_error_check = atoi(argv[3]);
+    if (argc >= 4) error_mode = atoi(argv[3]);
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) test_rocblas = atoi(argv[5]);
     if (argc >= 7) test_batched = atoi(argv[6]);
@@ -316,11 +425,12 @@ int main(int argc, char** argv)
 
     srand(2026);
 
-    run_all_benchmarks(n, k, nbs, 
-                       enable_error_check, 
-                       test_recursive, 
-                       test_rocblas, 
-                       test_batched);
+    run_all_benchmarks(
+        n, k, nbs, 
+        error_mode, 
+        test_recursive, 
+        test_rocblas, 
+        test_batched);
 
     return 0;
 }
