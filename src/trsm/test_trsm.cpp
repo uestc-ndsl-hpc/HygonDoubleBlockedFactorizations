@@ -18,6 +18,7 @@
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
+#include "utils/benchmark_runner.h"
 
 using namespace std;
 
@@ -362,61 +363,28 @@ void run_all_benchmarks(
     // ========================================================================
     // 4. Benchmark Preparation
     // ========================================================================
-
-    GPUTimer timer;
-
     vector<BenchmarkResult> results;
-
     double baseline_time = -1.0;
 
-    // ========================================================================
-    // Helper Lambda
-    // ========================================================================
+    BenchmarkRunner runner(main_stream, baseline_time, results);
 
-    auto execute_benchmark =
-    [&](auto func,
-        const string& name,
-        const string& nb_str)
-    {
-        // Reset B before warmup
+    // [闭包 1]：重置 B 矩阵
+    auto reset_b = [&]() {
         HIP_CHECK(
             hipMemcpy(
                 d_B,
                 h_B.data(),
                 size_B,
                 hipMemcpyHostToDevice));
+    };
 
-        HIP_CHECK(
-            hipDeviceSynchronize());
+    // [闭包 2]：计算 TRSM 特定的 GFLOPS 公式
+    auto calc_gflops_trsm = [&](double ms) {
+        return calculate_gflops(n, m, ms);
+    };
 
-        // Warmup
-        func();
-
-        // Reset B before actual run
-        HIP_CHECK(
-            hipMemcpy(
-                d_B,
-                h_B.data(),
-                size_B,
-                hipMemcpyHostToDevice));
-
-        HIP_CHECK(
-            hipDeviceSynchronize());
-
-        float ms = timer.measure(main_stream, [&]() {
-            func();
-        });
-
-        double gflops =
-            calculate_gflops(n, m, ms);
-
-        double forward_error = -1.0;
-        double backward_error = -1.0;
-
-        // --------------------------------------------------------------------
-        // Error Verification
-        // --------------------------------------------------------------------
-
+    // [闭包 3]：验证误差
+    auto verify_trsm = [&](double& f_err, double& b_err) {
         if (error_mode != 0) {
             HIP_CHECK(
                 hipMemcpy(
@@ -427,53 +395,19 @@ void run_all_benchmarks(
 
             // 前向误差
             if (error_mode == 1 || error_mode == 3) {
-
                 if (has_fp64_ref) {
-                    forward_error =
-                        verify_relative_error(
-                            h_X_gold,
-                            h_X);
+                    f_err = verify_relative_error(h_X_gold, h_X);
                 }
                 else if (has_f32_ref) {
-                    forward_error =
-                        verify_relative_error(
-                            h_X_ref_f32,
-                            h_X);
+                    f_err = verify_relative_error(h_X_ref_f32, h_X);
                 }
             }
 
             // 后向误差
             if (error_mode == 2 || error_mode == 3) {
-
-                backward_error =
-                    verify_backward_error_sampled(
-                        h_A,
-                        h_B,
-                        h_X,
-                        n,
-                        m,
-                        lda,
-                        ldb,
-                        4096);
+                b_err = verify_backward_error_sampled(h_A, h_B, h_X, n, m, lda, ldb, 4096);
             }
         }
-
-        double speedup =
-            (baseline_time > 0.0)
-            ? (baseline_time / ms)
-            : 0.0;
-
-        results.push_back({
-            name,
-            nb_str,
-            static_cast<double>(ms),
-            gflops,
-            speedup,
-            forward_error,
-            backward_error
-        });
-
-        return static_cast<double>(ms);
     };
 
     // ========================================================================
@@ -487,29 +421,28 @@ void run_all_benchmarks(
     // ------------------------------------------------------------------------
 
     if (test_rocblas) {
-
-        baseline_time =
-            execute_benchmark(
-                [&]() {
-
-                    // 右乘、转置
-                    ROCBLAS_CHECK(
-                        rocblas_strsm(
-                            handle,
-                            rocblas_side_right,
-                            rocblas_fill_lower,
-                            rocblas_operation_transpose,
-                            rocblas_diagonal_non_unit,
-                            n,
-                            m,
-                            &alpha,
-                            d_A,
-                            lda,
-                            d_B,
-                            ldb));
-                },
-                "rocBLAS (FP32)",
-                "N/A");
+        baseline_time = runner.execute(
+            "rocBLAS (FP32)", 
+            "N/A", 
+            reset_b,
+            [&]() {
+                ROCBLAS_CHECK(
+                    rocblas_strsm(
+                        handle,
+                        rocblas_side_right,
+                        rocblas_fill_lower,
+                        rocblas_operation_transpose,
+                        rocblas_diagonal_non_unit,
+                        n,
+                        m,
+                        &alpha,
+                        d_A,
+                        lda,
+                        d_B,
+                        ldb));
+            },
+            verify_trsm, 
+            calc_gflops_trsm);
 
         results.back().speedup = 1.0;
     }
@@ -520,29 +453,33 @@ void run_all_benchmarks(
 
     if (test_recursive) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                recursive_trsm(handle,
-                            &pool,
-                            d_A, lda,
-                            d_B, ldb,
-                            n, m, nb);
-            }, "Rec (FP32)", to_string(nb));
+            runner.execute(
+                "Rec (FP32)", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    recursive_trsm(handle, &pool, d_A, lda, d_B, ldb, n, m, nb); 
+                },
+                verify_trsm, 
+                calc_gflops_trsm);
         }
     }
 
     // ------------------------------------------------------------------------
-    // Recursive (Half FP16) - [使用新封装的全异步包装接口]
+    // Recursive (Half FP16)
     // ------------------------------------------------------------------------
 
     if (test_half) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                recursive_trsm_half_f32_wrapper(handle,
-                                                &pool,
-                                                d_A, lda,
-                                                d_B, ldb,
-                                                n, m, nb);
-            }, "Rec (FP16)", to_string(nb));
+            runner.execute(
+                "Rec (FP16)", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    recursive_trsm_half_f32_wrapper(handle, &pool, d_A, lda, d_B, ldb, n, m, nb); 
+                },
+                verify_trsm, 
+                calc_gflops_trsm);
         }
     }
 
@@ -551,24 +488,16 @@ void run_all_benchmarks(
     // ------------------------------------------------------------------------
 
     if (test_iterative) {
-
         for (int nb : nbs) {
-
-            execute_benchmark(
-                [&]() {
-
-                    iterative_trsm_right_looking(
-                        handle,
-                        d_A,
-                        lda,
-                        d_B,
-                        ldb,
-                        n,
-                        m,
-                        nb);
+            runner.execute(
+                "Iterative RL", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    iterative_trsm_right_looking(handle, d_A, lda, d_B, ldb, n, m, nb); 
                 },
-                "Iterative RL",
-                to_string(nb));
+                verify_trsm, 
+                calc_gflops_trsm);
         }
     }
 

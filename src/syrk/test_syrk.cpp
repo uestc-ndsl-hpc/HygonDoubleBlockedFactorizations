@@ -17,6 +17,7 @@
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
+#include "utils/benchmark_runner.h"
 
 using namespace std;
 
@@ -226,68 +227,47 @@ void run_all_benchmarks(
     // ========================================================================
     // 4. Benchmark Preparation
     // ========================================================================
-    GPUTimer timer;
-
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
 
-    // Helper lambda to run a single test and record its result
-    auto execute_benchmark = [&](auto func, const string& name, const string& nb_str) {
-        vector<float> h_C_out(n * n);
+    BenchmarkRunner runner(main_stream, baseline_time, results);
 
-        // Warmup
-        HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize()); // Sync device to avoid caching noise before running func
-        func();
+    // [闭包 1]：重置 C 矩阵
+    auto reset_c = [&]() {
+        HIP_CHECK(
+            hipMemcpy(
+                d_C_f, 
+                h_C_f.data(), 
+                bytes_C, 
+                hipMemcpyHostToDevice));
+    };
 
-        // Actual Run
-        HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize());
-        
-        float ms = timer.measure(main_stream, [&]() {
-            func();
-        });
+    // [闭包 2]：计算 GFLOPS
+    auto calc_gflops_syrk = [&](double ms) {
+        return calculate_gflops(n, k, ms);
+    };
 
-        double gflops = calculate_gflops(n, k, ms);
-        
-        double forward_error = -1.0;
-        double backward_error = -1.0;
-
-        // --------------------------------------------------------------------
-        // Error Verification
-        // --------------------------------------------------------------------
+    // [闭包 3]：验证误差（在测时循环外执行）
+    auto verify_syrk = [&](double& f_err, double& b_err) {
         if (error_mode != 0) {
+            vector<float> h_C_out(n * n);
             HIP_CHECK(hipMemcpy(h_C_out.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
 
-            // Forward Error (Full matrix exact comparison)
+            // 前向误差
             if (error_mode == 1 || error_mode == 3) {
                 if (has_fp64_ref) {
-                    forward_error = verify_relative_error_lower(h_C_gold, h_C_out, n);
+                    f_err = verify_relative_error_lower(h_C_gold, h_C_out, n);
                 } else if (has_f32_ref) {
-                    forward_error = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
+                    f_err = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
                 }
             }
 
-            // Backward Error (Sampled reconstructed verification)
+            // 后向误差
             if (error_mode == 2 || error_mode == 3) {
-                backward_error = verify_backward_error_sampled(
+                b_err = verify_backward_error_sampled(
                     h_A_f, h_C_f, h_C_out, n, k, lda, ldc, alpha_f, beta_f, 4096);
             }
         }
-
-        double speedup = (baseline_time > 0.0) ? (baseline_time / ms) : 0.0;
-        
-        results.push_back({
-            name, 
-            nb_str, 
-            static_cast<double>(ms), 
-            gflops, 
-            speedup, 
-            forward_error, 
-            backward_error
-        });
-        
-        return static_cast<double>(ms);
     };
 
     // ========================================================================
@@ -296,30 +276,47 @@ void run_all_benchmarks(
     cout << ">>> Running Benchmarks..." << endl;
 
     if (test_rocblas) {
-        baseline_time = execute_benchmark([&]() {
-            ROCBLAS_CHECK(
-                rocblas_ssyrk(
-                    handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
-        }, "rocBLAS", "N/A");
+        baseline_time = runner.execute(
+            "rocBLAS", 
+            "N/A", 
+            reset_c,
+            [&]() {
+                ROCBLAS_CHECK(
+                    rocblas_ssyrk(
+                        handle, rocblas_fill_lower, rocblas_operation_none,
+                        n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+            },
+            verify_syrk, 
+            calc_gflops_syrk);
         
-        // Fix speedup for baseline itself
         results.back().speedup = 1.0; 
     }
 
     if (test_recursive) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                recursive_syrk_parallel(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
-            }, "Recursive", to_string(nb));
+            runner.execute(
+                "Recursive", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    recursive_syrk_parallel(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
         }
     }
 
     if (test_batched) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                batched_syrk_bottom_up(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
-            }, "Batched", to_string(nb));
+            runner.execute(
+                "Batched", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    batched_syrk_bottom_up(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
         }
     }
 

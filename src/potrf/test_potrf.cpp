@@ -18,6 +18,7 @@
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
+#include "utils/benchmark_runner.h"
 
 using namespace std;
 
@@ -238,49 +239,47 @@ void run_all_benchmarks(
         HIP_CHECK(hipFree(d_A_double));
     }
 
-    GPUTimer timer;
-
+    // ========================================================================
+    // 4. Benchmark Preparation (基于 BenchmarkRunner 引擎进行重构) [1]
+    // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
 
-    auto execute_benchmark =
-        [&](auto func,
-            const string& name,
-            const string& nb_str)
-    {
-        // Warmup
-        HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize());
-        func();
+    BenchmarkRunner runner(main_stream, baseline_time, results);
 
-        // Reset state before timing
-        HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize());
+    // [闭包 1]：重置 A 矩阵
+    auto reset_a = [&]() {
+        HIP_CHECK(
+            hipMemcpy(
+                d_A, 
+                h_A.data(), 
+                bytes, 
+                hipMemcpyHostToDevice));
+    };
 
-        // timing
-        float ms = timer.measure(main_stream, [&]() {
-            func();
-        });
+    // [闭包 2]：计算 POTRF 特定的 GFLOPS 公式
+    auto calc_gflops_potrf = [&](double ms) {
+        return calculate_gflops(n, ms);
+    };
 
-        double gflops = calculate_gflops(n, ms);
-
-        double forward_error  = -1.0;
-        double backward_error = -1.0;
-
+    // [闭包 3]：验证误差（在测时循环外执行）
+    auto verify_potrf = [&](double& f_err, double& b_err) {
         if (enable_error) {
             vector<T> h_res(num_elements);
             HIP_CHECK(hipMemcpy(h_res.data(), d_A, bytes, hipMemcpyDeviceToHost));
 
+            // 前向误差
             if (error_type == 0 || error_type == 2) {
-                forward_error = verify_potrf_against_double_ref(
+                f_err = verify_potrf_against_double_ref(
                     h_res.data(),
                     h_L_ref_double.data(),
                     n,
                     n);
             }
 
+            // 后向误差
             if (error_type == 1 || error_type == 2) {
-                backward_error = verify_backward_error_sampled(
+                b_err = verify_backward_error_sampled(
                     h_res.data(),
                     h_A.data(),
                     n,
@@ -288,37 +287,39 @@ void run_all_benchmarks(
                     4096);
             }
         }
-
-        double speedup = (baseline_time > 0.0) ? (baseline_time / ms) : 0.0;
-
-        results.push_back({
-            name,
-            nb_str,
-            static_cast<double>(ms),
-            gflops,
-            speedup,
-            forward_error,
-            backward_error
-        });
-
-        return static_cast<double>(ms);
     };
+
+    // ========================================================================
+    // 5. Run Benchmarks
+    // ========================================================================
 
     cout << ">>> Running Benchmarks...\n";
 
     if (test_rocsolver) {
-        baseline_time = execute_benchmark([&]() {
-            call_rocsolver_potrf<T>(handle, rocblas_fill_lower, n, d_A, n, d_info);
-        }, "rocSOLVER", "N/A");
+        baseline_time = runner.execute(
+            "rocSOLVER", 
+            "N/A", 
+            reset_a,
+            [&]() {
+                call_rocsolver_potrf<T>(handle, rocblas_fill_lower, n, d_A, n, d_info);
+            },
+            verify_potrf, 
+            calc_gflops_potrf);
 
         results.back().speedup = 1.0;
     }
 
     if (test_recursive) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                call_recursive_potrf<T>(handle, &pool, d_A, n, n, nb, d_info);
-            }, "Recursive", to_string(nb));
+            runner.execute(
+                "Recursive", 
+                to_string(nb), 
+                reset_a,
+                [&]() {
+                    call_recursive_potrf<T>(handle, &pool, d_A, n, n, nb, d_info);
+                },
+                verify_potrf, 
+                calc_gflops_potrf);
         }
     }
 
