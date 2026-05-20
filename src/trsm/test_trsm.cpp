@@ -166,7 +166,8 @@ void run_all_benchmarks(
     int error_mode,
     bool test_recursive,
     bool test_rocblas,
-    bool test_iterative)
+    bool test_iterative,
+    bool test_half)
 {
     rocblas_handle handle;
 
@@ -542,14 +543,14 @@ void run_all_benchmarks(
                             d_B,
                             ldb));
                 },
-                "rocBLAS",
+                "rocBLAS (FP32)",
                 "N/A");
 
         results.back().speedup = 1.0;
     }
 
     // ------------------------------------------------------------------------
-    // Recursive
+    // Recursive (FP32)
     // ------------------------------------------------------------------------
 
     if (test_recursive) {
@@ -560,7 +561,23 @@ void run_all_benchmarks(
                             d_A, lda,
                             d_B, ldb,
                             n, m, nb);
-            }, "Recursive", to_string(nb));
+            }, "Rec (FP32)", to_string(nb));
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Recursive (Half FP16) - [使用新封装的全异步包装接口]
+    // ------------------------------------------------------------------------
+
+    if (test_half) {
+        for (int nb : nbs) {
+            execute_benchmark([&]() {
+                recursive_trsm_half_f32_wrapper(handle,
+                                                &pool,
+                                                d_A, lda,
+                                                d_B, ldb,
+                                                n, m, nb);
+            }, "Rec (FP16)", to_string(nb));
         }
     }
 
@@ -596,7 +613,7 @@ void run_all_benchmarks(
 
     cout << "\n";
 
-    cout << string(85, '=') << "\n";
+    cout << string(95, '=') << "\n";
 
     cout
         << "TRSM Benchmark Summary (Right-TRSM: X * L^T = B) "
@@ -604,11 +621,11 @@ void run_all_benchmarks(
         << ", M = " << m
         << ")\n";
 
-    cout << string(85, '=') << "\n";
+    cout << string(95, '=') << "\n";
 
     // Header
     cout << left
-         << setw(15) << "Method"
+         << setw(16) << "Method"
          << " | "
          << setw(5)  << "NB"
          << " | "
@@ -620,13 +637,13 @@ void run_all_benchmarks(
          << " | "
          << "Forward Error | Backward Error\n";
 
-    cout << string(85, '-') << "\n";
+    cout << string(95, '-') << "\n";
 
     // Rows
     for (const auto& res : results) {
 
         cout << left
-             << setw(15) << res.method
+             << setw(16) << res.method
              << " | "
              << setw(5) << res.nb_str
              << " | "
@@ -675,7 +692,7 @@ void run_all_benchmarks(
         cout << "\n";
     }
 
-    cout << string(85, '=') << "\n";
+    cout << string(95, '=') << "\n";
 
     // ========================================================================
     // 7. Cleanup
@@ -710,6 +727,7 @@ int main(int argc, char** argv)
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_iterative = true;
+    bool test_half      = true; // 默认开启半精度测试
 
     vector<int> nbs;
 
@@ -728,8 +746,16 @@ int main(int argc, char** argv)
     if (argc >= 7)
         test_iterative = atoi(argv[6]);
 
-    for (int i = 7; i < argc; ++i) {
-        nbs.push_back(atoi(argv[i]));
+    // 兼容传统运行与新入参格式
+    if (argc >= 8) {
+        test_half = atoi(argv[7]);
+        for (int i = 8; i < argc; ++i) {
+            nbs.push_back(atoi(argv[i]));
+        }
+    } else {
+        for (int i = 7; i < argc; ++i) {
+            nbs.push_back(atoi(argv[i]));
+        }
     }
 
     if (nbs.empty()) {
@@ -745,7 +771,8 @@ int main(int argc, char** argv)
         error_mode,
         test_recursive,
         test_rocblas,
-        test_iterative);
+        test_iterative,
+        test_half);
 
     return 0;
 }
