@@ -153,7 +153,7 @@ void run_all_benchmarks(
     generate_symmetric_matrix(h_C_f.data(), n, ldc);
 
     // ========================================================================
-    // 2. Device Memory Allocation
+    // 2. Device Memory Allocation (RAII DeviceBuffer)
     // ========================================================================
     size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
     size_t bytes_C = static_cast<size_t>(n) * n * sizeof(float);
@@ -182,17 +182,15 @@ void run_all_benchmarks(
         bool do_fp64_verify = (std::max(n, k) <= 16384);
         
         if (do_fp64_verify) {
-            double *d_A_d = nullptr;
-            double *d_C_d = nullptr;
-            
             vector<double> h_A_d(n * k);
             vector<double> h_C_d(n * n);
 
             for (size_t i = 0; i < h_A_f.size(); ++i) h_A_d[i] = h_A_f[i];
             for (size_t i = 0; i < h_C_f.size(); ++i) h_C_d[i] = h_C_f[i];
 
-            HIP_CHECK(hipMalloc(&d_A_d, static_cast<size_t>(n) * k * sizeof(double)));
-            HIP_CHECK(hipMalloc(&d_C_d, static_cast<size_t>(n) * n * sizeof(double)));
+            // 使用 RAII 显存容器接管双精度临时分配
+            DeviceBuffer<double> d_A_d(n * k);
+            DeviceBuffer<double> d_C_d(n * n);
             
             HIP_CHECK(hipMemcpy(d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
             HIP_CHECK(hipMemcpy(d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
@@ -207,8 +205,7 @@ void run_all_benchmarks(
 
             HIP_CHECK(hipMemcpy(h_C_gold.data(), d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
             
-            HIP_CHECK(hipFree(d_A_d));
-            HIP_CHECK(hipFree(d_C_d));
+            // 手动 hipFree 调用已安全移除，生命周期结束自动释放
             has_fp64_ref = true;
         } else {
             // Use standard rocBLAS FP32 as reference if N is too large for FP64
@@ -225,7 +222,7 @@ void run_all_benchmarks(
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation
+    // 4. Benchmark Preparation (基于 BenchmarkRunner 引擎进行重构)
     // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;

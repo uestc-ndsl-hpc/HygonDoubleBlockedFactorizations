@@ -213,8 +213,8 @@ void run_all_benchmarks(
         for (size_t i = 0; i < num_elements; ++i)
             h_A_double[i] = static_cast<double>(h_A[i]);
 
-        double* d_A_double = nullptr;
-        HIP_CHECK(hipMalloc(&d_A_double, num_elements * sizeof(double)));
+        // 使用 RAII 显存容器接管双精度临时分配
+        DeviceBuffer<double> d_A_double(num_elements);
 
         HIP_CHECK(hipMemcpy(
             d_A_double,
@@ -235,12 +235,10 @@ void run_all_benchmarks(
             d_A_double,
             num_elements * sizeof(double),
             hipMemcpyDeviceToHost));
-
-        HIP_CHECK(hipFree(d_A_double));
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation (基于 BenchmarkRunner 引擎进行重构) [1]
+    // 4. Benchmark Preparation
     // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;

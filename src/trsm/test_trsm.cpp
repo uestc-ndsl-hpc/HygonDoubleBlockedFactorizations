@@ -242,9 +242,8 @@ void run_all_benchmarks(
         // --------------------------------------------------------------------
 
         if (do_fp64_verify) {
-
-            double* d_A_d = nullptr;
-            double* d_B_d = nullptr;
+            DeviceBuffer<double> d_A_d(m * m);
+            DeviceBuffer<double> d_B_d(n * m);
 
             vector<double> h_A_d(m * m);
             vector<double> h_B_d(n * m);
@@ -254,20 +253,6 @@ void run_all_benchmarks(
 
             for (size_t i = 0; i < h_B.size(); ++i)
                 h_B_d[i] = static_cast<double>(h_B[i]);
-
-            HIP_CHECK(
-                hipMalloc(
-                    &d_A_d,
-                    static_cast<size_t>(m) *
-                    m *
-                    sizeof(double)));
-
-            HIP_CHECK(
-                hipMalloc(
-                    &d_B_d,
-                    static_cast<size_t>(n) *
-                    m *
-                    sizeof(double)));
 
             HIP_CHECK(
                 hipMemcpy(
@@ -314,9 +299,7 @@ void run_all_benchmarks(
                     sizeof(double),
                     hipMemcpyDeviceToHost));
 
-            HIP_CHECK(hipFree(d_A_d));
-            HIP_CHECK(hipFree(d_B_d));
-
+            // 手动的 hipFree 已被安全移除，函数/作用域结束时将自动销毁
             has_fp64_ref = true;
         }
 
