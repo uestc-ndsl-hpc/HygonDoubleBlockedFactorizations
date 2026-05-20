@@ -16,6 +16,7 @@
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
+#include "utils/device_buffer.h"
 
 using namespace std;
 
@@ -153,14 +154,12 @@ void run_all_benchmarks(
     // ========================================================================
     // 2. Device Memory Allocation
     // ========================================================================
-    float *d_A_f = nullptr;
-    float *d_C_f = nullptr;
-    
     size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
     size_t bytes_C = static_cast<size_t>(n) * n * sizeof(float);
 
-    HIP_CHECK(hipMalloc(&d_A_f, bytes_A));
-    HIP_CHECK(hipMalloc(&d_C_f, bytes_C));
+    DeviceBuffer<float> d_A_f(n * k);
+    DeviceBuffer<float> d_C_f(n * n);
+
     HIP_CHECK(hipMemcpy(d_A_f, h_A_f.data(), bytes_A, hipMemcpyHostToDevice));
 
     // Scalar constants for SYRK (C = -A*A^T + C)
@@ -336,10 +335,8 @@ void run_all_benchmarks(
     );
 
     // ========================================================================
-    // 7. Cleanup
+    // 7. Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动释放)
     // ========================================================================
-    HIP_CHECK(hipFree(d_A_f));
-    HIP_CHECK(hipFree(d_C_f));
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 

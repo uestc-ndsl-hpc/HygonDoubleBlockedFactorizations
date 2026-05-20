@@ -17,6 +17,7 @@
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
+#include "utils/device_buffer.h"
 
 using namespace std;
 
@@ -193,14 +194,12 @@ void run_all_benchmarks(
     size_t num_elements = (size_t)n * (size_t)n;
     size_t bytes = num_elements * sizeof(T);
 
-    int* d_info = nullptr;
-    HIP_CHECK(hipMalloc(&d_info, sizeof(int)));
+    DeviceBuffer<int> d_info(1);
 
     vector<T> h_A(num_elements);
     generate_spd_matrix(h_A.data(), n, n);
 
-    T* d_A = nullptr;
-    HIP_CHECK(hipMalloc(&d_A, bytes));
+    DeviceBuffer<T> d_A(num_elements);
 
     vector<double> h_L_ref_double;
 
@@ -334,10 +333,8 @@ void run_all_benchmarks(
     );
 
     // ============================================================
-    // Cleanup
+    // Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动安全释放)
     // ============================================================
-    HIP_CHECK(hipFree(d_A));
-    HIP_CHECK(hipFree(d_info));
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 

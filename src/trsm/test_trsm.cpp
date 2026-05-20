@@ -17,6 +17,7 @@
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
 #include "utils/gpu_timer.h"
+#include "utils/device_buffer.h"
 
 using namespace std;
 
@@ -206,14 +207,8 @@ void run_all_benchmarks(
     // 2. Device Memory
     // ========================================================================
 
-    float* d_A = nullptr;
-    float* d_B = nullptr;
-
-    HIP_CHECK(
-        hipMalloc(&d_A, size_A));
-
-    HIP_CHECK(
-        hipMalloc(&d_B, size_B));
+    DeviceBuffer<float> d_A(m * m);
+    DeviceBuffer<float> d_B(n * m);
 
     HIP_CHECK(
         hipMemcpy(
@@ -589,14 +584,8 @@ void run_all_benchmarks(
     );
 
     // ========================================================================
-    // 7. Cleanup
+    // 7. Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动释放)
     // ========================================================================
-    HIP_CHECK(
-        hipFree(d_A));
-
-    HIP_CHECK(
-        hipFree(d_B));
-
     ROCBLAS_CHECK(
         rocblas_destroy_handle(handle));
 }
