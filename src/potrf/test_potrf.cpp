@@ -14,6 +14,8 @@
 #include "potrf/recursive_potrf.h"
 
 #include "utils/error_check.h"
+#include "utils/benchmark_result.h"
+#include "utils/benchmark_printer.h"
 
 using namespace std;
 
@@ -129,20 +131,6 @@ double verify_backward_error_sampled(
 
     return sqrt(diff_norm_sq) / (sqrt(a_norm_sq) + 1e-12);
 }
-
-// ============================================================================
-// RESULT STRUCT
-// ============================================================================
-
-struct BenchmarkResult {
-    string method;
-    string nb_str;
-    double time_ms;
-    double gflops;
-    double speedup;
-    double forward_error;
-    double backward_error;
-};
 
 // ============================================================================
 // TEMPLATE DISPATCHERS
@@ -333,67 +321,12 @@ void run_all_benchmarks(
         }
     }
 
-    // =========================================================================
-    // PRINT
-    // =========================================================================
-
-    cout << "\n";
-    cout << string(110, '=') << "\n";
-    cout << "POTRF Benchmark Summary (N = " << n << ")\n";
-    cout << string(110, '=') << "\n";
-
-    cout << left
-         << setw(15) << "Method"
-         << " | " << setw(6) << "NB"
-         << " | " << setw(12) << "Time(ms)"
-         << " | " << setw(12) << "GFLOPS"
-         << " | " << setw(10) << "Speedup"
-         << " | ";
-
-    if (error_type == 0)
-        cout << "Forward Error\n";
-    else if (error_type == 1)
-        cout << "Backward Error\n";
-    else
-        cout << "Forward / Backward\n";
-
-    cout << string(110, '-') << "\n";
-
-    for (const auto& res : results) {
-        cout << left << setw(15) << res.method
-             << " | " << setw(6) << res.nb_str
-             << " | " << right << setw(10) << fixed << setprecision(3) << res.time_ms << "  "
-             << " | " << right << setw(10) << fixed << setprecision(2) << res.gflops << "  "
-             << " | ";
-
-        if (res.speedup > 0)
-            cout << right << setw(8) << fixed << setprecision(2) << res.speedup << "x ";
-        else
-            cout << setw(9) << "N/A ";
-
-        cout << " | ";
-
-        if (!enable_error) {
-            cout << "N/A";
-        }
-        else {
-            if (error_type == 0) {
-                cout << scientific << setprecision(2) << res.forward_error;
-            }
-            else if (error_type == 1) {
-                cout << scientific << setprecision(2) << res.backward_error;
-            }
-            else {
-                cout << scientific << setprecision(2)
-                     << res.forward_error << " / "
-                     << res.backward_error;
-            }
-        }
-
-        cout << "\n";
-    }
-
-    cout << string(110, '=') << "\n";
+    print_benchmark_results(
+        "POTRF Benchmark Summary (N = " + std::to_string(n) + ")",
+        results,
+        static_cast<ErrorMode>(error_type),
+        120
+    );
 
     HIP_CHECK(hipEventDestroy(start));
     HIP_CHECK(hipEventDestroy(stop));

@@ -13,6 +13,8 @@
 #include "syrk/batched_syrk.h"
 
 #include "utils/error_check.h"
+#include "utils/benchmark_result.h"
+#include "utils/benchmark_printer.h"
 
 using namespace std;
 
@@ -118,17 +120,6 @@ double verify_backward_error_sampled(
 
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
-
-// Struct to store benchmark results for the final table
-struct BenchmarkResult {
-    string method;
-    string nb_str;
-    double time_ms;
-    double gflops;
-    double speedup;
-    double forward_error;
-    double backward_error;
-};
 
 // ============================================================================
 // Main Unified Benchmark Runner
@@ -335,54 +326,16 @@ void run_all_benchmarks(
         }
     }
 
-    // ========================================================================
-    // 6. Print Summary Table
-    // ========================================================================
-    cout << "\n";
-    cout << string(85, '=') << "\n";
-    cout << "SYRK Benchmark Summary (N = " << n << ", K = " << k << ")\n";
-    cout << string(85, '=') << "\n";
-    
-    // Table Header
-    cout << left 
-         << setw(15) << "Method" 
-         << " | " << setw(5) << "NB"
-         << " | " << setw(11) << "Time (ms)"
-         << " | " << setw(11) << "GFLOPS"
-         << " | " << setw(9) << "Speedup"
-         << " | " << "Forward Error | Backward Error\n";
-    cout << string(85, '-') << "\n";
-
-    // Table Rows
-    for (const auto& res : results) {
-        cout << left 
-             << setw(15) << res.method
-             << " | " << setw(5) << res.nb_str
-             << " | " << right << setw(9) << fixed << setprecision(3) << res.time_ms << "  "
-             << " | " << right << setw(9) << fixed << setprecision(2) << res.gflops << "  "
-             << " | ";
-             
-        if (res.speedup > 0) {
-            cout << right << setw(7) << fixed << setprecision(2) << res.speedup << "x ";
-        } else {
-            cout << right << setw(8) << "N/A ";
-        }
-        
-        cout << " | ";
-        if (error_mode == 1 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.forward_error;
-        } else {
-            cout << "N/A          "; // pad for formatting alignment
-        }
-        cout << " | ";
-        if (error_mode == 2 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.backward_error;
-        } else {
-            cout << "N/A";
-        }
-        cout << "\n";
-    }
-    cout << string(85, '=') << "\n";
+    print_benchmark_results(
+        "SYRK Benchmark Summary (N = " +
+        std::to_string(n) +
+        ", K = " +
+        std::to_string(k) +
+        ")",
+        results,
+        static_cast<ErrorMode>(error_mode),
+        120
+    );
 
     // ========================================================================
     // 7. Cleanup

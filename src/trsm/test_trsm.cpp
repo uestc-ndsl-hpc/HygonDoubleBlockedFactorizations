@@ -14,6 +14,8 @@
 
 #include "utils/error_check.h"
 #include "utils/stream_pool.h"
+#include "utils/benchmark_result.h"
+#include "utils/benchmark_printer.h"
 
 using namespace std;
 
@@ -143,17 +145,6 @@ double verify_backward_error_sampled(
 
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
-
-// Struct to store benchmark results
-struct BenchmarkResult {
-    string method;
-    string nb_str;
-    double time_ms;
-    double gflops;
-    double speedup;
-    double forward_error;
-    double backward_error;
-};
 
 // ============================================================================
 // MAIN UNIFIED BENCHMARK RUNNER
@@ -607,92 +598,16 @@ void run_all_benchmarks(
         }
     }
 
-    // ========================================================================
-    // 6. Print Summary Table
-    // ========================================================================
-
-    cout << "\n";
-
-    cout << string(95, '=') << "\n";
-
-    cout
-        << "TRSM Benchmark Summary (Right-TRSM: X * L^T = B) "
-        << "\n(N = " << n
-        << ", M = " << m
-        << ")\n";
-
-    cout << string(95, '=') << "\n";
-
-    // Header
-    cout << left
-         << setw(16) << "Method"
-         << " | "
-         << setw(5)  << "NB"
-         << " | "
-         << setw(11) << "Time (ms)"
-         << " | "
-         << setw(11) << "GFLOPS"
-         << " | "
-         << setw(9)  << "Speedup"
-         << " | "
-         << "Forward Error | Backward Error\n";
-
-    cout << string(95, '-') << "\n";
-
-    // Rows
-    for (const auto& res : results) {
-
-        cout << left
-             << setw(16) << res.method
-             << " | "
-             << setw(5) << res.nb_str
-             << " | "
-             << right
-             << setw(9)
-             << fixed
-             << setprecision(3)
-             << res.time_ms
-             << "  | "
-             << setw(9)
-             << fixed
-             << setprecision(2)
-             << res.gflops
-             << "  | ";
-
-        if (res.speedup > 0) {
-
-            cout
-                << setw(7)
-                << fixed
-                << setprecision(2)
-                << res.speedup
-                << "x ";
-        }
-        else {
-
-            cout << setw(8) << "N/A ";
-        }
-
-        cout << " | ";
-
-        if (error_mode == 1 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.forward_error;
-        } else {
-            cout << "N/A";
-        }
-
-        cout << " | ";
-
-        if (error_mode == 2 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.backward_error;
-        } else {
-            cout << "N/A";
-        }
-
-        cout << "\n";
-    }
-
-    cout << string(95, '=') << "\n";
+    print_benchmark_results(
+        "TRSM Benchmark Summary (N = " +
+        std::to_string(n) +
+        ", M = " +
+        std::to_string(m) +
+        ")",
+        results,
+        static_cast<ErrorMode>(error_mode),
+        120
+    );
 
     // ========================================================================
     // 7. Cleanup
