@@ -16,6 +16,7 @@
 #include "utils/error_check.h"
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
+#include "utils/gpu_timer.h"
 
 using namespace std;
 
@@ -184,6 +185,9 @@ void run_all_benchmarks(
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
+    hipStream_t main_stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
+
     StreamPool pool(4);
 
     size_t num_elements = (size_t)n * (size_t)n;
@@ -235,31 +239,29 @@ void run_all_benchmarks(
         HIP_CHECK(hipFree(d_A_double));
     }
 
-    hipEvent_t start, stop;
-    HIP_CHECK(hipEventCreate(&start));
-    HIP_CHECK(hipEventCreate(&stop));
+    GPUTimer timer;
 
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
 
-    auto execute_benchmark = [&](auto func, const string& name, const string& nb_str)
+    auto execute_benchmark =
+        [&](auto func,
+            const string& name,
+            const string& nb_str)
     {
         // Warmup
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
         func();
 
-        // Actual execution
+        // Reset state before timing
         HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
 
-        HIP_CHECK(hipEventRecord(start, 0));
-        func();
-        HIP_CHECK(hipEventRecord(stop, 0));
-        HIP_CHECK(hipEventSynchronize(stop));
-
-        float ms = 0.0f;
-        HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
+        // timing
+        float ms = timer.measure(main_stream, [&]() {
+            func();
+        });
 
         double gflops = calculate_gflops(n, ms);
 
@@ -321,6 +323,9 @@ void run_all_benchmarks(
         }
     }
 
+    // ============================================================
+    // Print
+    // ============================================================
     print_benchmark_results(
         "POTRF Benchmark Summary (N = " + std::to_string(n) + ")",
         results,
@@ -328,8 +333,9 @@ void run_all_benchmarks(
         120
     );
 
-    HIP_CHECK(hipEventDestroy(start));
-    HIP_CHECK(hipEventDestroy(stop));
+    // ============================================================
+    // Cleanup
+    // ============================================================
     HIP_CHECK(hipFree(d_A));
     HIP_CHECK(hipFree(d_info));
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));

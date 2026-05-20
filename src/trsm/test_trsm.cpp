@@ -16,6 +16,7 @@
 #include "utils/stream_pool.h"
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
+#include "utils/gpu_timer.h"
 
 using namespace std;
 
@@ -161,9 +162,10 @@ void run_all_benchmarks(
     bool test_half)
 {
     rocblas_handle handle;
+    ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
-    ROCBLAS_CHECK(
-        rocblas_create_handle(&handle));
+    hipStream_t main_stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
     // Right-TRSM 中，矩阵 A (即 L) 的维度为 m x m
     size_t size_A =
@@ -366,14 +368,7 @@ void run_all_benchmarks(
     // 4. Benchmark Preparation
     // ========================================================================
 
-    hipEvent_t start_event;
-    hipEvent_t stop_event;
-
-    HIP_CHECK(
-        hipEventCreate(&start_event));
-
-    HIP_CHECK(
-        hipEventCreate(&stop_event));
+    GPUTimer timer;
 
     vector<BenchmarkResult> results;
 
@@ -413,25 +408,9 @@ void run_all_benchmarks(
         HIP_CHECK(
             hipDeviceSynchronize());
 
-        // Timing
-        HIP_CHECK(
-            hipEventRecord(start_event, 0));
-
-        func();
-
-        HIP_CHECK(
-            hipEventRecord(stop_event, 0));
-
-        HIP_CHECK(
-            hipEventSynchronize(stop_event));
-
-        float ms = 0.0f;
-
-        HIP_CHECK(
-            hipEventElapsedTime(
-                &ms,
-                start_event,
-                stop_event));
+        float ms = timer.measure(main_stream, [&]() {
+            func();
+        });
 
         double gflops =
             calculate_gflops(n, m, ms);
@@ -612,13 +591,6 @@ void run_all_benchmarks(
     // ========================================================================
     // 7. Cleanup
     // ========================================================================
-
-    HIP_CHECK(
-        hipEventDestroy(start_event));
-
-    HIP_CHECK(
-        hipEventDestroy(stop_event));
-
     HIP_CHECK(
         hipFree(d_A));
 
@@ -642,7 +614,7 @@ int main(int argc, char** argv)
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_iterative = true;
-    bool test_half      = true; // 默认开启半精度测试
+    bool test_half      = true;
 
     vector<int> nbs;
 
@@ -661,7 +633,6 @@ int main(int argc, char** argv)
     if (argc >= 7)
         test_iterative = atoi(argv[6]);
 
-    // 兼容传统运行与新入参格式
     if (argc >= 8) {
         test_half = atoi(argv[7]);
         for (int i = 8; i < argc; ++i) {

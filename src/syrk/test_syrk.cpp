@@ -15,6 +15,7 @@
 #include "utils/error_check.h"
 #include "utils/benchmark_result.h"
 #include "utils/benchmark_printer.h"
+#include "utils/gpu_timer.h"
 
 using namespace std;
 
@@ -134,6 +135,9 @@ void run_all_benchmarks(
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
+    hipStream_t main_stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
+
     int lda = n;
     int ldc = n;
 
@@ -223,9 +227,7 @@ void run_all_benchmarks(
     // ========================================================================
     // 4. Benchmark Preparation
     // ========================================================================
-    hipEvent_t start, stop;
-    HIP_CHECK(hipEventCreate(&start));
-    HIP_CHECK(hipEventCreate(&stop));
+    GPUTimer timer;
 
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
@@ -243,13 +245,9 @@ void run_all_benchmarks(
         HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
         HIP_CHECK(hipDeviceSynchronize());
         
-        HIP_CHECK(hipEventRecord(start));
-        func();
-        HIP_CHECK(hipEventRecord(stop));
-        HIP_CHECK(hipEventSynchronize(stop));
-
-        float ms = 0;
-        HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
+        float ms = timer.measure(main_stream, [&]() {
+            func();
+        });
 
         double gflops = calculate_gflops(n, k, ms);
         
@@ -340,8 +338,6 @@ void run_all_benchmarks(
     // ========================================================================
     // 7. Cleanup
     // ========================================================================
-    HIP_CHECK(hipEventDestroy(start));
-    HIP_CHECK(hipEventDestroy(stop));
     HIP_CHECK(hipFree(d_A_f));
     HIP_CHECK(hipFree(d_C_f));
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
