@@ -14,6 +14,13 @@
 
 #include "utils/error_check.h"
 #include "utils/stream_pool.h"
+#include "utils/benchmark_result.h"
+#include "utils/benchmark_printer.h"
+#include "utils/gpu_timer.h"
+#include "utils/device_buffer.h"
+#include "utils/benchmark_runner.h"
+
+#include "utils/matrix_generator.h" 
 
 using namespace std;
 
@@ -31,45 +38,6 @@ double calculate_gflops(int n, int m, double time_ms)
         static_cast<double>(n) * m * m;
 
     return (total_flops / (time_ms / 1000.0)) / 1e9;
-}
-
-// Generate Stable Lower Triangular Matrix
-void generate_stable_lower_triangular(
-    float* A,
-    int dim,
-    int lda)
-{
-    for (int j = 0; j < dim; j++) {
-        for (int i = 0; i < dim; i++) {
-
-            if (i < j) {
-                A[j * lda + i] = 0.0f;
-            }
-            else if (i == j) {
-                A[j * lda + i] =
-                    dim + static_cast<float>(rand()) / RAND_MAX;
-            }
-            else {
-                A[j * lda + i] =
-                    static_cast<float>(rand()) / RAND_MAX;
-            }
-        }
-    }
-}
-
-// Generate Random Matrix
-void generate_random_matrix(
-    float* B,
-    int n,
-    int m,
-    int ldb)
-{
-    for (int j = 0; j < m; j++) {
-        for (int i = 0; i < n; i++) {
-            B[j * ldb + i] =
-                static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
 }
 
 // Relative Frobenius Error
@@ -144,17 +112,6 @@ double verify_backward_error_sampled(
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
 
-// Struct to store benchmark results
-struct BenchmarkResult {
-    string method;
-    string nb_str;
-    double time_ms;
-    double gflops;
-    double speedup;
-    double forward_error;
-    double backward_error;
-};
-
 // ============================================================================
 // MAIN UNIFIED BENCHMARK RUNNER
 // ============================================================================
@@ -163,15 +120,17 @@ void run_all_benchmarks(
     int n,
     int m,
     const vector<int>& nbs,
-    int error_mode,
+    ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
-    bool test_iterative)
+    bool test_iterative,
+    bool test_half)
 {
     rocblas_handle handle;
+    ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
-    ROCBLAS_CHECK(
-        rocblas_create_handle(&handle));
+    hipStream_t main_stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
     // Right-TRSM 中，矩阵 A (即 L) 的维度为 m x m
     size_t size_A =
@@ -197,29 +156,16 @@ void run_all_benchmarks(
     vector<float> h_B(n * m);
     vector<float> h_X(n * m);
 
-    generate_stable_lower_triangular(
-        h_A.data(),
-        m,
-        lda);
-
-    generate_random_matrix(
-        h_B.data(),
-        n,
-        m,
-        ldb);
+    // 使用你提供的新一代新接口生成更加稳定的测试数据
+    generate_stable_lower_triangular<float>(h_A.data(), m, lda, 2026);
+    generate_random_matrix<float>(h_B.data(), n, m, ldb, 2026);
 
     // ========================================================================
     // 2. Device Memory
     // ========================================================================
 
-    float* d_A = nullptr;
-    float* d_B = nullptr;
-
-    HIP_CHECK(
-        hipMalloc(&d_A, size_A));
-
-    HIP_CHECK(
-        hipMalloc(&d_B, size_B));
+    DeviceBuffer<float> d_A(m * m);
+    DeviceBuffer<float> d_B(n * m);
 
     HIP_CHECK(
         hipMemcpy(
@@ -240,7 +186,7 @@ void run_all_benchmarks(
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (error_mode == 1 || error_mode == 3) {
+    if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
 
         cout << ">>> Generating Golden Reference...\n";
 
@@ -252,9 +198,8 @@ void run_all_benchmarks(
         // --------------------------------------------------------------------
 
         if (do_fp64_verify) {
-
-            double* d_A_d = nullptr;
-            double* d_B_d = nullptr;
+            DeviceBuffer<double> d_A_d(m * m);
+            DeviceBuffer<double> d_B_d(n * m);
 
             vector<double> h_A_d(m * m);
             vector<double> h_B_d(n * m);
@@ -264,20 +209,6 @@ void run_all_benchmarks(
 
             for (size_t i = 0; i < h_B.size(); ++i)
                 h_B_d[i] = static_cast<double>(h_B[i]);
-
-            HIP_CHECK(
-                hipMalloc(
-                    &d_A_d,
-                    static_cast<size_t>(m) *
-                    m *
-                    sizeof(double)));
-
-            HIP_CHECK(
-                hipMalloc(
-                    &d_B_d,
-                    static_cast<size_t>(n) *
-                    m *
-                    sizeof(double)));
 
             HIP_CHECK(
                 hipMemcpy(
@@ -324,9 +255,7 @@ void run_all_benchmarks(
                     sizeof(double),
                     hipMemcpyDeviceToHost));
 
-            HIP_CHECK(hipFree(d_A_d));
-            HIP_CHECK(hipFree(d_B_d));
-
+            // 手动的 hipFree 已被安全移除，函数/作用域结束时将自动销毁
             has_fp64_ref = true;
         }
 
@@ -373,85 +302,29 @@ void run_all_benchmarks(
     // ========================================================================
     // 4. Benchmark Preparation
     // ========================================================================
-
-    hipEvent_t start_event;
-    hipEvent_t stop_event;
-
-    HIP_CHECK(
-        hipEventCreate(&start_event));
-
-    HIP_CHECK(
-        hipEventCreate(&stop_event));
-
     vector<BenchmarkResult> results;
-
     double baseline_time = -1.0;
 
-    // ========================================================================
-    // Helper Lambda
-    // ========================================================================
+    BenchmarkRunner runner(main_stream, baseline_time, results);
 
-    auto execute_benchmark =
-    [&](auto func,
-        const string& name,
-        const string& nb_str)
-    {
-        // Reset B before warmup
+    // [闭包 1]：重置 B 矩阵
+    auto reset_b = [&]() {
         HIP_CHECK(
             hipMemcpy(
                 d_B,
                 h_B.data(),
                 size_B,
                 hipMemcpyHostToDevice));
+    };
 
-        HIP_CHECK(
-            hipDeviceSynchronize());
+    // [闭包 2]：计算 TRSM 特定的 GFLOPS 公式
+    auto calc_gflops_trsm = [&](double ms) {
+        return calculate_gflops(n, m, ms);
+    };
 
-        // Warmup
-        func();
-
-        // Reset B before actual run
-        HIP_CHECK(
-            hipMemcpy(
-                d_B,
-                h_B.data(),
-                size_B,
-                hipMemcpyHostToDevice));
-
-        HIP_CHECK(
-            hipDeviceSynchronize());
-
-        // Timing
-        HIP_CHECK(
-            hipEventRecord(start_event, 0));
-
-        func();
-
-        HIP_CHECK(
-            hipEventRecord(stop_event, 0));
-
-        HIP_CHECK(
-            hipEventSynchronize(stop_event));
-
-        float ms = 0.0f;
-
-        HIP_CHECK(
-            hipEventElapsedTime(
-                &ms,
-                start_event,
-                stop_event));
-
-        double gflops =
-            calculate_gflops(n, m, ms);
-
-        double forward_error = -1.0;
-        double backward_error = -1.0;
-
-        // --------------------------------------------------------------------
-        // Error Verification
-        // --------------------------------------------------------------------
-
-        if (error_mode != 0) {
+    // [闭包 3]：验证误差
+    auto verify_trsm = [&](double& f_err, double& b_err) {
+        if (error_mode != ErrorMode::None) {
             HIP_CHECK(
                 hipMemcpy(
                     h_X.data(),
@@ -459,55 +332,21 @@ void run_all_benchmarks(
                     size_B,
                     hipMemcpyDeviceToHost));
 
-            // 前向误差
-            if (error_mode == 1 || error_mode == 3) {
-
+            // 前向误差：当指定计算前向误差（mode 1 或 3）时才赋值
+            if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 if (has_fp64_ref) {
-                    forward_error =
-                        verify_relative_error(
-                            h_X_gold,
-                            h_X);
+                    f_err = verify_relative_error(h_X_gold, h_X);
                 }
                 else if (has_f32_ref) {
-                    forward_error =
-                        verify_relative_error(
-                            h_X_ref_f32,
-                            h_X);
+                    f_err = verify_relative_error(h_X_ref_f32, h_X);
                 }
             }
 
-            // 后向误差
-            if (error_mode == 2 || error_mode == 3) {
-
-                backward_error =
-                    verify_backward_error_sampled(
-                        h_A,
-                        h_B,
-                        h_X,
-                        n,
-                        m,
-                        lda,
-                        ldb,
-                        4096);
+            // 后向误差：当指定计算后向误差（mode 2 或 3）时才计算赋值
+            if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
+                b_err = verify_backward_error_sampled(h_A, h_B, h_X, n, m, lda, ldb, 4096);
             }
         }
-
-        double speedup =
-            (baseline_time > 0.0)
-            ? (baseline_time / ms)
-            : 0.0;
-
-        results.push_back({
-            name,
-            nb_str,
-            static_cast<double>(ms),
-            gflops,
-            speedup,
-            forward_error,
-            backward_error
-        });
-
-        return static_cast<double>(ms);
     };
 
     // ========================================================================
@@ -521,46 +360,65 @@ void run_all_benchmarks(
     // ------------------------------------------------------------------------
 
     if (test_rocblas) {
-
-        baseline_time =
-            execute_benchmark(
-                [&]() {
-
-                    // 右乘、转置
-                    ROCBLAS_CHECK(
-                        rocblas_strsm(
-                            handle,
-                            rocblas_side_right,
-                            rocblas_fill_lower,
-                            rocblas_operation_transpose,
-                            rocblas_diagonal_non_unit,
-                            n,
-                            m,
-                            &alpha,
-                            d_A,
-                            lda,
-                            d_B,
-                            ldb));
-                },
-                "rocBLAS",
-                "N/A");
+        baseline_time = runner.execute(
+            "rocBLAS (FP32)", 
+            "N/A", 
+            reset_b,
+            [&]() {
+                ROCBLAS_CHECK(
+                    rocblas_strsm(
+                        handle,
+                        rocblas_side_right,
+                        rocblas_fill_lower,
+                        rocblas_operation_transpose,
+                        rocblas_diagonal_non_unit,
+                        n,
+                        m,
+                        &alpha,
+                        d_A,
+                        lda,
+                        d_B,
+                        ldb));
+            },
+            verify_trsm, 
+            calc_gflops_trsm);
 
         results.back().speedup = 1.0;
     }
 
     // ------------------------------------------------------------------------
-    // Recursive
+    // Recursive (FP32)
     // ------------------------------------------------------------------------
 
     if (test_recursive) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                recursive_trsm(handle,
-                            &pool,
-                            d_A, lda,
-                            d_B, ldb,
-                            n, m, nb);
-            }, "Recursive", to_string(nb));
+            runner.execute(
+                "Rec (FP32)", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    recursive_trsm(handle, &pool, d_A, lda, d_B, ldb, n, m, nb); 
+                },
+                verify_trsm, 
+                calc_gflops_trsm);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Recursive (Half FP16)
+    // ------------------------------------------------------------------------
+
+    if (test_half) {
+        for (int nb : nbs) {
+            runner.execute(
+                "Rec (FP16)", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    recursive_trsm_half_f32_wrapper(handle, &pool, d_A, lda, d_B, ldb, n, m, nb); 
+                },
+                verify_trsm, 
+                calc_gflops_trsm);
         }
     }
 
@@ -569,132 +427,32 @@ void run_all_benchmarks(
     // ------------------------------------------------------------------------
 
     if (test_iterative) {
-
         for (int nb : nbs) {
-
-            execute_benchmark(
-                [&]() {
-
-                    iterative_trsm_right_looking(
-                        handle,
-                        d_A,
-                        lda,
-                        d_B,
-                        ldb,
-                        n,
-                        m,
-                        nb);
+            runner.execute(
+                "Iterative RL", 
+                to_string(nb), 
+                reset_b,
+                [&]() { 
+                    iterative_trsm_right_looking(handle, d_A, lda, d_B, ldb, n, m, nb); 
                 },
-                "Iterative RL",
-                to_string(nb));
+                verify_trsm, 
+                calc_gflops_trsm);
         }
     }
 
-    // ========================================================================
-    // 6. Print Summary Table
-    // ========================================================================
+    print_benchmark_results(
+        "TRSM Benchmark Summary (N = " +
+        std::to_string(n) +
+        ", M = " +
+        std::to_string(m) +
+        ")",
+        results,
+        error_mode,
+        120
+    );
 
-    cout << "\n";
-
-    cout << string(85, '=') << "\n";
-
-    cout
-        << "TRSM Benchmark Summary (Right-TRSM: X * L^T = B) "
-        << "\n(N = " << n
-        << ", M = " << m
-        << ")\n";
-
-    cout << string(85, '=') << "\n";
-
-    // Header
-    cout << left
-         << setw(15) << "Method"
-         << " | "
-         << setw(5)  << "NB"
-         << " | "
-         << setw(11) << "Time (ms)"
-         << " | "
-         << setw(11) << "GFLOPS"
-         << " | "
-         << setw(9)  << "Speedup"
-         << " | "
-         << "Forward Error | Backward Error\n";
-
-    cout << string(85, '-') << "\n";
-
-    // Rows
-    for (const auto& res : results) {
-
-        cout << left
-             << setw(15) << res.method
-             << " | "
-             << setw(5) << res.nb_str
-             << " | "
-             << right
-             << setw(9)
-             << fixed
-             << setprecision(3)
-             << res.time_ms
-             << "  | "
-             << setw(9)
-             << fixed
-             << setprecision(2)
-             << res.gflops
-             << "  | ";
-
-        if (res.speedup > 0) {
-
-            cout
-                << setw(7)
-                << fixed
-                << setprecision(2)
-                << res.speedup
-                << "x ";
-        }
-        else {
-
-            cout << setw(8) << "N/A ";
-        }
-
-        cout << " | ";
-
-        if (error_mode == 1 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.forward_error;
-        } else {
-            cout << "N/A";
-        }
-
-        cout << " | ";
-
-        if (error_mode == 2 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.backward_error;
-        } else {
-            cout << "N/A";
-        }
-
-        cout << "\n";
-    }
-
-    cout << string(85, '=') << "\n";
-
-    // ========================================================================
-    // 7. Cleanup
-    // ========================================================================
-
-    HIP_CHECK(
-        hipEventDestroy(start_event));
-
-    HIP_CHECK(
-        hipEventDestroy(stop_event));
-
-    HIP_CHECK(
-        hipFree(d_A));
-
-    HIP_CHECK(
-        hipFree(d_B));
-
-    ROCBLAS_CHECK(
-        rocblas_destroy_handle(handle));
+    // 显存由 RAII DeviceBuffer 在退出作用域时自动释放
+    ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 
 // ============================================================================
@@ -706,10 +464,11 @@ int main(int argc, char** argv)
     int n = 4096;
     int m = 4096;
 
-    int error_mode = 0;
+    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_iterative = true;
+    bool test_half      = true;
 
     vector<int> nbs;
 
@@ -717,7 +476,7 @@ int main(int argc, char** argv)
     if (argc >= 3) m = atoi(argv[2]);
 
     if (argc >= 4)
-        error_mode = atoi(argv[3]);
+        error_input = atoi(argv[3]);
 
     if (argc >= 5)
         test_recursive = atoi(argv[4]);
@@ -728,15 +487,25 @@ int main(int argc, char** argv)
     if (argc >= 7)
         test_iterative = atoi(argv[6]);
 
-    for (int i = 7; i < argc; ++i) {
-        nbs.push_back(atoi(argv[i]));
+    if (argc >= 8) {
+        test_half = atoi(argv[7]);
+        for (int i = 8; i < argc; ++i) {
+            nbs.push_back(atoi(argv[i]));
+        }
+    } else {
+        for (int i = 7; i < argc; ++i) {
+            nbs.push_back(atoi(argv[i]));
+        }
     }
 
     if (nbs.empty()) {
         nbs.push_back(256);
     }
 
-    srand(2026);
+    ErrorMode error_mode = ErrorMode::None;
+    if (error_input == 1) error_mode = ErrorMode::Forward;
+    else if (error_input == 2) error_mode = ErrorMode::Backward;
+    else if (error_input == 3) error_mode = ErrorMode::Both;
 
     run_all_benchmarks(
         n,
@@ -745,7 +514,8 @@ int main(int argc, char** argv)
         error_mode,
         test_recursive,
         test_rocblas,
-        test_iterative);
+        test_iterative,
+        test_half);
 
     return 0;
 }

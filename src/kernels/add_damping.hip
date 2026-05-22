@@ -5,14 +5,8 @@
 extern "C" {
 
 // ======================================================
-// Add damping to SPD matrix:
-//
-// A = A + lambda * I
-//
-// Only diagonal entries are modified.
-// Used when FP16 update causes POTRF failure.
+// Add damping to SPD matrix (Float version)
 // ======================================================
-
 __global__ void add_damping_kernel(
     float* A,
     int n,
@@ -23,13 +17,9 @@ __global__ void add_damping_kernel(
 
     if (idx < n)
     {
-        A[idx + idx * lda] += lambda;
+        A[idx + (size_t)idx * lda] += lambda;
     }
 }
-
-// ======================================================
-// launcher
-// ======================================================
 
 void launch_add_damping(
     float* A,
@@ -43,6 +33,44 @@ void launch_add_damping(
 
     hipLaunchKernelGGL(
         add_damping_kernel,
+        dim3(GRID),
+        dim3(BLOCK),
+        0,
+        stream,
+        A,
+        n,
+        lda,
+        lambda);
+}
+
+// ======================================================
+// Add damping to SPD matrix (Double version)
+// ======================================================
+__global__ void add_damping_kernel_double(
+    double* A,
+    int n,
+    int lda,
+    double lambda)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n)
+    {
+        A[idx + (size_t)idx * lda] += lambda;
+    }
+}
+
+void launch_add_damping_double(
+    double* A,
+    int n,
+    int lda,
+    double lambda,
+    hipStream_t stream)
+{
+    constexpr int BLOCK = 256;
+    int GRID = (n + BLOCK - 1) / BLOCK;
+
+    hipLaunchKernelGGL(
+        add_damping_kernel_double,
         dim3(GRID),
         dim3(BLOCK),
         0,

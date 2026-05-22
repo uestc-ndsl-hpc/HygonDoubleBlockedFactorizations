@@ -13,6 +13,12 @@
 #include "syrk/batched_syrk.h"
 
 #include "utils/error_check.h"
+#include "utils/benchmark_result.h"
+#include "utils/benchmark_printer.h"
+#include "utils/gpu_timer.h"
+#include "utils/device_buffer.h"
+#include "utils/benchmark_runner.h"
+#include "utils/matrix_generator.h"
 
 using namespace std;
 
@@ -21,23 +27,6 @@ double calculate_gflops(int n, int k, double time_ms) {
     if (time_ms <= 0.0) return 0.0;
     double flops = static_cast<double>(n) * (n + 1) * k;
     return (flops / (time_ms / 1000.0)) / 1e9;
-}
-
-// Host-side matrix initialization
-void generate_random_matrix(float* A, int rows, int cols, int lda) {
-    for (int j = 0; j < cols; j++) {
-        for (int i = 0; i < rows; i++) {
-            A[j * lda + i] = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
-}
-
-void generate_symmetric_matrix(float* C, int n, int ldc) {
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            C[j * ldc + i] = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
 }
 
 // Relative Frobenius norm error calculation
@@ -119,23 +108,13 @@ double verify_backward_error_sampled(
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
 
-// Struct to store benchmark results for the final table
-struct BenchmarkResult {
-    string method;
-    string nb_str;
-    double time_ms;
-    double gflops;
-    double speedup;
-    double forward_error;
-    double backward_error;
-};
+// ============================================================================
+// MAIN BENCHMARK
+// ============================================================================
 
-// ============================================================================
-// Main Unified Benchmark Runner
-// ============================================================================
 void run_all_benchmarks(
     int n, int k, const vector<int>& nbs,
-    int error_mode,
+    ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
     bool test_batched)
@@ -143,37 +122,30 @@ void run_all_benchmarks(
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
-    int lda = n;
-    int ldc = n;
+    hipStream_t main_stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
-    // ========================================================================
-    // 1. Host Memory Allocation & Initialization
-    // ========================================================================
-    vector<float> h_A_f(n * k);
-    vector<float> h_C_f(n * n);
-
-    generate_random_matrix(h_A_f.data(), n, k, lda);
-    generate_symmetric_matrix(h_C_f.data(), n, ldc);
-
-    // ========================================================================
-    // 2. Device Memory Allocation
-    // ========================================================================
-    float *d_A_f = nullptr;
-    float *d_C_f = nullptr;
-    
+    int lda = n, ldc = n;
     size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
     size_t bytes_C = static_cast<size_t>(n) * n * sizeof(float);
 
-    HIP_CHECK(hipMalloc(&d_A_f, bytes_A));
-    HIP_CHECK(hipMalloc(&d_C_f, bytes_C));
-    HIP_CHECK(hipMemcpy(d_A_f, h_A_f.data(), bytes_A, hipMemcpyHostToDevice));
+    // 1. 显存分配
+    DeviceBuffer<float> d_A_f(n * k);
+    DeviceBuffer<float> d_C_orig(n * n); // 原始备份
+    DeviceBuffer<float> d_C_f(n * n);    // 工作区
 
-    // Scalar constants for SYRK (C = -A*A^T + C)
-    float alpha_f = -1.0f;
-    float beta_f  = 1.0f;
+    // 2. 使用规范化生成器初始化
+    generate_syrk_matrices<float>(handle, (float*)d_A_f, (float*)d_C_orig, n, k, lda, ldc, 2026);
+
+    // 3. 准备校验用 Host 数据
+    vector<float> h_A_f(n * k), h_C_f(n * n);
+    HIP_CHECK(hipMemcpy(h_A_f.data(), (float*)d_A_f, bytes_A, hipMemcpyDeviceToHost));
+    HIP_CHECK(hipMemcpy(h_C_f.data(), (float*)d_C_orig, bytes_C, hipMemcpyDeviceToHost));
+
+    float alpha_f = -1.0f, beta_f = 1.0f;
 
     // ========================================================================
-    // 3. Golden Reference Generation
+    // Golden Reference Generation
     // ========================================================================
     vector<double> h_C_gold(n * n);
     vector<float>  h_C_ref_f32(n * n);
@@ -181,26 +153,24 @@ void run_all_benchmarks(
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (error_mode == 1 || error_mode == 3) {
+    if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
         
         cout << ">>> Generating Golden Reference for Error Verification...\n";
         bool do_fp64_verify = (std::max(n, k) <= 16384);
         
         if (do_fp64_verify) {
-            double *d_A_d = nullptr;
-            double *d_C_d = nullptr;
-            
             vector<double> h_A_d(n * k);
             vector<double> h_C_d(n * n);
 
             for (size_t i = 0; i < h_A_f.size(); ++i) h_A_d[i] = h_A_f[i];
             for (size_t i = 0; i < h_C_f.size(); ++i) h_C_d[i] = h_C_f[i];
 
-            HIP_CHECK(hipMalloc(&d_A_d, static_cast<size_t>(n) * k * sizeof(double)));
-            HIP_CHECK(hipMalloc(&d_C_d, static_cast<size_t>(n) * n * sizeof(double)));
+            // 使用 RAII 显存容器接管双精度临时分配
+            DeviceBuffer<double> d_A_d(n * k);
+            DeviceBuffer<double> d_C_d(n * n);
             
-            HIP_CHECK(hipMemcpy(d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
-            HIP_CHECK(hipMemcpy(d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((double*)d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((double*)d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
 
             double alpha_d = -1.0;
             double beta_d  = 1.0;
@@ -208,189 +178,129 @@ void run_all_benchmarks(
             ROCBLAS_CHECK(
                 rocblas_dsyrk(
                     handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_d, d_A_d, lda, &beta_d, d_C_d, ldc));
+                    n, k, &alpha_d, (double*)d_A_d, lda, &beta_d, (double*)d_C_d, ldc));
 
-            HIP_CHECK(hipMemcpy(h_C_gold.data(), d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
+            // 明确将 d_C_d 转为 (double*) 原生指针，防止隐式转换失效或 Segfault
+            HIP_CHECK(hipMemcpy(h_C_gold.data(), (double*)d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
             
-            HIP_CHECK(hipFree(d_A_d));
-            HIP_CHECK(hipFree(d_C_d));
             has_fp64_ref = true;
         } else {
             // Use standard rocBLAS FP32 as reference if N is too large for FP64
-            HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((float*)d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
             
             ROCBLAS_CHECK(
                 rocblas_ssyrk(
                     handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+                    n, k, &alpha_f, (float*)d_A_f, lda, &beta_f, (float*)d_C_f, ldc));
                     
-            HIP_CHECK(hipMemcpy(h_C_ref_f32.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(h_C_ref_f32.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost));
             has_f32_ref = true;
         }
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation
+    // Benchmark Preparation
     // ========================================================================
-    hipEvent_t start, stop;
-    HIP_CHECK(hipEventCreate(&start));
-    HIP_CHECK(hipEventCreate(&stop));
-
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
 
-    // Helper lambda to run a single test and record its result
-    auto execute_benchmark = [&](auto func, const string& name, const string& nb_str) {
-        vector<float> h_C_out(n * n);
+    BenchmarkRunner runner(main_stream, baseline_time, results);
 
-        // Warmup
-        HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize()); // Sync device to avoid caching noise before running func
-        func();
+    // [闭包 1]：重置 C 矩阵
+    auto reset_c = [&]() {
+        HIP_CHECK(
+            hipMemcpy(
+                (float*)d_C_f, // 【规范化】增加原生指针转换
+                h_C_f.data(), 
+                bytes_C, 
+                hipMemcpyHostToDevice));
+    };
 
-        // Actual Run
-        HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
-        HIP_CHECK(hipDeviceSynchronize());
-        
-        HIP_CHECK(hipEventRecord(start));
-        func();
-        HIP_CHECK(hipEventRecord(stop));
-        HIP_CHECK(hipEventSynchronize(stop));
+    // [闭包 2]：计算 GFLOPS
+    auto calc_gflops_syrk = [&](double ms) {
+        return calculate_gflops(n, k, ms);
+    };
 
-        float ms = 0;
-        HIP_CHECK(hipEventElapsedTime(&ms, start, stop));
+    // [闭包 3]：验证误差
+    auto verify_syrk = [&](double& f_err, double& b_err) {
+        if (error_mode != ErrorMode::None) {
+            vector<float> h_C_out(n * n);
+            HIP_CHECK(hipMemcpy(h_C_out.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost)); // 【规范化】
 
-        double gflops = calculate_gflops(n, k, ms);
-        
-        double forward_error = -1.0;
-        double backward_error = -1.0;
-
-        // --------------------------------------------------------------------
-        // Error Verification
-        // --------------------------------------------------------------------
-        if (error_mode != 0) {
-            HIP_CHECK(hipMemcpy(h_C_out.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
-
-            // Forward Error (Full matrix exact comparison)
-            if (error_mode == 1 || error_mode == 3) {
+            // 前向误差
+            if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 if (has_fp64_ref) {
-                    forward_error = verify_relative_error_lower(h_C_gold, h_C_out, n);
+                    f_err = verify_relative_error_lower(h_C_gold, h_C_out, n);
                 } else if (has_f32_ref) {
-                    forward_error = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
+                    f_err = verify_relative_error_lower(h_C_ref_f32, h_C_out, n);
                 }
             }
 
-            // Backward Error (Sampled reconstructed verification)
-            if (error_mode == 2 || error_mode == 3) {
-                backward_error = verify_backward_error_sampled(
+            // 后向误差
+            if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
+                b_err = verify_backward_error_sampled(
                     h_A_f, h_C_f, h_C_out, n, k, lda, ldc, alpha_f, beta_f, 4096);
             }
         }
-
-        double speedup = (baseline_time > 0.0) ? (baseline_time / ms) : 0.0;
-        
-        results.push_back({
-            name, 
-            nb_str, 
-            static_cast<double>(ms), 
-            gflops, 
-            speedup, 
-            forward_error, 
-            backward_error
-        });
-        
-        return static_cast<double>(ms);
     };
 
     // ========================================================================
-    // 5. Run Tests
+    // Run Benchmarks
     // ========================================================================
     cout << ">>> Running Benchmarks..." << endl;
 
     if (test_rocblas) {
-        baseline_time = execute_benchmark([&]() {
-            ROCBLAS_CHECK(
-                rocblas_ssyrk(
-                    handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
-        }, "rocBLAS", "N/A");
+        baseline_time = runner.execute(
+            "rocBLAS", 
+            "N/A", 
+            reset_c,
+            [&]() {
+                ROCBLAS_CHECK(
+                    rocblas_ssyrk(
+                        handle, rocblas_fill_lower, rocblas_operation_none,
+                        n, k, &alpha_f, (float*)d_A_f, lda, &beta_f, (float*)d_C_f, ldc));
+            },
+            verify_syrk, 
+            calc_gflops_syrk);
         
-        // Fix speedup for baseline itself
         results.back().speedup = 1.0; 
     }
 
     if (test_recursive) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                recursive_syrk_parallel(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
-            }, "Recursive", to_string(nb));
+            runner.execute(
+                "Recursive", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    recursive_syrk_parallel(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
         }
     }
 
     if (test_batched) {
         for (int nb : nbs) {
-            execute_benchmark([&]() {
-                batched_syrk_bottom_up(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
-            }, "Batched", to_string(nb));
+            runner.execute(
+                "Batched", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    batched_syrk_bottom_up(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
         }
     }
 
-    // ========================================================================
-    // 6. Print Summary Table
-    // ========================================================================
-    cout << "\n";
-    cout << string(85, '=') << "\n";
-    cout << "SYRK Benchmark Summary (N = " << n << ", K = " << k << ")\n";
-    cout << string(85, '=') << "\n";
-    
-    // Table Header
-    cout << left 
-         << setw(15) << "Method" 
-         << " | " << setw(5) << "NB"
-         << " | " << setw(11) << "Time (ms)"
-         << " | " << setw(11) << "GFLOPS"
-         << " | " << setw(9) << "Speedup"
-         << " | " << "Forward Error | Backward Error\n";
-    cout << string(85, '-') << "\n";
+    print_benchmark_results(
+        "SYRK Benchmark Summary (N = " + std::to_string(n) + ", K = " + std::to_string(k) + ")",
+        results,
+        error_mode,
+        120
+    );
 
-    // Table Rows
-    for (const auto& res : results) {
-        cout << left 
-             << setw(15) << res.method
-             << " | " << setw(5) << res.nb_str
-             << " | " << right << setw(9) << fixed << setprecision(3) << res.time_ms << "  "
-             << " | " << right << setw(9) << fixed << setprecision(2) << res.gflops << "  "
-             << " | ";
-             
-        if (res.speedup > 0) {
-            cout << right << setw(7) << fixed << setprecision(2) << res.speedup << "x ";
-        } else {
-            cout << right << setw(8) << "N/A ";
-        }
-        
-        cout << " | ";
-        if (error_mode == 1 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.forward_error;
-        } else {
-            cout << "N/A          "; // pad for formatting alignment
-        }
-        cout << " | ";
-        if (error_mode == 2 || error_mode == 3) {
-            cout << scientific << setprecision(2) << res.backward_error;
-        } else {
-            cout << "N/A";
-        }
-        cout << "\n";
-    }
-    cout << string(85, '=') << "\n";
-
-    // ========================================================================
-    // 7. Cleanup
-    // ========================================================================
-    HIP_CHECK(hipEventDestroy(start));
-    HIP_CHECK(hipEventDestroy(stop));
-    HIP_CHECK(hipFree(d_A_f));
-    HIP_CHECK(hipFree(d_C_f));
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 
@@ -402,7 +312,7 @@ int main(int argc, char** argv)
     int n = 4096;
     int k = 4096;
 
-    int error_mode      = 0;
+    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_batched   = true;
@@ -411,7 +321,7 @@ int main(int argc, char** argv)
 
     if (argc >= 2) n = atoi(argv[1]);
     if (argc >= 3) k = atoi(argv[2]);
-    if (argc >= 4) error_mode = atoi(argv[3]);
+    if (argc >= 4) error_input = atoi(argv[3]);
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) test_rocblas = atoi(argv[5]);
     if (argc >= 7) test_batched = atoi(argv[6]);
@@ -423,7 +333,11 @@ int main(int argc, char** argv)
         nbs.push_back(256);
     }
 
-    srand(2026);
+    // 对齐 POTRF 的 ErrorMode 解析映射
+    ErrorMode error_mode = ErrorMode::None;
+    if (error_input == 1)      error_mode = ErrorMode::Forward;
+    else if (error_input == 2) error_mode = ErrorMode::Backward;
+    else if (error_input == 3) error_mode = ErrorMode::Both;
 
     run_all_benchmarks(
         n, k, nbs, 

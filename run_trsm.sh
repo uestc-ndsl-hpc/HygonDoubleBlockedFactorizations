@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=trsm_fp32
+#SBATCH --job-name=trsm_fp16
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --gres=dcu:1
@@ -27,7 +27,8 @@ ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_trsm
 
-RESULT_DIR=${ROOT_DIR}/results/fp32/trsm
+# 修改结果目录为 fp16
+RESULT_DIR=${ROOT_DIR}/results/trsm_fp16_fp32
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -53,18 +54,20 @@ USE_EQUAL_M=1
 # 多个 NB
 NBS="256 512 1024 2048"
 
-# 功能开关
-ERROR_MODE=3
+# 功能开关（调整为：仅进行半精度 + 误差测试）
+ERROR_MODE=2
 TEST_RECURSIVE=1
-TEST_ROCBLAS=1
-TEST_ITERATIVE=1
+TEST_ROCBLAS=0
+TEST_ITERATIVE=0
+TEST_HALF=1
 
 echo "==================================================" | tee ${SUMMARY_LOG}
-echo "TRSM Benchmark Start" | tee -a ${SUMMARY_LOG}
-echo "Error Mode         : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
-echo "Test rocBLAS       : ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
-echo "Test Recursive     : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
-echo "Test Iterative     : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
+echo "TRSM FP16 Benchmark Start" | tee -a ${SUMMARY_LOG}
+echo "Error Mode         : ${ERROR_MODE} (3=Forward+Backward)" | tee -a ${SUMMARY_LOG}
+echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
+echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
+echo "Test Iter (FP32)   : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
+echo "Test Rec (FP16)    : ${TEST_HALF}" | tee -a ${SUMMARY_LOG}
 echo "NBs                : ${NBS}" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
@@ -96,6 +99,8 @@ do
 
     echo "Output -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
 
+    # 按照新 main 函数的 argv 映射顺序传参：
+    # 1:N, 2:M, 3:ERROR_MODE, 4:TEST_RECURSIVE, 5:TEST_ROCBLAS, 6:TEST_ITERATIVE, 7:TEST_HALF, 8+:NBS
     ${EXEC} \
         ${N} \
         ${M} \
@@ -103,6 +108,7 @@ do
         ${TEST_RECURSIVE} \
         ${TEST_ROCBLAS} \
         ${TEST_ITERATIVE} \
+        ${TEST_HALF} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 
@@ -110,5 +116,5 @@ done
 
 echo "" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
-echo "TRSM Benchmark Finished" | tee -a ${SUMMARY_LOG}
+echo "TRSM FP16 Benchmark Finished" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}

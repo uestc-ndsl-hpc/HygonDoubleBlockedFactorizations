@@ -7,13 +7,23 @@ extern "C" {
 #endif
 
 /**
- * @brief 给对角线元素增加阻尼 (A = A + lambda * I)
+ * @brief 给单精度对角线元素增加阻尼 (A = A + lambda * I)
  */
 void launch_add_damping(
     float* A,
     int n,
     int lda,
     float lambda,
+    hipStream_t stream);
+
+/**
+ * @brief 给双精度对角线元素增加阻尼 (A = A + lambda * I)
+ */
+void launch_add_damping_double(
+    double* A,
+    int n,
+    int lda,
+    double lambda,
     hipStream_t stream);
 
 #ifdef __cplusplus
