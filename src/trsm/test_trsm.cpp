@@ -120,7 +120,7 @@ void run_all_benchmarks(
     int n,
     int m,
     const vector<int>& nbs,
-    int error_mode,
+    ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
     bool test_iterative,
@@ -186,7 +186,7 @@ void run_all_benchmarks(
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (error_mode == 1 || error_mode == 3) {
+    if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
 
         cout << ">>> Generating Golden Reference...\n";
 
@@ -324,7 +324,7 @@ void run_all_benchmarks(
 
     // [闭包 3]：验证误差
     auto verify_trsm = [&](double& f_err, double& b_err) {
-        if (error_mode != 0) {
+        if (error_mode != ErrorMode::None) {
             HIP_CHECK(
                 hipMemcpy(
                     h_X.data(),
@@ -332,8 +332,8 @@ void run_all_benchmarks(
                     size_B,
                     hipMemcpyDeviceToHost));
 
-            // 前向误差
-            if (error_mode == 1 || error_mode == 3) {
+            // 前向误差：当指定计算前向误差（mode 1 或 3）时才赋值
+            if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 if (has_fp64_ref) {
                     f_err = verify_relative_error(h_X_gold, h_X);
                 }
@@ -342,8 +342,8 @@ void run_all_benchmarks(
                 }
             }
 
-            // 后向误差
-            if (error_mode == 2 || error_mode == 3) {
+            // 后向误差：当指定计算后向误差（mode 2 或 3）时才计算赋值
+            if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
                 b_err = verify_backward_error_sampled(h_A, h_B, h_X, n, m, lda, ldb, 4096);
             }
         }
@@ -447,7 +447,7 @@ void run_all_benchmarks(
         std::to_string(m) +
         ")",
         results,
-        static_cast<ErrorMode>(error_mode),
+        error_mode,
         120
     );
 
@@ -464,7 +464,7 @@ int main(int argc, char** argv)
     int n = 4096;
     int m = 4096;
 
-    int error_mode = 0;
+    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_iterative = true;
@@ -476,7 +476,7 @@ int main(int argc, char** argv)
     if (argc >= 3) m = atoi(argv[2]);
 
     if (argc >= 4)
-        error_mode = atoi(argv[3]);
+        error_input = atoi(argv[3]);
 
     if (argc >= 5)
         test_recursive = atoi(argv[4]);
@@ -501,6 +501,11 @@ int main(int argc, char** argv)
     if (nbs.empty()) {
         nbs.push_back(256);
     }
+
+    ErrorMode error_mode = ErrorMode::None;
+    if (error_input == 1) error_mode = ErrorMode::Forward;
+    else if (error_input == 2) error_mode = ErrorMode::Backward;
+    else if (error_input == 3) error_mode = ErrorMode::Both;
 
     run_all_benchmarks(
         n,

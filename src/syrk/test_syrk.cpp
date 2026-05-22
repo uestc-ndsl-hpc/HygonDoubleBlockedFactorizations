@@ -109,11 +109,12 @@ double verify_backward_error_sampled(
 }
 
 // ============================================================================
-// Main Unified Benchmark Runner
+// MAIN BENCHMARK
 // ============================================================================
+
 void run_all_benchmarks(
     int n, int k, const vector<int>& nbs,
-    int error_mode,
+    ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
     bool test_batched)
@@ -144,7 +145,7 @@ void run_all_benchmarks(
     float alpha_f = -1.0f, beta_f = 1.0f;
 
     // ========================================================================
-    // 3. Golden Reference Generation
+    // Golden Reference Generation
     // ========================================================================
     vector<double> h_C_gold(n * n);
     vector<float>  h_C_ref_f32(n * n);
@@ -152,7 +153,7 @@ void run_all_benchmarks(
     bool has_fp64_ref = false;
     bool has_f32_ref  = false;
 
-    if (error_mode == 1 || error_mode == 3) {
+    if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
         
         cout << ">>> Generating Golden Reference for Error Verification...\n";
         bool do_fp64_verify = (std::max(n, k) <= 16384);
@@ -198,7 +199,7 @@ void run_all_benchmarks(
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation
+    // Benchmark Preparation
     // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
@@ -222,12 +223,12 @@ void run_all_benchmarks(
 
     // [闭包 3]：验证误差
     auto verify_syrk = [&](double& f_err, double& b_err) {
-        if (error_mode != 0) {
+        if (error_mode != ErrorMode::None) {
             vector<float> h_C_out(n * n);
             HIP_CHECK(hipMemcpy(h_C_out.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost)); // 【规范化】
 
             // 前向误差
-            if (error_mode == 1 || error_mode == 3) {
+            if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 if (has_fp64_ref) {
                     f_err = verify_relative_error_lower(h_C_gold, h_C_out, n);
                 } else if (has_f32_ref) {
@@ -236,7 +237,7 @@ void run_all_benchmarks(
             }
 
             // 后向误差
-            if (error_mode == 2 || error_mode == 3) {
+            if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
                 b_err = verify_backward_error_sampled(
                     h_A_f, h_C_f, h_C_out, n, k, lda, ldc, alpha_f, beta_f, 4096);
             }
@@ -244,7 +245,7 @@ void run_all_benchmarks(
     };
 
     // ========================================================================
-    // 5. Run Tests
+    // Run Benchmarks
     // ========================================================================
     cout << ">>> Running Benchmarks..." << endl;
 
@@ -296,7 +297,7 @@ void run_all_benchmarks(
     print_benchmark_results(
         "SYRK Benchmark Summary (N = " + std::to_string(n) + ", K = " + std::to_string(k) + ")",
         results,
-        static_cast<ErrorMode>(error_mode),
+        error_mode,
         120
     );
 
@@ -311,7 +312,7 @@ int main(int argc, char** argv)
     int n = 4096;
     int k = 4096;
 
-    int error_mode      = 0;
+    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_batched   = true;
@@ -320,7 +321,7 @@ int main(int argc, char** argv)
 
     if (argc >= 2) n = atoi(argv[1]);
     if (argc >= 3) k = atoi(argv[2]);
-    if (argc >= 4) error_mode = atoi(argv[3]);
+    if (argc >= 4) error_input = atoi(argv[3]);
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) test_rocblas = atoi(argv[5]);
     if (argc >= 7) test_batched = atoi(argv[6]);
@@ -331,6 +332,12 @@ int main(int argc, char** argv)
     if (nbs.empty()) {
         nbs.push_back(256);
     }
+
+    // 对齐 POTRF 的 ErrorMode 解析映射
+    ErrorMode error_mode = ErrorMode::None;
+    if (error_input == 1)      error_mode = ErrorMode::Forward;
+    else if (error_input == 2) error_mode = ErrorMode::Backward;
+    else if (error_input == 3) error_mode = ErrorMode::Both;
 
     run_all_benchmarks(
         n, k, nbs, 

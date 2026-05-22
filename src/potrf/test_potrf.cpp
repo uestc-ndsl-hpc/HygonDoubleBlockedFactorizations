@@ -161,10 +161,9 @@ template <typename T>
 void run_all_benchmarks(
     int n,
     const vector<int>& nbs,
-    bool enable_error,
     bool test_rocsolver,
     bool test_recursive,
-    int error_type)
+    ErrorMode error_mode)
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
@@ -178,7 +177,6 @@ void run_all_benchmarks(
     size_t bytes = num_elements * sizeof(T);
 
     DeviceBuffer<int> d_info(1);
-
     DeviceBuffer<T> d_A_orig(num_elements);
 
     generate_spd_matrix<T>(handle, d_A_orig, n, n, 2026);
@@ -188,7 +186,7 @@ void run_all_benchmarks(
     DeviceBuffer<T> d_A(num_elements);
     vector<double> h_L_ref_double;
 
-    if (enable_error && (error_type == 0 || error_type == 2)) {
+    if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
         cout << ">>> Generating FP64 Golden Reference...\n";
 
         h_L_ref_double.resize(num_elements);
@@ -228,24 +226,21 @@ void run_all_benchmarks(
 
     BenchmarkRunner runner(main_stream, baseline_time, results);
 
-    // [闭包 1]：重置 A 矩阵
     auto reset_a = [&]() {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
     };
 
-    // [闭包 2]：计算 POTRF 特定的 GFLOPS 公式
     auto calc_gflops_potrf = [&](double ms) {
         return calculate_gflops(n, ms);
     };
 
-    // [闭包 3]：验证误差（在测时循环外执行）
     auto verify_potrf = [&](double& f_err, double& b_err) {
-        if (enable_error) {
+        if (error_mode != ErrorMode::None) {
             vector<T> h_res(num_elements);
             HIP_CHECK(hipMemcpy(h_res.data(), d_A, bytes, hipMemcpyDeviceToHost));
 
-            // 前向误差
-            if (error_type == 0 || error_type == 2) {
+            // 计算前向误差
+            if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 f_err = verify_potrf_against_double_ref(
                     h_res.data(),
                     h_L_ref_double.data(),
@@ -253,7 +248,8 @@ void run_all_benchmarks(
                     n);
             }
 
-            if (error_type == 1 || error_type == 2) {
+            // 计算后向误差
+            if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
                 b_err = verify_backward_error_sampled(
                     h_res.data(),
                     h_A.data(),
@@ -303,7 +299,7 @@ void run_all_benchmarks(
     print_benchmark_results(
         "POTRF Benchmark Summary (N = " + std::to_string(n) + ")",
         results,
-        static_cast<ErrorMode>(error_type),
+        error_mode,
         120
     );
 
@@ -318,22 +314,20 @@ int main(int argc, char** argv)
 {
     int n = 4096;
 
-    bool enable_error   = false;
     bool test_rocsolver = true;
     bool test_recursive = true;
-    int error_type      = 0;
+    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
     int precision_type  = 0; // 0=float, 1=double
 
     vector<int> nbs;
 
     if (argc >= 2) n = atoi(argv[1]);
-    if (argc >= 3) enable_error = atoi(argv[2]);
-    if (argc >= 4) test_rocsolver = atoi(argv[3]);
-    if (argc >= 5) test_recursive = atoi(argv[4]);
-    if (argc >= 6) error_type = atoi(argv[5]);
-    if (argc >= 7) precision_type = atoi(argv[6]);
+    if (argc >= 3) test_rocsolver = atoi(argv[2]);
+    if (argc >= 4) test_recursive = atoi(argv[3]);
+    if (argc >= 5) error_input = atoi(argv[4]);
+    if (argc >= 6) precision_type = atoi(argv[5]);
 
-    for (int i = 7; i < argc; ++i) {
+    for (int i = 6; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
 
@@ -341,25 +335,28 @@ int main(int argc, char** argv)
         nbs.push_back(256);
     }
 
+    ErrorMode error_mode = ErrorMode::None;
+    if (error_input == 1) error_mode = ErrorMode::Forward;
+    else if (error_input == 2) error_mode = ErrorMode::Backward;
+    else if (error_input == 3) error_mode = ErrorMode::Both;
+
     if (precision_type == 1) {
         cout << "Running benchmark in DOUBLE precision\n";
         run_all_benchmarks<double>(
             n,
             nbs,
-            enable_error,
             test_rocsolver,
             test_recursive,
-            error_type);
+            error_mode);
     }
     else {
         cout << "Running benchmark in FLOAT precision\n";
         run_all_benchmarks<float>(
             n,
             nbs,
-            enable_error,
             test_rocsolver,
             test_recursive,
-            error_type);
+            error_mode);
     }
 
     return 0;
