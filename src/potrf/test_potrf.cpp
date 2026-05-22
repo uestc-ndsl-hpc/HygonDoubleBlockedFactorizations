@@ -19,6 +19,7 @@
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
 #include "utils/benchmark_runner.h"
+#include "utils/matrix_generator.h"
 
 using namespace std;
 
@@ -31,21 +32,6 @@ double calculate_gflops(int n, double time_ms)
     if (time_ms <= 0.0) return 0.0;
     double flops = (1.0 / 3.0) * (double)n * (double)n * (double)n;
     return (flops / (time_ms / 1000.0)) / 1e9;
-}
-
-// Generate SPD Matrix
-template <typename T>
-void generate_spd_matrix(T* A, int n, int lda)
-{
-    for (size_t j = 0; j < (size_t)n; ++j) {
-        for (size_t i = 0; i < (size_t)n; ++i) {
-            A[j * (size_t)lda + i] = static_cast<T>(rand()) / static_cast<T>(RAND_MAX);
-        }
-    }
-
-    for (size_t i = 0; i < (size_t)n; ++i) {
-        A[i * (size_t)lda + i] += static_cast<T>(n);
-    }
 }
 
 // ============================================================================
@@ -91,7 +77,6 @@ double verify_backward_error_sampled(
     int lda,
     int sample_count = 4096)
 {
-    // 最多采样下三角元素总数
     long long total = static_cast<long long>(n) * (n + 1) / 2;
     sample_count = std::min(static_cast<long long>(sample_count), total);
 
@@ -106,14 +91,12 @@ double verify_backward_error_sampled(
         int row = dist_row(gen);
         int col = dist_col(gen);
 
-        // 仅采样并验证下三角元素
         if (row < col) {
             continue; 
         }
 
         double reconstructed = 0.0;
 
-        // A = L * L^T  =>  A_{row, col} = \sum_{k=0}^{col} L_{row, k} * L_{col, k}
         for (int k = 0; k <= col; ++k) {
             double Lik = static_cast<double>(L_res[k * lda + row]);
             double Ljk = static_cast<double>(L_res[k * lda + col]);
@@ -123,7 +106,6 @@ double verify_backward_error_sampled(
         double a_val = static_cast<double>(A_orig[col * lda + row]);
         double diff = a_val - reconstructed;
 
-        // 对非对角线元素权重乘以2，为了等效估计完整对称矩阵的 Frobenius 范数
         double factor = (row == col) ? 1.0 : 2.0;
 
         diff_norm_sq += factor * diff * diff;
@@ -197,11 +179,13 @@ void run_all_benchmarks(
 
     DeviceBuffer<int> d_info(1);
 
+    DeviceBuffer<T> d_A_orig(num_elements);
+
+    generate_spd_matrix<T>(handle, d_A_orig, n, n, 2026);
     vector<T> h_A(num_elements);
-    generate_spd_matrix(h_A.data(), n, n);
+    HIP_CHECK(hipMemcpy(h_A.data(), d_A_orig, bytes, hipMemcpyDeviceToHost));
 
     DeviceBuffer<T> d_A(num_elements);
-
     vector<double> h_L_ref_double;
 
     if (enable_error && (error_type == 0 || error_type == 2)) {
@@ -213,7 +197,6 @@ void run_all_benchmarks(
         for (size_t i = 0; i < num_elements; ++i)
             h_A_double[i] = static_cast<double>(h_A[i]);
 
-        // 使用 RAII 显存容器接管双精度临时分配
         DeviceBuffer<double> d_A_double(num_elements);
 
         HIP_CHECK(hipMemcpy(
@@ -238,7 +221,7 @@ void run_all_benchmarks(
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation
+    // Benchmark Preparation
     // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
@@ -247,12 +230,7 @@ void run_all_benchmarks(
 
     // [闭包 1]：重置 A 矩阵
     auto reset_a = [&]() {
-        HIP_CHECK(
-            hipMemcpy(
-                d_A, 
-                h_A.data(), 
-                bytes, 
-                hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
     };
 
     // [闭包 2]：计算 POTRF 特定的 GFLOPS 公式
@@ -275,7 +253,6 @@ void run_all_benchmarks(
                     n);
             }
 
-            // 后向误差
             if (error_type == 1 || error_type == 2) {
                 b_err = verify_backward_error_sampled(
                     h_res.data(),
@@ -288,9 +265,8 @@ void run_all_benchmarks(
     };
 
     // ========================================================================
-    // 5. Run Benchmarks
+    // Run Benchmarks
     // ========================================================================
-
     cout << ">>> Running Benchmarks...\n";
 
     if (test_rocsolver) {
@@ -331,9 +307,6 @@ void run_all_benchmarks(
         120
     );
 
-    // ============================================================
-    // Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动安全释放)
-    // ============================================================
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 
@@ -349,9 +322,7 @@ int main(int argc, char** argv)
     bool test_rocsolver = true;
     bool test_recursive = true;
     int error_type      = 0;
-
-    // 0=float, 1=double
-    int precision_type = 0;
+    int precision_type  = 0; // 0=float, 1=double
 
     vector<int> nbs;
 
@@ -362,7 +333,6 @@ int main(int argc, char** argv)
     if (argc >= 6) error_type = atoi(argv[5]);
     if (argc >= 7) precision_type = atoi(argv[6]);
 
-    // nb 从第 7 个参数后开始
     for (int i = 7; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
@@ -370,8 +340,6 @@ int main(int argc, char** argv)
     if (nbs.empty()) {
         nbs.push_back(256);
     }
-
-    srand(2026);
 
     if (precision_type == 1) {
         cout << "Running benchmark in DOUBLE precision\n";

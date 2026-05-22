@@ -20,6 +20,8 @@
 #include "utils/device_buffer.h"
 #include "utils/benchmark_runner.h"
 
+#include "utils/matrix_generator.h" 
+
 using namespace std;
 
 // ============================================================================
@@ -36,45 +38,6 @@ double calculate_gflops(int n, int m, double time_ms)
         static_cast<double>(n) * m * m;
 
     return (total_flops / (time_ms / 1000.0)) / 1e9;
-}
-
-// Generate Stable Lower Triangular Matrix
-void generate_stable_lower_triangular(
-    float* A,
-    int dim,
-    int lda)
-{
-    for (int j = 0; j < dim; j++) {
-        for (int i = 0; i < dim; i++) {
-
-            if (i < j) {
-                A[j * lda + i] = 0.0f;
-            }
-            else if (i == j) {
-                A[j * lda + i] =
-                    dim + static_cast<float>(rand()) / RAND_MAX;
-            }
-            else {
-                A[j * lda + i] =
-                    static_cast<float>(rand()) / RAND_MAX;
-            }
-        }
-    }
-}
-
-// Generate Random Matrix
-void generate_random_matrix(
-    float* B,
-    int n,
-    int m,
-    int ldb)
-{
-    for (int j = 0; j < m; j++) {
-        for (int i = 0; i < n; i++) {
-            B[j * ldb + i] =
-                static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
 }
 
 // Relative Frobenius Error
@@ -193,16 +156,9 @@ void run_all_benchmarks(
     vector<float> h_B(n * m);
     vector<float> h_X(n * m);
 
-    generate_stable_lower_triangular(
-        h_A.data(),
-        m,
-        lda);
-
-    generate_random_matrix(
-        h_B.data(),
-        n,
-        m,
-        ldb);
+    // 使用你提供的新一代新接口生成更加稳定的测试数据
+    generate_stable_lower_triangular<float>(h_A.data(), m, lda, 2026);
+    generate_random_matrix<float>(h_B.data(), n, m, ldb, 2026);
 
     // ========================================================================
     // 2. Device Memory
@@ -495,11 +451,8 @@ void run_all_benchmarks(
         120
     );
 
-    // ========================================================================
-    // 7. Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动释放)
-    // ========================================================================
-    ROCBLAS_CHECK(
-        rocblas_destroy_handle(handle));
+    // 显存由 RAII DeviceBuffer 在退出作用域时自动释放
+    ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 
 // ============================================================================
@@ -548,8 +501,6 @@ int main(int argc, char** argv)
     if (nbs.empty()) {
         nbs.push_back(256);
     }
-
-    srand(2026);
 
     run_all_benchmarks(
         n,

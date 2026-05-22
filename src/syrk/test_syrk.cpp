@@ -18,6 +18,7 @@
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
 #include "utils/benchmark_runner.h"
+#include "utils/matrix_generator.h"
 
 using namespace std;
 
@@ -26,23 +27,6 @@ double calculate_gflops(int n, int k, double time_ms) {
     if (time_ms <= 0.0) return 0.0;
     double flops = static_cast<double>(n) * (n + 1) * k;
     return (flops / (time_ms / 1000.0)) / 1e9;
-}
-
-// Host-side matrix initialization
-void generate_random_matrix(float* A, int rows, int cols, int lda) {
-    for (int j = 0; j < cols; j++) {
-        for (int i = 0; i < rows; i++) {
-            A[j * lda + i] = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
-}
-
-void generate_symmetric_matrix(float* C, int n, int ldc) {
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            C[j * ldc + i] = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        }
-    }
 }
 
 // Relative Frobenius norm error calculation
@@ -140,32 +124,24 @@ void run_all_benchmarks(
     hipStream_t main_stream;
     ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
-    int lda = n;
-    int ldc = n;
-
-    // ========================================================================
-    // 1. Host Memory Allocation & Initialization
-    // ========================================================================
-    vector<float> h_A_f(n * k);
-    vector<float> h_C_f(n * n);
-
-    generate_random_matrix(h_A_f.data(), n, k, lda);
-    generate_symmetric_matrix(h_C_f.data(), n, ldc);
-
-    // ========================================================================
-    // 2. Device Memory Allocation (RAII DeviceBuffer)
-    // ========================================================================
+    int lda = n, ldc = n;
     size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
     size_t bytes_C = static_cast<size_t>(n) * n * sizeof(float);
 
+    // 1. 显存分配
     DeviceBuffer<float> d_A_f(n * k);
-    DeviceBuffer<float> d_C_f(n * n);
+    DeviceBuffer<float> d_C_orig(n * n); // 原始备份
+    DeviceBuffer<float> d_C_f(n * n);    // 工作区
 
-    HIP_CHECK(hipMemcpy(d_A_f, h_A_f.data(), bytes_A, hipMemcpyHostToDevice));
+    // 2. 使用规范化生成器初始化
+    generate_syrk_matrices<float>(handle, (float*)d_A_f, (float*)d_C_orig, n, k, lda, ldc, 2026);
 
-    // Scalar constants for SYRK (C = -A*A^T + C)
-    float alpha_f = -1.0f;
-    float beta_f  = 1.0f;
+    // 3. 准备校验用 Host 数据
+    vector<float> h_A_f(n * k), h_C_f(n * n);
+    HIP_CHECK(hipMemcpy(h_A_f.data(), (float*)d_A_f, bytes_A, hipMemcpyDeviceToHost));
+    HIP_CHECK(hipMemcpy(h_C_f.data(), (float*)d_C_orig, bytes_C, hipMemcpyDeviceToHost));
+
+    float alpha_f = -1.0f, beta_f = 1.0f;
 
     // ========================================================================
     // 3. Golden Reference Generation
@@ -192,8 +168,8 @@ void run_all_benchmarks(
             DeviceBuffer<double> d_A_d(n * k);
             DeviceBuffer<double> d_C_d(n * n);
             
-            HIP_CHECK(hipMemcpy(d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
-            HIP_CHECK(hipMemcpy(d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((double*)d_A_d, h_A_d.data(), static_cast<size_t>(n) * k * sizeof(double), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((double*)d_C_d, h_C_d.data(), static_cast<size_t>(n) * n * sizeof(double), hipMemcpyHostToDevice));
 
             double alpha_d = -1.0;
             double beta_d  = 1.0;
@@ -201,28 +177,28 @@ void run_all_benchmarks(
             ROCBLAS_CHECK(
                 rocblas_dsyrk(
                     handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_d, d_A_d, lda, &beta_d, d_C_d, ldc));
+                    n, k, &alpha_d, (double*)d_A_d, lda, &beta_d, (double*)d_C_d, ldc));
 
-            HIP_CHECK(hipMemcpy(h_C_gold.data(), d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
+            // 明确将 d_C_d 转为 (double*) 原生指针，防止隐式转换失效或 Segfault
+            HIP_CHECK(hipMemcpy(h_C_gold.data(), (double*)d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
             
-            // 手动 hipFree 调用已安全移除，生命周期结束自动释放
             has_fp64_ref = true;
         } else {
             // Use standard rocBLAS FP32 as reference if N is too large for FP64
-            HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((float*)d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
             
             ROCBLAS_CHECK(
                 rocblas_ssyrk(
                     handle, rocblas_fill_lower, rocblas_operation_none,
-                    n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+                    n, k, &alpha_f, (float*)d_A_f, lda, &beta_f, (float*)d_C_f, ldc));
                     
-            HIP_CHECK(hipMemcpy(h_C_ref_f32.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(h_C_ref_f32.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost));
             has_f32_ref = true;
         }
     }
 
     // ========================================================================
-    // 4. Benchmark Preparation (基于 BenchmarkRunner 引擎进行重构)
+    // 4. Benchmark Preparation
     // ========================================================================
     vector<BenchmarkResult> results;
     double baseline_time = -1.0;
@@ -233,7 +209,7 @@ void run_all_benchmarks(
     auto reset_c = [&]() {
         HIP_CHECK(
             hipMemcpy(
-                d_C_f, 
+                (float*)d_C_f, // 【规范化】增加原生指针转换
                 h_C_f.data(), 
                 bytes_C, 
                 hipMemcpyHostToDevice));
@@ -244,11 +220,11 @@ void run_all_benchmarks(
         return calculate_gflops(n, k, ms);
     };
 
-    // [闭包 3]：验证误差（在测时循环外执行）
+    // [闭包 3]：验证误差
     auto verify_syrk = [&](double& f_err, double& b_err) {
         if (error_mode != 0) {
             vector<float> h_C_out(n * n);
-            HIP_CHECK(hipMemcpy(h_C_out.data(), d_C_f, bytes_C, hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(h_C_out.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost)); // 【规范化】
 
             // 前向误差
             if (error_mode == 1 || error_mode == 3) {
@@ -281,7 +257,7 @@ void run_all_benchmarks(
                 ROCBLAS_CHECK(
                     rocblas_ssyrk(
                         handle, rocblas_fill_lower, rocblas_operation_none,
-                        n, k, &alpha_f, d_A_f, lda, &beta_f, d_C_f, ldc));
+                        n, k, &alpha_f, (float*)d_A_f, lda, &beta_f, (float*)d_C_f, ldc));
             },
             verify_syrk, 
             calc_gflops_syrk);
@@ -296,7 +272,7 @@ void run_all_benchmarks(
                 to_string(nb), 
                 reset_c,
                 [&]() {
-                    recursive_syrk_parallel(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
+                    recursive_syrk_parallel(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
                 },
                 verify_syrk, 
                 calc_gflops_syrk);
@@ -310,7 +286,7 @@ void run_all_benchmarks(
                 to_string(nb), 
                 reset_c,
                 [&]() {
-                    batched_syrk_bottom_up(handle, d_A_f, lda, d_C_f, ldc, n, k, nb);
+                    batched_syrk_bottom_up(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
                 },
                 verify_syrk, 
                 calc_gflops_syrk);
@@ -318,19 +294,12 @@ void run_all_benchmarks(
     }
 
     print_benchmark_results(
-        "SYRK Benchmark Summary (N = " +
-        std::to_string(n) +
-        ", K = " +
-        std::to_string(k) +
-        ")",
+        "SYRK Benchmark Summary (N = " + std::to_string(n) + ", K = " + std::to_string(k) + ")",
         results,
         static_cast<ErrorMode>(error_mode),
         120
     );
 
-    // ========================================================================
-    // 7. Cleanup (显存由 RAII DeviceBuffer 在退出作用域时自动释放)
-    // ========================================================================
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 }
 
@@ -362,8 +331,6 @@ int main(int argc, char** argv)
     if (nbs.empty()) {
         nbs.push_back(256);
     }
-
-    srand(2026);
 
     run_all_benchmarks(
         n, k, nbs, 
