@@ -174,7 +174,6 @@ void recursive_trsm_half_internal(rocblas_handle handle,
 
 // ======================================================
 // Public API (float)
-// [优化]：移除多流合并中导致 CPU 挂起阻塞的 hipStreamSynchronize
 // ======================================================
 void recursive_trsm(
     rocblas_handle handle,
@@ -202,9 +201,7 @@ void recursive_trsm(
 
         auto &ctx = pool->get(i);
 
-        if (i > 0) {
-            HIP_CHECK(hipEventCreate(&events[i]));
-        }
+        HIP_CHECK(hipEventCreate(&events[i]));
 
         recursive_trsm_internal(
             ctx.handle,
@@ -212,25 +209,20 @@ void recursive_trsm(
             B + row_start, ldb,
             current_n, m, nb);
 
-        if (i > 0) {
-            HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-        }
+        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
     }
 
-    // 仅通过 GPU 事件图依赖进行流同步，避免任何主机端阻塞
-    for (int i = 1; i < num_chunks; i++) {
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
     }
 
-    // 延迟安全销毁事件
-    for (int i = 1; i < num_chunks; i++) {
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 
 // ======================================================
 // Public API (double)
-// [优化]：同步行为与 float API 保持一致，移除 hipStreamSynchronize
 // ======================================================
 void recursive_trsm_double(
     rocblas_handle handle,
@@ -259,9 +251,7 @@ void recursive_trsm_double(
 
         auto &ctx = pool->get(i);
 
-        if (i > 0) {
-            HIP_CHECK(hipEventCreate(&events[i]));
-        }
+        HIP_CHECK(hipEventCreate(&events[i]));
 
         recursive_trsm_double_internal(
             ctx.handle,
@@ -269,26 +259,20 @@ void recursive_trsm_double(
             B + row_start, ldb,
             current_n, m, nb);
 
-        if (i > 0) {
-            HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-        }
+        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
     }
 
-    for (int i = 1; i < num_chunks; i++) {
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
     }
 
-    for (int i = 1; i < num_chunks; i++) {
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 
 // ======================================================
 // Public API (half)
-// [整体优化]：
-// 1. 将显存分配提升至最外层（仅在各分块流开始处分配一次，随后递归复用）
-// 2. 利用 hipFreeAsync 在流队列末尾异步回收，彻底避免 Host/Device 阻塞
-// 3. 移除多流合并阶段的主机端 hipStreamSynchronize
 // ======================================================
 void recursive_trsm_half(
     rocblas_handle handle,
@@ -303,7 +287,6 @@ void recursive_trsm_half(
         hipStream_t stream;
         ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
 
-        // 单流无分块时，在最外层统一申请一次 Workspace 并在最后释放
         float *temp_A = nullptr;
         float *temp_B = nullptr;
         HIP_CHECK(hipMallocAsync((void**)&temp_A, nb * nb * sizeof(float), stream));
@@ -319,6 +302,11 @@ void recursive_trsm_half(
     hipStream_t orig_stream;
     ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
 
+    hipEvent_t copy_done_event;
+    HIP_CHECK(hipEventCreate(&copy_done_event));
+    // 在主流上记录事件（此时输入数据转换内核已在主流队列中）
+    HIP_CHECK(hipEventRecord(copy_done_event, orig_stream));
+
     int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
 
     std::vector<hipEvent_t> events(num_chunks, nullptr);
@@ -330,15 +318,12 @@ void recursive_trsm_half(
         int current_n = std::min(N_LIMIT, n - row_start);
         auto &ctx = pool->get(i);
 
-        if (i > 0) {
-            HIP_CHECK(hipEventCreate(&events[i]));
-        }
+        HIP_CHECK(hipEventCreate(&events[i]));
+        HIP_CHECK(hipStreamWaitEvent(ctx.stream, copy_done_event, 0));
 
-        // 1. 在每个分块计算流中各预分配一次 Workspace
         HIP_CHECK(hipMallocAsync((void**)&temp_A_list[i], nb * nb * sizeof(float), ctx.stream));
         HIP_CHECK(hipMallocAsync((void**)&temp_B_list[i], current_n * nb * sizeof(float), ctx.stream));
 
-        // 2. 传入 Workspace 进行无内部申请的纯递归执行
         recursive_trsm_half_internal(
             ctx.handle,
             A, lda,
@@ -346,22 +331,20 @@ void recursive_trsm_half(
             current_n, m, nb,
             temp_A_list[i], temp_B_list[i]);
 
-        // 3. 异步释放 Workspace（排队在当前计算流的末尾，完全不阻塞 CPU）
         HIP_CHECK(hipFreeAsync(temp_A_list[i], ctx.stream));
         HIP_CHECK(hipFreeAsync(temp_B_list[i], ctx.stream));
 
-        if (i > 0) {
-            HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-        }
+        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
     }
 
-    // 4. 仅依靠 GPU 事件链在主流上进行非阻塞合并
-    for (int i = 1; i < num_chunks; i++) {
+    // 主流等待所有分块流计算完成
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
     }
 
-    // 5. 销毁事件
-    for (int i = 1; i < num_chunks; i++) {
+    // 释放临时事件
+    HIP_CHECK(hipEventDestroy(copy_done_event));
+    for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
@@ -388,13 +371,13 @@ void recursive_trsm_half_f32_wrapper(
 
     // 2. 在 GPU 端全异步执行 FP32 到 FP16 的转换（不涉及 Host/Device 数据传输）
     launch_fp32_to_fp16(A_f32, reinterpret_cast<__half*>(d_A_half), m, m, lda, m, stream);
-    launch_fp32_to_fp16(B_f32, reinterpret_cast<__half*>(d_B_half), n, m, ldb, n, stream);
+    launch_fp32_to_fp16(B_f32, reinterpret_cast<__half*>(d_B_half), n, m, ldb, ldb, stream);
 
     // 3. 执行优化后的半精度递归 TRSM (其内部将自动递归分治并使用 Tensor Cores 进行加速计算)
     recursive_trsm_half(handle, pool, d_A_half, lda, d_B_half, ldb, n, m, nb);
 
     // 4. 将计算完成后的半精度结果全异步转回 FP32，并直接写回传入的 B_f32 矩阵中
-    launch_fp16_to_fp32(reinterpret_cast<const __half*>(d_B_half), B_f32, n, m, n, ldb, stream);
+    launch_fp16_to_fp32(reinterpret_cast<const __half*>(d_B_half), B_f32, n, m, ldb, ldb, stream);
 
     // 5. 异步释放临时的 FP16 空间
     HIP_CHECK(hipFreeAsync(d_A_half, stream));
