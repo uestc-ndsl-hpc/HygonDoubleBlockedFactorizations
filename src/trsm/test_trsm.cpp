@@ -415,7 +415,16 @@ void run_all_benchmarks(
                 to_string(nb), 
                 reset_b,
                 [&]() { 
-                    recursive_trsm_half_f32_wrapper(handle, &pool, d_A, lda, d_B, ldb, n, m, nb); 
+                    recursive_trsm_mixed(
+                        handle,
+                        &pool,
+                        d_A,
+                        lda,
+                        d_B,
+                        ldb,
+                        n,
+                        m,
+                        nb);
                 },
                 verify_trsm, 
                 calc_gflops_trsm);

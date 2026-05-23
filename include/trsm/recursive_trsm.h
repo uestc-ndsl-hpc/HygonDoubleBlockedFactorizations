@@ -29,27 +29,19 @@ void recursive_trsm_double(
     double* B, int ldb,
     int n, int m, int nb);
 
-// ======================================================
-// Recursive TRSM (half)
-// ======================================================
-
-void recursive_trsm_half(
+void recursive_trsm_mixed(
     rocblas_handle handle,
     StreamPool* pool,
-    rocblas_half* A, int lda,
-    rocblas_half* B, int ldb,
-    int n, int m, int nb);
 
+    float* A,
+    int lda,
 
-// ============================================================================
-// 供单独测试使用的 FP32 包装接口
-// ============================================================================    
-void recursive_trsm_half_f32_wrapper(
-    rocblas_handle handle,
-    StreamPool* pool,
-    float* A_f32, int lda,
-    float* B_f32, int ldb,
-    int n, int m, int nb);
+    float* B,
+    int ldb,
+
+    int n,
+    int m,
+    int nb);
 
 #ifdef __cplusplus
 }
