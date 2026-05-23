@@ -169,4 +169,88 @@ void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
         info);
 }
 
+
+void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
+                           float* A,
+                           int lda,
+                           int n,
+                           int nb,
+                           int* info)
+{
+    if (n <= 0)
+        return;
+    
+    if (n <= nb)
+    {
+        rocsolver_spotrf(
+            handle,
+            rocblas_fill_lower,
+            n,
+            A,
+            lda,
+            info);
+
+        return;
+    }
+
+    // ==================================================
+    // Split
+    // ==================================================
+
+    int n1 = n / 2;
+    int n2 = n - n1;
+
+    float* A11 = A;
+    float* A21 = A + n1;
+    float* A22 = A + (size_t)n1 * (size_t)lda + n1;
+
+    // ==================================================
+    // 1. POTRF(A11): 递归求解左上角子矩阵
+    // ==================================================
+
+    recursive_potrf_mixed(
+        handle, pool,
+        A11,
+        lda,
+        n1,
+        nb,
+        info);
+
+    // ==================================================
+    // 2. TRSM: 混合精度下三角求解 (Tensor Core 加速)
+    // ==================================================
+
+    recursive_trsm_mixed(
+        handle, pool,
+        A11, lda,
+        A21, lda,
+        n2, n1, nb);
+
+    // ==================================================
+    // 3. SYRK: 混合精度自底向上对称更新 (Tensor Core 循环加速)
+    // ==================================================
+
+    batched_syrk_bottom_up_mixed(
+        handle,
+        A21,
+        lda,
+        A22,
+        lda,
+        n2,
+        n1,
+        nb);
+
+    // ==================================================
+    // 4. POTRF(A22): 递归求解右下角子矩阵
+    // ==================================================
+
+    recursive_potrf_mixed(
+        handle, pool,
+        A22,
+        lda,
+        n2,
+        nb,
+        info);
+}
+
 } // extern "C"
