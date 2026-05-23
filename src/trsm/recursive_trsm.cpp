@@ -2,6 +2,7 @@
 #include "utils/error_check.h"
 #include "utils/stream_pool.h"
 #include "kernels/fp16_convert.h"
+#include "utils/mixed_gemm.h"
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 #include <rocblas/rocblas.h>
@@ -193,93 +194,6 @@ void recursive_trsm_double(
     }
 }
 
-static inline void tc_gemm_update_fp32_output(
-    rocblas_handle handle,
-    hipStream_t stream,
-    int n,
-    int m2,
-    int m1,
-    float* B1_f32,
-    int ldb,
-    float* A21_f32,
-    int lda,
-    float* B2_f32)
-{
-    rocblas_half *B1_half = nullptr;
-    rocblas_half *A21_half = nullptr;
-    rocblas_half *B2_half = nullptr;
-
-    size_t size_B1  = (size_t)n * m1;
-    size_t size_A21 = (size_t)m2 * m1;
-    size_t size_B2  = (size_t)n * m2;
-
-    HIP_CHECK(hipMallocAsync(&B1_half, size_B1 * sizeof(rocblas_half), stream));
-    HIP_CHECK(hipMallocAsync(&A21_half, size_A21 * sizeof(rocblas_half), stream));
-    HIP_CHECK(hipMallocAsync(&B2_half, size_B2 * sizeof(rocblas_half), stream));
-
-    // 1. 转换 B1
-    launch_fp32_to_fp16(
-        B1_f32,
-        reinterpret_cast<__half*>(B1_half),
-        n, m1, ldb, n,
-        stream);
-
-    // 2. 转换 A21
-    launch_fp32_to_fp16(
-        A21_f32,
-        reinterpret_cast<__half*>(A21_half),
-        m2, m1, lda, m2,
-        stream);
-
-    // ==========================================
-    // 【新增修复】：将 B2_f32 的初始数据同步至 B2_half
-    // ==========================================
-    launch_fp32_to_fp16(
-        B2_f32,
-        reinterpret_cast<__half*>(B2_half),
-        n, m2, ldb, n,
-        stream);
-
-    float alpha = -1.0f;
-    float beta  = 1.0f;
-
-    // 3. 执行计算 (D = alpha * B1 * A21^T + beta * B2)
-    rocblas_gemm_ex(
-        handle,
-        rocblas_operation_none,
-        rocblas_operation_transpose,
-        n, m2, m1,
-        &alpha,
-        B1_half,
-        rocblas_datatype_f16_r,
-        n,
-        A21_half,
-        rocblas_datatype_f16_r,
-        m2,
-        &beta,
-        B2_half, // 输入 C 矩阵已通过上面修复被赋予正确初值
-        rocblas_datatype_f16_r,
-        n,
-        B2_half, // 输出 D 矩阵
-        rocblas_datatype_f16_r,
-        n,
-        rocblas_datatype_f32_r, // 使用 FP32 作为累加器提升内部乘加的数值稳定性
-        rocblas_gemm_algo_standard,
-        0, 0);
-
-    // 4. 将计算完成后的数据转回 B2_f32
-    launch_fp16_to_fp32(
-        reinterpret_cast<const __half*>(B2_half),
-        B2_f32,
-        n, m2,
-        n, ldb,
-        stream);
-
-    HIP_CHECK(hipFreeAsync(B1_half, stream));
-    HIP_CHECK(hipFreeAsync(A21_half, stream));
-    HIP_CHECK(hipFreeAsync(B2_half, stream));
-}
-
 void recursive_trsm_mixed_internal(
     rocblas_handle handle,
 
@@ -333,17 +247,20 @@ void recursive_trsm_mixed_internal(
         m1,
         nb);
 
-    tc_gemm_update_fp32_output(
+    launch_mixed_gemm(
         handle,
         stream,
-        n,
-        m2,
-        m1,
-        B,
-        ldb,
-        A + m1,
-        lda,
-        B + (size_t)m1 * ldb);
+        rocblas_operation_none,       // B1 不转置
+        rocblas_operation_transpose,  // A21 转置
+        n,                            // GEMM M 维
+        m2,                           // GEMM N 维
+        m1,                           // GEMM K 维
+        -1.0f,                        // alpha = -1.0
+        B, ldb,                       // 对应矩阵 A_gemm (即 B1)
+        A + m1, lda,                  // 对应矩阵 B_gemm (即 A21)
+        1.0f,                         // beta = 1.0
+        B + (size_t)m1 * ldb, ldb     // 对应输出矩阵 C_gemm (即 B2)
+    );
 
     recursive_trsm_mixed_internal(
         handle,
