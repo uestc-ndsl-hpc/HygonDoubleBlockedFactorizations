@@ -194,15 +194,15 @@ void recursive_trsm_double(
     }
 }
 
+// ======================================================
+// 内部纯递归执行器 (混合精度)
+// ======================================================
 void recursive_trsm_mixed_internal(
     rocblas_handle handle,
-
     float* A,
     int lda,
-
     float* B,
     int ldb,
-
     int n,
     int m,
     int nb)
@@ -211,13 +211,13 @@ void recursive_trsm_mixed_internal(
         return;
 
     hipStream_t stream;
-    rocblas_get_stream(handle, &stream);
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
 
     if (m <= nb)
     {
         float alpha = 1.0f;
 
-        rocblas_strsm(
+        ROCBLAS_CHECK(rocblas_strsm(
             handle,
             rocblas_side_right,
             rocblas_fill_lower,
@@ -229,7 +229,7 @@ void recursive_trsm_mixed_internal(
             A,
             lda,
             B,
-            ldb);
+            ldb));
 
         return;
     }
@@ -273,6 +273,9 @@ void recursive_trsm_mixed_internal(
         nb);
 }
 
+// ======================================================
+// Public API (mixed)
+// ======================================================
 void recursive_trsm_mixed(
     rocblas_handle handle,
     StreamPool* pool,
@@ -298,23 +301,20 @@ void recursive_trsm_mixed(
     }
 
     hipStream_t orig_stream;
-    rocblas_get_stream(handle, &orig_stream);
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
 
-    int num_chunks =
-        (n + N_LIMIT - 1) / N_LIMIT;
+    int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
 
     std::vector<hipEvent_t> events(num_chunks);
 
     for (int i = 0; i < num_chunks; i++)
     {
         int row_start = i * N_LIMIT;
-
-        int current_n =
-            std::min(N_LIMIT, n - row_start);
+        int current_n = std::min(N_LIMIT, n - row_start);
 
         auto& ctx = pool->get(i);
 
-        hipEventCreate(&events[i]);
+        HIP_CHECK(hipEventCreate(&events[i]));
 
         recursive_trsm_mixed_internal(
             ctx.handle,
@@ -326,20 +326,17 @@ void recursive_trsm_mixed(
             m,
             nb);
 
-        hipEventRecord(events[i], ctx.stream);
+        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
     }
 
     for (int i = 0; i < num_chunks; i++)
     {
-        hipStreamWaitEvent(
-            orig_stream,
-            events[i],
-            0);
+        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
     }
 
     for (int i = 0; i < num_chunks; i++)
     {
-        hipEventDestroy(events[i]);
+        HIP_CHECK(hipEventDestroy(events[i]));
     }
 }
 

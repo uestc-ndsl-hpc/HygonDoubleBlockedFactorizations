@@ -4,6 +4,7 @@
 #include <rocblas/rocblas.h>
 
 #include <algorithm>
+#include "utils/mixed_gemm.h"
 
 extern "C" {
 
@@ -495,5 +496,177 @@ void batched_syrk_bottom_up_double(
         }
     }
 }
+
+
+static inline void gemm_update_mixed(
+    rocblas_handle handle,
+    hipStream_t stream,
+    float* A_bottom,
+    float* A_top,
+    float* C,
+    int lda,
+    int ldc,
+    int M,
+    int N,
+    int K)
+{
+    float alpha = -1.0f;
+    float beta  = 1.0f;
+
+    bool first = true;
+
+    for (int kk = 0; kk < K; kk += BK)
+    {
+        int cur_k = std::min(BK, K - kk);
+        float cur_beta = first ? beta : 1.0f;
+
+        launch_mixed_gemm(
+            handle,
+            stream,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            M,
+            N,
+            cur_k,
+            alpha,
+            A_bottom + kk * lda, lda,
+            A_top + kk * lda, lda,
+            cur_beta,
+            C, ldc);
+
+        first = false;
+    }
+}
+
+// ============================================================================
+// 混合精度/半精度 Bottom-Up Recursive SYRK (已去除 Strided Batched 优化)
+// ============================================================================
+void batched_syrk_bottom_up_mixed(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    float* C,
+    int ldc,
+    int n,
+    int k,
+    int nb)
+{
+    if (n <= 0 || k <= 0)
+        return;
+
+    hipStream_t stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+
+    // =========================================================================
+    // 小于分块阈值时，直接调用标准 SYRK (在 FP32 下保证叶节点稳定性)
+    // =========================================================================
+    if (n <= nb)
+    {
+        float alpha = -1.0f;
+        float beta  = 1.0f;
+
+        rocblas_ssyrk(
+            handle,
+            rocblas_fill_lower,
+            rocblas_operation_none,
+            n, k,
+            &alpha,
+            A, lda,
+            &beta,
+            C, ldc);
+
+        return;
+    }
+
+    // =========================================================================
+    // 阶段1：Diagonal Leaf Updates (叶节点对角更新)
+    // =========================================================================
+    int num_blocks = n / nb;
+
+    for (int b = 0; b < num_blocks; b++)
+    {
+        int offset = b * nb;
+
+        gemm_update_mixed(
+            handle,
+            stream,
+            A + offset,
+            A + offset,
+            C + offset + offset * ldc,
+            lda, ldc,
+            nb, nb,
+            k);
+    }
+
+    // 尾部剩余处理
+    int tail = n % nb;
+    if (tail > 0)
+    {
+        int offset = num_blocks * nb;
+
+        gemm_update_mixed(
+            handle,
+            stream,
+            A + offset,
+            A + offset,
+            C + offset + offset * ldc,
+            lda, ldc,
+            tail, tail,
+            k);
+    }
+
+    // =========================================================================
+    // 阶段2：Bottom-Up Merge (自底向上合并阶段)
+    // =========================================================================
+    for (int i = 1;
+         (n / (2 * i * nb) > 0) ||
+         (n % (2 * i * nb) > i * nb);
+         i *= 2)
+    {
+        int S = i * nb;
+        int batch_count = n / (2 * S);
+
+        // ---------------------------------------------------------------------
+        // 为了优化显存占用和异构兼容稳定性，
+        // 在混合精度合并树中，直接以 for 循环串行启动独立的 launch_mixed_gemm 更新。
+        // ---------------------------------------------------------------------
+        for (int b = 0; b < batch_count; b++)
+        {
+            int offset = b * 2 * S;
+
+            gemm_update_mixed(
+                handle,
+                stream,
+                A + offset + S,
+                A + offset,
+                C + (offset + S) + offset * ldc,
+                lda, ldc,
+                S, S,
+                k);
+        }
+
+        // ---------------------------------------------------------------------
+        // 尾部多块的残差合并保持一致
+        // ---------------------------------------------------------------------
+        int rem = n % (2 * S);
+        if (rem > S)
+        {
+            int offset = batch_count * 2 * S;
+            int tail_M = rem - S;
+            int tail_N = S;
+
+            gemm_update_mixed(
+                handle,
+                stream,
+                A + offset + S,
+                A + offset,
+                C + (offset + S) + offset * ldc,
+                lda, ldc,
+                tail_M, tail_N,
+                k);
+        }
+    }
+}
+
 
 } // extern "C"

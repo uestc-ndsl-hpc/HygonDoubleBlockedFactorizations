@@ -33,6 +33,14 @@ void batched_syrk_bottom_up_double(rocblas_handle handle,
                                    double* C, int ldc,
                                    int n, int k, int nb);
 
+/**
+ * @brief 自底向上的 Batched SYRK 算法 (混合精度 / 半精度 Tensor Core 加速)
+ */
+void batched_syrk_bottom_up_mixed(rocblas_handle handle,
+                                  float* A, int lda,
+                                  float* C, int ldc,
+                                  int n, int k, int nb);
+
 #ifdef __cplusplus
 }
 #endif

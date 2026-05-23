@@ -117,7 +117,8 @@ void run_all_benchmarks(
     ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
-    bool test_batched)
+    bool test_batched,
+    bool test_mixed)
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
@@ -251,7 +252,7 @@ void run_all_benchmarks(
 
     if (test_rocblas) {
         baseline_time = runner.execute(
-            "rocBLAS", 
+            "rocBLAS (FP32)", 
             "N/A", 
             reset_c,
             [&]() {
@@ -269,7 +270,7 @@ void run_all_benchmarks(
     if (test_recursive) {
         for (int nb : nbs) {
             runner.execute(
-                "Recursive", 
+                "Recursive (FP32)", 
                 to_string(nb), 
                 reset_c,
                 [&]() {
@@ -283,11 +284,25 @@ void run_all_benchmarks(
     if (test_batched) {
         for (int nb : nbs) {
             runner.execute(
-                "Batched", 
+                "Batched (FP32)", 
                 to_string(nb), 
                 reset_c,
                 [&]() {
                     batched_syrk_bottom_up(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
+        }
+    }
+
+    if (test_mixed) {
+        for (int nb : nbs) {
+            runner.execute(
+                "Batched (Mixed)", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    batched_syrk_bottom_up_mixed(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
                 },
                 verify_syrk, 
                 calc_gflops_syrk);
@@ -312,10 +327,11 @@ int main(int argc, char** argv)
     int n = 4096;
     int k = 4096;
 
-    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
+    int error_input     = 0;
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_batched   = true;
+    bool test_mixed     = true; // 默认测试混合精度
 
     vector<int> nbs;
 
@@ -325,15 +341,15 @@ int main(int argc, char** argv)
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) test_rocblas = atoi(argv[5]);
     if (argc >= 7) test_batched = atoi(argv[6]);
+    if (argc >= 8) test_mixed = atoi(argv[7]);
 
-    for (int i = 7; i < argc; ++i) {
+    for (int i = 8; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
     if (nbs.empty()) {
         nbs.push_back(256);
     }
 
-    // 对齐 POTRF 的 ErrorMode 解析映射
     ErrorMode error_mode = ErrorMode::None;
     if (error_input == 1)      error_mode = ErrorMode::Forward;
     else if (error_input == 2) error_mode = ErrorMode::Backward;
@@ -344,7 +360,8 @@ int main(int argc, char** argv)
         error_mode, 
         test_recursive, 
         test_rocblas, 
-        test_batched);
+        test_batched,
+        test_mixed);
 
     return 0;
 }
