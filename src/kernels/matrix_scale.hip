@@ -5,74 +5,96 @@
 extern "C" {
 
 // ======================================================
-// SPD scaling proxy: find max abs on diagonal
+// 异步清零辅助核函数
+// ======================================================
+__global__ void clear_max_kernel(unsigned int* global_max)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        *global_max = 0;
+    }
+}
+
+// ======================================================
+// SPD 缩放代理：在对角线上寻找绝对值最大值
 // ======================================================
 __global__ void max_abs_kernel(
     const float* __restrict__ A,
-    float* __restrict__ global_max,
+    unsigned int* __restrict__ global_max,
     int n,
     int lda)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < n)
     {
-        // For SPD, diagonal elements are sufficient proxies for magnitude
-        float val = fabsf(A[idx + idx * lda]);
+        float val = fabsf(A[idx + (size_t)idx * lda]);
         unsigned int iv = __float_as_uint(val);
-        atomicMax((unsigned int*)global_max, iv);
+        atomicMax(global_max, iv);
     }
 }
 
 // ======================================================
-// Scale lower triangle (Industry standard mapping)
+// 双向对角线自适应缩放（支持正向缩放和逆向还原）
 // ======================================================
 __global__ void scale_matrix_kernel(
     float* __restrict__ A,
     int rows,
     int cols,
     int lda,
-    float scale)
+    const unsigned int* __restrict__ global_max_uint_ptr,
+    bool inverse) // false: 正向缩放, true: 逆向还原
 {
-    // Industry convention: 
-    // x dimension maps to independent work units (columns)
-    // y dimension maps to fast-changing index (rows)
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int row = blockIdx.y * blockDim.y + threadIdx.y;
 
-    // Boundary check and lower triangle mask
     if (col < cols && row < rows && col <= row)
     {
+        unsigned int max_uint = *global_max_uint_ptr;
+        float max_val = __uint_as_float(max_uint);
+        float scale = 1.0f;
+
+        if (max_val > 0.0f)
+        {
+            if (inverse) {
+                // 逆向还原：1 / (50000 / max_val) = max_val / 50000
+                scale = max_val / 50000.0f;
+            } else {
+                // 正向自适应缩放
+                scale = 50000.0f / max_val;
+            }
+        }
         A[row + col * lda] *= scale;
     }
 }
 
-void launch_max_abs(
-    const float* A,
-    float* global_max,
+// ======================================================
+// 全异步统一控制 Launcher
+// ======================================================
+void launch_auto_scale(
+    float* A,
     int n,
     int lda,
+    unsigned int* d_max_val,
+    bool inverse,
     hipStream_t stream)
 {
     if (n <= 0) return;
-    constexpr int BLOCK = 256;
-    int GRID = (n + BLOCK - 1) / BLOCK;
 
-    hipLaunchKernelGGL(max_abs_kernel, dim3(GRID), dim3(BLOCK), 0, stream, A, global_max, n, lda);
-}
+    if (!inverse)
+    {
+        // 1. 正向缩放流程：异步清零 -> 异步检索最大值
+        hipLaunchKernelGGL(clear_max_kernel, dim3(1), dim3(1), 0, stream, d_max_val);
 
-void launch_scale_matrix(
-    float* A,
-    int rows,
-    int cols,
-    int lda,
-    float scale,
-    hipStream_t stream)
-{
-    // Industry Standard: x for cols, y for rows
+        constexpr int BLOCK = 256;
+        int GRID = (n + BLOCK - 1) / BLOCK;
+        hipLaunchKernelGGL(max_abs_kernel, dim3(GRID), dim3(BLOCK), 0, stream, A, d_max_val, n, lda);
+    }
+
+    // 2. 双向自适应缩放应用
     dim3 block(16, 16); 
     dim3 grid(
-        (cols + block.x - 1) / block.x,
-        (rows + block.y - 1) / block.y
+        (n + block.x - 1) / block.x,
+        (n + block.y - 1) / block.y
     );
 
     hipLaunchKernelGGL(
@@ -82,10 +104,11 @@ void launch_scale_matrix(
         0,
         stream,
         A,
-        rows,
-        cols,
+        n,
+        n,
         lda,
-        scale);
+        d_max_val,
+        inverse);
 }
 
 } // extern "C"

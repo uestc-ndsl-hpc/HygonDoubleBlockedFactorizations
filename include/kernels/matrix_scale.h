@@ -1,5 +1,4 @@
 #pragma once
-
 #include <hip/hip_runtime.h>
 
 #ifdef __cplusplus
@@ -7,24 +6,21 @@ extern "C" {
 #endif
 
 /**
- * @brief 在对角线上寻找绝对值最大元素 (针对 SPD 矩阵)
+ * @brief 全异步矩阵自动缩放接口（支持正向缩放与反向恢复）
+ * 
+ * @param A 矩阵 A 指针
+ * @param n 矩阵阶数
+ * @param lda 矩阵 A 的主维度
+ * @param d_max_val 设备端临时空间，用于存储最大绝对值
+ * @param inverse false 表示正向自适应缩放，true 表示逆向数据还原
+ * @param stream 计算流
  */
-void launch_max_abs(
-    const float* A,
-    float* global_max,
+void launch_auto_scale(
+    float* A,
     int n,
     int lda,
-    hipStream_t stream);
-
-/**
- * @brief 缩放下三角矩阵 (列主序合并访存优化版)
- */
-void launch_scale_matrix(
-    float* A,
-    int rows,
-    int cols,
-    int lda,
-    float scale,
+    unsigned int* d_max_val,
+    bool inverse,
     hipStream_t stream);
 
 #ifdef __cplusplus
