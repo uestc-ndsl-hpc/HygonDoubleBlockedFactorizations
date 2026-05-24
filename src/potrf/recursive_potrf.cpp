@@ -2,6 +2,8 @@
 
 #include "trsm/recursive_trsm.h"
 #include "syrk/batched_syrk.h"
+#include "utils/error_check.h"
+#include "kernels/add_damping.h"
 
 #include <rocsolver/rocsolver.h>
 
@@ -169,7 +171,6 @@ void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
         info);
 }
 
-
 void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
                            float* A,
                            int lda,
@@ -182,6 +183,19 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
     
     if (n <= nb)
     {
+        hipStream_t stream;
+        rocblas_get_stream(handle, &stream);
+
+        float* A_backup = nullptr;
+        size_t backup_pitch = n * sizeof(float);
+        
+        HIP_CHECK(hipMalloc(&A_backup, n * n * sizeof(float)));
+        HIP_CHECK(hipMemcpy2DAsync(
+            A_backup, backup_pitch,
+            A, lda * sizeof(float),
+            n * sizeof(float), n,
+            hipMemcpyDeviceToDevice, stream));
+
         rocsolver_spotrf(
             handle,
             rocblas_fill_lower,
@@ -190,12 +204,39 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
             lda,
             info);
 
+        int host_info = 0;
+        
+        HIP_CHECK(hipMemcpyAsync(&host_info, info, sizeof(int), hipMemcpyDeviceToHost, stream));
+        HIP_CHECK(hipStreamSynchronize(stream));
+
+        if (host_info > 0)
+        {
+            HIP_CHECK(hipMemcpy2DAsync(
+                A, lda * sizeof(float),
+                A_backup, backup_pitch,
+                n * sizeof(float), n,
+                hipMemcpyDeviceToDevice, stream));
+
+            int zero = 0;
+            HIP_CHECK(hipMemcpyAsync(info, &zero, sizeof(int), hipMemcpyHostToDevice, stream));
+
+            float lambda = 1e-4f; 
+            launch_add_damping(A, n, lda, lambda, stream);
+
+            rocsolver_spotrf(
+                handle,
+                rocblas_fill_lower,
+                n,
+                A,
+                lda,
+                info);
+
+            HIP_CHECK(hipStreamSynchronize(stream));
+        }
+
+        HIP_CHECK(hipFree(A_backup));
         return;
     }
-
-    // ==================================================
-    // Split
-    // ==================================================
 
     int n1 = n / 2;
     int n2 = n - n1;
@@ -203,10 +244,6 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
     float* A11 = A;
     float* A21 = A + n1;
     float* A22 = A + (size_t)n1 * (size_t)lda + n1;
-
-    // ==================================================
-    // 1. POTRF(A11): 递归求解左上角子矩阵
-    // ==================================================
 
     recursive_potrf_mixed(
         handle, pool,
@@ -216,19 +253,11 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
         nb,
         info);
 
-    // ==================================================
-    // 2. TRSM: 混合精度下三角求解 (Tensor Core 加速)
-    // ==================================================
-
     recursive_trsm_mixed(
         handle, pool,
         A11, lda,
         A21, lda,
         n2, n1, nb);
-
-    // ==================================================
-    // 3. SYRK: 混合精度自底向上对称更新 (Tensor Core 循环加速)
-    // ==================================================
 
     batched_syrk_bottom_up_mixed(
         handle,
@@ -240,10 +269,6 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
         n1,
         nb);
 
-    // ==================================================
-    // 4. POTRF(A22): 递归求解右下角子矩阵
-    // ==================================================
-
     recursive_potrf_mixed(
         handle, pool,
         A22,
@@ -251,6 +276,34 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
         n2,
         nb,
         info);
+}
+
+void recursive_potrf_mixed_driver(
+    rocblas_handle handle,
+    StreamPool* pool,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int* info)
+{
+    if (n <= 0) return;
+
+    if (handle == nullptr || A == nullptr || info == nullptr)
+    {
+        std::cerr << "Error: Null pointer passed to recursive_potrf_mixed_driver." << std::endl;
+        return;
+    }
+
+    hipStream_t stream;
+    rocblas_get_stream(handle, &stream);
+
+    unsigned int* d_max_val = nullptr;
+    HIP_CHECK(hipMallocAsync(&d_max_val, sizeof(unsigned int), stream));
+    launch_auto_scale(A, n, lda, d_max_val, false, stream);
+    recursive_potrf_mixed(handle, pool, A, lda, n, nb, info);
+    launch_auto_scale(A, n, lda, d_max_val, true, stream);
+    HIP_CHECK(hipFreeAsync(d_max_val, stream));
 }
 
 } // extern "C"
