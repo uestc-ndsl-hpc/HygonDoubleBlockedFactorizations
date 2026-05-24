@@ -149,8 +149,7 @@ void call_recursive_potrf(
 {
     if constexpr (std::is_same_v<T, float>) {
         if (precision_type == 2) {
-            // 调用混合精度算法
-            recursive_potrf_mixed(handle, pool, A, lda, n, nb, info);
+            recursive_potrf_mixed_driver(handle, pool, A, lda, n, nb, info);
         } else {
             // 调用标准单精度算法
             recursive_potrf(handle, pool, A, lda, n, nb, info);
@@ -172,7 +171,7 @@ void run_all_benchmarks(
     bool test_rocsolver,
     bool test_recursive,
     ErrorMode error_mode,
-    int precision_type) // 新增传入精度控制变量
+    int precision_type) 
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));

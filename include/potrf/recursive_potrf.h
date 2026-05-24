@@ -28,6 +28,14 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
                            int nb,
                            int* info);
 
+void recursive_potrf_mixed_driver(rocblas_handle handle,
+                                StreamPool* pool,
+                                float* A,
+                                int lda,
+                                int n,
+                                int nb,
+                                int* info);
+
 #ifdef __cplusplus
 }
 #endif

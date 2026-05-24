@@ -1,6 +1,5 @@
 #include <hip/hip_runtime.h>
 #include <cmath>
-#include "kernels/matrix_scale.h"
 
 extern "C" {
 
@@ -33,37 +32,38 @@ __global__ void max_abs_kernel(
     }
 }
 
-// ======================================================
-// 双向对角线自适应缩放（支持正向缩放和逆向还原）
-// ======================================================
-__global__ void scale_matrix_kernel(
+__global__ void scale_matrix_kernel_coalesced(
     float* __restrict__ A,
-    int rows,
-    int cols,
+    int n,
     int lda,
     const unsigned int* __restrict__ global_max_uint_ptr,
-    bool inverse) // false: 正向缩放, true: 逆向还原
+    bool inverse) // false: 正向缩放, true: Cholesky 逆向还原
 {
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x;
 
-    if (col < cols && row < rows && col <= row)
+    __shared__ float scale;
+    if (threadIdx.x == 0)
     {
         unsigned int max_uint = *global_max_uint_ptr;
         float max_val = __uint_as_float(max_uint);
-        float scale = 1.0f;
-
-        if (max_val > 0.0f)
-        {
+        if (max_val > 0.0f) {
             if (inverse) {
-                // 逆向还原：1 / (50000 / max_val) = max_val / 50000
-                scale = max_val / 50000.0f;
+                scale = sqrtf(max_val / 50000.0f);
             } else {
-                // 正向自适应缩放
                 scale = 50000.0f / max_val;
             }
+        } else {
+            scale = 1.0f;
         }
-        A[row + col * lda] *= scale;
+    }
+    __syncthreads();
+
+    int start_row = col;
+    int end_row = n;
+
+    for (int r = start_row + threadIdx.x; r < end_row; r += blockDim.x)
+    {
+        A[r + (size_t)col * lda] *= scale;
     }
 }
 
@@ -82,7 +82,6 @@ void launch_auto_scale(
 
     if (!inverse)
     {
-        // 1. 正向缩放流程：异步清零 -> 异步检索最大值
         hipLaunchKernelGGL(clear_max_kernel, dim3(1), dim3(1), 0, stream, d_max_val);
 
         constexpr int BLOCK = 256;
@@ -90,21 +89,14 @@ void launch_auto_scale(
         hipLaunchKernelGGL(max_abs_kernel, dim3(GRID), dim3(BLOCK), 0, stream, A, d_max_val, n, lda);
     }
 
-    // 2. 双向自适应缩放应用
-    dim3 block(16, 16); 
-    dim3 grid(
-        (n + block.x - 1) / block.x,
-        (n + block.y - 1) / block.y
-    );
-
+    constexpr int BLOCK_SIZE = 256;
     hipLaunchKernelGGL(
-        scale_matrix_kernel,
-        grid,
-        block,
+        scale_matrix_kernel_coalesced,
+        dim3(n),            // 启动 n 个线程块，每个线程块处理一列
+        dim3(BLOCK_SIZE),   // 每个线程块包含 256 个线程
         0,
         stream,
         A,
-        n,
         n,
         lda,
         d_max_val,

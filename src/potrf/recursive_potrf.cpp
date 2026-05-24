@@ -4,6 +4,7 @@
 #include "syrk/batched_syrk.h"
 #include "utils/error_check.h"
 #include "kernels/add_damping.h"
+#include "kernels/matrix_scale.h"
 
 #include <rocsolver/rocsolver.h>
 
@@ -289,20 +290,18 @@ void recursive_potrf_mixed_driver(
 {
     if (n <= 0) return;
 
-    if (handle == nullptr || A == nullptr || info == nullptr)
-    {
-        std::cerr << "Error: Null pointer passed to recursive_potrf_mixed_driver." << std::endl;
-        return;
-    }
-
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
     unsigned int* d_max_val = nullptr;
     HIP_CHECK(hipMallocAsync(&d_max_val, sizeof(unsigned int), stream));
+
     launch_auto_scale(A, n, lda, d_max_val, false, stream);
+
     recursive_potrf_mixed(handle, pool, A, lda, n, nb, info);
+
     launch_auto_scale(A, n, lda, d_max_val, true, stream);
+
     HIP_CHECK(hipFreeAsync(d_max_val, stream));
 }
 
