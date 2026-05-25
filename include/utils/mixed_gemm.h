@@ -185,40 +185,4 @@ inline void launch_mixed_gemm_test(
     HIP_CHECK(hipFreeAsync(B_half, stream));
 }
 
-inline void launch_sgemm(
-    rocblas_handle handle,
-    hipStream_t stream,
-    rocblas_operation transA,
-    rocblas_operation transB,
-    int m,
-    int n,
-    int k,
-    float alpha,
-    const float* A_f32, int lda,
-    const float* B_f32, int ldb,
-    float beta,
-    float* C_f32, int ldc)
-{
-    if (m <= 0 || n <= 0 || k <= 0) return;
-
-    int rows_A = (transA == rocblas_operation_none) ? m : k;
-    int rows_B = (transB == rocblas_operation_none) ? k : n;
-
-    ROCBLAS_CHECK(rocblas_sgemm(
-        handle,
-        transA,
-        transB,
-        m,
-        n,
-        k,
-        &alpha,
-        A,
-        lda,
-        B,
-        ldb,
-        &beta,
-        C,
-        ldc));
-}
-
 } // extern "C"
