@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <random>
 #include <iomanip>
+#include <string>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -12,7 +13,7 @@
 #include "utils/mixed_gemm.h"
 
 // ============================================================
-// GFLOPS
+// GFLOPS 计算
 // ============================================================
 double calculate_gflops(int m, int n, int k, double time_ms)
 {
@@ -51,7 +52,7 @@ void launch_sgemm(
 }
 
 // ============================================================
-// benchmark
+// Benchmark 主函数 (含精度与吞吐量双重分析)
 // ============================================================
 void run_benchmark_size(
     rocblas_handle handle,
@@ -71,37 +72,46 @@ void run_benchmark_size(
 
     std::vector<float> h_A(size_A);
     std::vector<float> h_B(size_B);
-    std::vector<float> h_C(size_C);
+    std::vector<float> h_C_init(size_C); // 专门留一份初始值用于恢复
 
     std::mt19937 gen(2026);
     std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
 
     for (auto& v : h_A) v = dist(gen);
     for (auto& v : h_B) v = dist(gen);
-    for (auto& v : h_C) v = dist(gen);
+    for (auto& v : h_C_init) v = dist(gen);
 
+    // 分配 GPU 显存
     float *d_A, *d_B, *d_C;
     HIP_CHECK(hipMalloc(&d_A, size_A * sizeof(float)));
     HIP_CHECK(hipMalloc(&d_B, size_B * sizeof(float)));
     HIP_CHECK(hipMalloc(&d_C, size_C * sizeof(float)));
 
-    HIP_CHECK(hipMemcpy(d_A, h_A.data(), size_A * sizeof(float), hipMemcpyHostToDevice));
-    HIP_CHECK(hipMemcpy(d_B, h_B.data(), size_B * sizeof(float), hipMemcpyHostToDevice));
-    HIP_CHECK(hipMemcpy(d_C, h_C.data(), size_C * sizeof(float), hipMemcpyHostToDevice));
+    // 用于保存各算子单次运行结果以进行误差比对的内存
+    std::vector<float> h_C_sgemm(size_C);
+    std::vector<float> h_C_ex(size_C);
+    std::vector<float> h_C_mix(size_C);
 
     hipEvent_t start, stop;
     HIP_CHECK(hipEventCreate(&start));
     HIP_CHECK(hipEventCreate(&stop));
 
-    const int warmup = 5;
-    const int runs   = 50;
+    const int warmup = 1;
+    const int runs   = 1;
 
     double t_sgemm = 0.0;
     double t_ex    = 0.0;
     double t_mix   = 0.0;
 
+    // 辅助闭包：恢复 C 矩阵初始状态
+    auto reset_d_C = [&]() {
+        HIP_CHECK(hipMemcpy(d_C, h_C_init.data(), size_C * sizeof(float), hipMemcpyHostToDevice));
+    };
+
+    // 辅助闭包：执行性能测量
     auto measure = [&](auto kernel, double &t)
     {
+        reset_d_C();
         for (int i = 0; i < warmup; i++)
             kernel();
 
@@ -118,57 +128,83 @@ void run_benchmark_size(
         t = ms / runs;
     };
 
-    // ========================================================
-    // SGEMM
-    // ========================================================
+    // 1. 测量 SGEMM 并捕获其最终结果作为基准
+    HIP_CHECK(hipMemcpy(d_A, h_A.data(), size_A * sizeof(float), hipMemcpyHostToDevice));
+    HIP_CHECK(hipMemcpy(d_B, h_B.data(), size_B * sizeof(float), hipMemcpyHostToDevice));
+    
     measure([&] {
-        launch_sgemm(handle, stream, M, N, K, alpha,
-                     d_A, lda, d_B, ldb, beta, d_C, ldc);
+        launch_sgemm(handle, stream, M, N, K, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc);
     }, t_sgemm);
+    HIP_CHECK(hipMemcpy(h_C_sgemm.data(), d_C, size_C * sizeof(float), hipMemcpyDeviceToHost));
 
-    // ========================================================
-    // GEMM_EX (FP16 input, FP32 compute, FP32 output)
-    // ========================================================
+    // 2. 测量 GEMM_EX (16-32-32) 并捕获其结果
     measure([&] {
-        launch_mixed_gemm_test(handle, stream,
-                               rocblas_operation_none,
-                               rocblas_operation_transpose,
-                               M, N, K,
-                               alpha,
-                               d_A, lda,
-                               d_B, ldb,
-                               beta,
-                               d_C, ldc);
+        launch_mixed_gemm_test(handle, stream, rocblas_operation_none, rocblas_operation_transpose,
+                               M, N, K, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc);
     }, t_ex);
+    HIP_CHECK(hipMemcpy(h_C_ex.data(), d_C, size_C * sizeof(float), hipMemcpyDeviceToHost));
 
-    // ========================================================
-    // MIXED (FP16 input / FP32 compute / FP16 output path)
-    // ========================================================
+    // 3. 测量 MIXED (16-32-16) 并捕获其结果
     measure([&] {
-        launch_mixed_gemm(handle, stream,
-                          rocblas_operation_none,
-                          rocblas_operation_transpose,
-                          M, N, K,
-                          alpha,
-                          d_A, lda,
-                          d_B, ldb,
-                          beta,
-                          d_C, ldc);
+        launch_mixed_gemm(handle, stream, rocblas_operation_none, rocblas_operation_transpose,
+                          M, N, K, alpha, d_A, lda, d_B, ldb, beta, d_C, ldc);
     }, t_mix);
+    HIP_CHECK(hipMemcpy(h_C_mix.data(), d_C, size_C * sizeof(float), hipMemcpyDeviceToHost));
 
     // ========================================================
-    // throughput
+    // 误差计算模块 (以 SGEMM 为标准真值)
     // ========================================================
+    auto compute_error = [](const std::vector<float>& baseline, const std::vector<float>& target, 
+                            double& max_err, double& rel_fro_err) 
+    {
+        double max_absolute_error = 0.0;
+        double frobenius_norm_diff = 0.0;
+        double frobenius_norm_base = 0.0;
+
+        for (size_t i = 0; i < baseline.size(); ++i) {
+            double diff = std::abs(static_cast<double>(baseline[i]) - static_cast<double>(target[i]));
+            if (diff > max_absolute_error) {
+                max_absolute_error = diff;
+            }
+            frobenius_norm_diff += diff * diff;
+            frobenius_norm_base += static_cast<double>(baseline[i]) * static_cast<double>(baseline[i]);
+        }
+
+        max_err = max_absolute_error;
+        rel_fro_err = (frobenius_norm_base > 0.0) ? std::sqrt(frobenius_norm_diff / frobenius_norm_base) : 0.0;
+    };
+
+    double max_err_ex = 0.0, rel_err_ex = 0.0;
+    double max_err_mix = 0.0, rel_err_mix = 0.0;
+
+    compute_error(h_C_sgemm, h_C_ex, max_err_ex, rel_err_ex);
+    compute_error(h_C_sgemm, h_C_mix, max_err_mix, rel_err_mix);
+
+    // 计算吞吐量
     double g_sgemm = calculate_gflops(M, N, K, t_sgemm);
     double g_ex    = calculate_gflops(M, N, K, t_ex);
     double g_mix   = calculate_gflops(M, N, K, t_mix);
 
-    std::cout << std::setw(14)
-              << (std::to_string(M) + "x" + std::to_string(N) + "x" + std::to_string(K))
-              << " | " << std::setw(16) << g_sgemm
-              << " | " << std::setw(18) << g_ex
-              << " | " << std::setw(18) << g_mix
-              << std::endl;
+    // ========================================================
+    // 打印双行输出：第一行吞吐量，第二行精度误差
+    // ========================================================
+    std::string size_str = std::to_string(M) + "x" + std::to_string(N) + "x" + std::to_string(K);
+    
+    // 1. 吞吐量行
+    std::cout << std::setw(15) << size_str
+              << " | " << std::setw(14) << std::fixed << std::setprecision(2) << g_sgemm
+              << " | " << std::setw(16) << g_ex
+              << " | " << std::setw(16) << g_mix << "  (GFLOPS)\n";
+
+    // 2. 相对误差与最大绝对误差行
+    std::cout << std::setw(15) << " " 
+              << " | " << std::setw(14) << "0.00 (Base)"
+              << " | " << "Rel:" << std::setw(9) << std::scientific << std::setprecision(2) << rel_err_ex 
+              << " Max:" << std::setw(9) << max_err_ex
+              << " | " << "Rel:" << std::setw(9) << rel_err_mix 
+              << " Max:" << std::setw(9) << max_err_mix << "  (Error)\n";
+              
+    std::cout << "--------------------------------------------------------------------------------------\n";
 
     HIP_CHECK(hipFree(d_A));
     HIP_CHECK(hipFree(d_B));
@@ -185,17 +221,17 @@ int main()
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
     ROCBLAS_CHECK(rocblas_set_stream(handle, stream));
 
-    std::cout << "===============================================================\n";
-    std::cout << " GEMM THROUGHPUT BENCHMARK (GFLOPS)\n";
-    std::cout << "===============================================================\n";
+    std::cout << "======================================================================================\n";
+    std::cout << "             GEMM MIXED PRECISION PERFORMANCE & ACCURACY BENCHMARK                    \n";
+    std::cout << "======================================================================================\n";
 
-    std::cout << std::setw(14) << "M x N x K"
-              << " | " << std::setw(16) << "SGEMM (FP32)"
-              << " | " << std::setw(18) << "GEMM_EX (16-32-32)"
-              << " | " << std::setw(18) << "MIXED (16-32-16)"
+    std::cout << std::setw(15) << "M x N x K"
+              << " | " << std::setw(14) << "SGEMM (FP32)"
+              << " | " << std::setw(25) << "GEMM_EX (16-32-32)"
+              << " | " << std::setw(25) << "MIXED (16-32-16)"
               << std::endl;
 
-    std::cout << "---------------------------------------------------------------\n";
+    std::cout << "--------------------------------------------------------------------------------------\n";
 
     std::vector<std::vector<int>> sizes = {
         {256,256,256},
@@ -210,8 +246,9 @@ int main()
     for (auto &s : sizes)
         run_benchmark_size(handle, stream, s[0], s[1], s[2]);
 
-    std::cout << "===============================================================\n";
+    std::cout << "======================================================================================\n";
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
     HIP_CHECK(hipStreamDestroy(stream));
+    return 0;
 }
