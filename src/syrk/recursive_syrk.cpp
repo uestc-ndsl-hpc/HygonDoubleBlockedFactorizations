@@ -1,25 +1,7 @@
 #include "syrk/recursive_syrk.h"
+#include "utils/error_check.h"
 #include <hip/hip_runtime.h>
 #include <iostream>
-
-// 错误检查宏
-#define HIP_CHECK(cmd) \
-    do { \
-        hipError_t error = (cmd); \
-        if (error != hipSuccess) { \
-            std::cerr << "HIP Error: " << hipGetErrorString(error) << std::endl; \
-            exit(EXIT_FAILURE); \
-        } \
-    } while (0)
-
-#define ROCBLAS_CHECK(cmd) \
-    do { \
-        rocblas_status status = (cmd); \
-        if (status != rocblas_status_success) { \
-            std::cerr << "rocBLAS Error: " << status << std::endl; \
-            exit(EXIT_FAILURE); \
-        } \
-    } while (0)
 
 // ======================================================
 // 内部纯递归函数 

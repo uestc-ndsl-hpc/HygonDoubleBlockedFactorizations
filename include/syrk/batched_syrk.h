@@ -2,6 +2,7 @@
 #define BATCHED_SYRK_H
 
 #include <rocblas/rocblas.h>
+#include "utils/stream_pool.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,7 +21,7 @@ extern "C" {
  * @param k 矩阵 A 的列数 (秩 k)
  * @param nb 基础分块大小 (Tile size)
  */
-void batched_syrk_bottom_up(rocblas_handle handle,
+void batched_syrk_bottom_up(rocblas_handle handle, StreamPool* pool,
                             float* A, int lda,
                             float* C, int ldc,
                             int n, int k, int nb);
@@ -28,7 +29,7 @@ void batched_syrk_bottom_up(rocblas_handle handle,
 /**
  * @brief 自底向上的 Batched SYRK 算法 (双精度)
  */
-void batched_syrk_bottom_up_double(rocblas_handle handle,
+void batched_syrk_bottom_up_double(rocblas_handle handle, StreamPool* pool,
                                    double* A, int lda,
                                    double* C, int ldc,
                                    int n, int k, int nb);
@@ -36,7 +37,7 @@ void batched_syrk_bottom_up_double(rocblas_handle handle,
 /**
  * @brief 自底向上的 Batched SYRK 算法 (混合精度 / 半精度 Tensor Core 加速)
  */
-void batched_syrk_bottom_up_mixed(rocblas_handle handle,
+void batched_syrk_bottom_up_mixed(rocblas_handle handle, StreamPool* pool,
                                   float* A, int lda,
                                   float* C, int ldc,
                                   int n, int k, int nb);
