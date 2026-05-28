@@ -144,11 +144,18 @@ void call_recursive_potrf(
     int n,
     int lda,
     int nb,
-    int* info)
+    int* info,
+    int precision_type)
 {
     if constexpr (std::is_same_v<T, float>) {
-        recursive_potrf(handle, pool, A, lda, n, nb, info);
+        if (precision_type == 2) {
+            recursive_potrf_mixed_driver(handle, pool, A, lda, n, nb, info);
+        } else {
+            // 调用标准单精度算法
+            recursive_potrf(handle, pool, A, lda, n, nb, info);
+        }
     } else {
+        // 调用双精度算法
         recursive_potrf_double(handle, pool, A, lda, n, nb, info);
     }
 }
@@ -163,7 +170,8 @@ void run_all_benchmarks(
     const vector<int>& nbs,
     bool test_rocsolver,
     bool test_recursive,
-    ErrorMode error_mode)
+    ErrorMode error_mode,
+    int precision_type) 
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
@@ -171,7 +179,7 @@ void run_all_benchmarks(
     hipStream_t main_stream;
     ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
-    StreamPool pool(4);
+    StreamPool pool(16);
 
     size_t num_elements = (size_t)n * (size_t)n;
     size_t bytes = num_elements * sizeof(T);
@@ -266,8 +274,9 @@ void run_all_benchmarks(
     cout << ">>> Running Benchmarks...\n";
 
     if (test_rocsolver) {
+        string rocsolver_name = (precision_type == 2) ? "rocSOLVER (FP32)" : "rocSOLVER";
         baseline_time = runner.execute(
-            "rocSOLVER", 
+            rocsolver_name, 
             "N/A", 
             reset_a,
             [&]() {
@@ -281,12 +290,13 @@ void run_all_benchmarks(
 
     if (test_recursive) {
         for (int nb : nbs) {
+            string method_name = (precision_type == 2) ? "Mixed-Recursive" : "Recursive";
             runner.execute(
-                "Recursive", 
+                method_name, 
                 to_string(nb), 
                 reset_a,
                 [&]() {
-                    call_recursive_potrf<T>(handle, &pool, d_A, n, n, nb, d_info);
+                    call_recursive_potrf<T>(handle, &pool, d_A, n, n, nb, d_info, precision_type);
                 },
                 verify_potrf, 
                 calc_gflops_potrf);
@@ -317,7 +327,7 @@ int main(int argc, char** argv)
     bool test_rocsolver = true;
     bool test_recursive = true;
     int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
-    int precision_type  = 0; // 0=float, 1=double
+    int precision_type  = 0; // 0=float, 1=double, 2=mixed
 
     vector<int> nbs;
 
@@ -347,7 +357,18 @@ int main(int argc, char** argv)
             nbs,
             test_rocsolver,
             test_recursive,
-            error_mode);
+            error_mode,
+            precision_type);
+    }
+    else if (precision_type == 2) {
+        cout << "Running benchmark in MIXED (FP16/FP32 Tensor Cores) precision\n";
+        run_all_benchmarks<float>(
+            n,
+            nbs,
+            test_rocsolver,
+            test_recursive,
+            error_mode,
+            precision_type);
     }
     else {
         cout << "Running benchmark in FLOAT precision\n";
@@ -356,7 +377,8 @@ int main(int argc, char** argv)
             nbs,
             test_rocsolver,
             test_recursive,
-            error_mode);
+            error_mode,
+            precision_type);
     }
 
     return 0;

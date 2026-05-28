@@ -19,6 +19,7 @@
 #include "utils/device_buffer.h"
 #include "utils/benchmark_runner.h"
 #include "utils/matrix_generator.h"
+#include "utils/stream_pool.h"
 
 using namespace std;
 
@@ -74,7 +75,6 @@ double verify_backward_error_sampled(
     std::uniform_int_distribution<int> dist_col(0, n - 1);
 
     for (int s = 0; s < sample_count; ) {
-        
         int row = dist_row(gen);
         int col = dist_col(gen);
 
@@ -85,7 +85,6 @@ double verify_backward_error_sampled(
         double reconstructed = 0.0;
 
         for (int l = 0; l < k; ++l) {
-            // A is col-major. Compute dot product of A's rows.
             reconstructed +=
                 static_cast<double>(A[l * lda + row]) *
                 static_cast<double>(A[l * lda + col]);
@@ -96,7 +95,6 @@ double verify_backward_error_sampled(
             static_cast<double>(beta) * static_cast<double>(C_original[col * ldc + row]);
 
         double res = static_cast<double>(C_result[col * ldc + row]);
-
         double diff = res - reconstructed;
 
         diff_norm += diff * diff;
@@ -117,13 +115,19 @@ void run_all_benchmarks(
     ErrorMode error_mode,
     bool test_recursive,
     bool test_rocblas,
-    bool test_batched)
+    bool test_batched,
+    bool test_mixed)
 {
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
     hipStream_t main_stream;
     ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
+
+    // 【新增】实例化流连接池 (StreamPool)
+    // 这里的参数代表创建的硬件独立流数量，通常设为 8 或 16 可以带来良好的层内并发掩盖
+    int num_streams = 16; 
+    StreamPool pool(num_streams);
 
     int lda = n, ldc = n;
     size_t bytes_A = static_cast<size_t>(n) * k * sizeof(float);
@@ -154,7 +158,6 @@ void run_all_benchmarks(
     bool has_f32_ref  = false;
 
     if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
-        
         cout << ">>> Generating Golden Reference for Error Verification...\n";
         bool do_fp64_verify = (std::max(n, k) <= 16384);
         
@@ -165,7 +168,6 @@ void run_all_benchmarks(
             for (size_t i = 0; i < h_A_f.size(); ++i) h_A_d[i] = h_A_f[i];
             for (size_t i = 0; i < h_C_f.size(); ++i) h_C_d[i] = h_C_f[i];
 
-            // 使用 RAII 显存容器接管双精度临时分配
             DeviceBuffer<double> d_A_d(n * k);
             DeviceBuffer<double> d_C_d(n * n);
             
@@ -180,12 +182,9 @@ void run_all_benchmarks(
                     handle, rocblas_fill_lower, rocblas_operation_none,
                     n, k, &alpha_d, (double*)d_A_d, lda, &beta_d, (double*)d_C_d, ldc));
 
-            // 明确将 d_C_d 转为 (double*) 原生指针，防止隐式转换失效或 Segfault
             HIP_CHECK(hipMemcpy(h_C_gold.data(), (double*)d_C_d, static_cast<size_t>(n) * n * sizeof(double), hipMemcpyDeviceToHost));
-            
             has_fp64_ref = true;
         } else {
-            // Use standard rocBLAS FP32 as reference if N is too large for FP64
             HIP_CHECK(hipMemcpy((float*)d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
             
             ROCBLAS_CHECK(
@@ -206,28 +205,24 @@ void run_all_benchmarks(
 
     BenchmarkRunner runner(main_stream, baseline_time, results);
 
-    // [闭包 1]：重置 C 矩阵
     auto reset_c = [&]() {
         HIP_CHECK(
             hipMemcpy(
-                (float*)d_C_f, // 【规范化】增加原生指针转换
+                (float*)d_C_f, 
                 h_C_f.data(), 
                 bytes_C, 
                 hipMemcpyHostToDevice));
     };
 
-    // [闭包 2]：计算 GFLOPS
     auto calc_gflops_syrk = [&](double ms) {
         return calculate_gflops(n, k, ms);
     };
 
-    // [闭包 3]：验证误差
     auto verify_syrk = [&](double& f_err, double& b_err) {
         if (error_mode != ErrorMode::None) {
             vector<float> h_C_out(n * n);
-            HIP_CHECK(hipMemcpy(h_C_out.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost)); // 【规范化】
+            HIP_CHECK(hipMemcpy(h_C_out.data(), (float*)d_C_f, bytes_C, hipMemcpyDeviceToHost));
 
-            // 前向误差
             if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 if (has_fp64_ref) {
                     f_err = verify_relative_error_lower(h_C_gold, h_C_out, n);
@@ -236,7 +231,6 @@ void run_all_benchmarks(
                 }
             }
 
-            // 后向误差
             if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
                 b_err = verify_backward_error_sampled(
                     h_A_f, h_C_f, h_C_out, n, k, lda, ldc, alpha_f, beta_f, 4096);
@@ -251,7 +245,7 @@ void run_all_benchmarks(
 
     if (test_rocblas) {
         baseline_time = runner.execute(
-            "rocBLAS", 
+            "rocBLAS (FP32)", 
             "N/A", 
             reset_c,
             [&]() {
@@ -269,10 +263,11 @@ void run_all_benchmarks(
     if (test_recursive) {
         for (int nb : nbs) {
             runner.execute(
-                "Recursive", 
+                "Recursive (FP32)", 
                 to_string(nb), 
                 reset_c,
                 [&]() {
+                    // 如果该递归接口后续也需要流池，可参考 Batched 做同样更改
                     recursive_syrk_parallel(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
                 },
                 verify_syrk, 
@@ -283,11 +278,27 @@ void run_all_benchmarks(
     if (test_batched) {
         for (int nb : nbs) {
             runner.execute(
-                "Batched", 
+                "Batched (FP32)", 
                 to_string(nb), 
                 reset_c,
                 [&]() {
-                    batched_syrk_bottom_up(handle, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
+                    // 【已修改】传入外部实例化的流连接池指针 &pool
+                    batched_syrk_bottom_up(handle, &pool, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
+                },
+                verify_syrk, 
+                calc_gflops_syrk);
+        }
+    }
+
+    if (test_mixed) {
+        for (int nb : nbs) {
+            runner.execute(
+                "Batched (Mixed)", 
+                to_string(nb), 
+                reset_c,
+                [&]() {
+                    // 【已修改】传入外部实例化的流连接池指针 &pool
+                    batched_syrk_bottom_up_mixed(handle, &pool, (float*)d_A_f, lda, (float*)d_C_f, ldc, n, k, nb);
                 },
                 verify_syrk, 
                 calc_gflops_syrk);
@@ -312,10 +323,11 @@ int main(int argc, char** argv)
     int n = 4096;
     int k = 4096;
 
-    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
+    int error_input     = 0;
     bool test_recursive = true;
     bool test_rocblas   = true;
     bool test_batched   = true;
+    bool test_mixed     = true;
 
     vector<int> nbs;
 
@@ -325,15 +337,15 @@ int main(int argc, char** argv)
     if (argc >= 5) test_recursive = atoi(argv[4]);
     if (argc >= 6) test_rocblas = atoi(argv[5]);
     if (argc >= 7) test_batched = atoi(argv[6]);
+    if (argc >= 8) test_mixed = atoi(argv[7]);
 
-    for (int i = 7; i < argc; ++i) {
+    for (int i = 8; i < argc; ++i) {
         nbs.push_back(atoi(argv[i]));
     }
     if (nbs.empty()) {
         nbs.push_back(256);
     }
 
-    // 对齐 POTRF 的 ErrorMode 解析映射
     ErrorMode error_mode = ErrorMode::None;
     if (error_input == 1)      error_mode = ErrorMode::Forward;
     else if (error_input == 2) error_mode = ErrorMode::Backward;
@@ -344,7 +356,8 @@ int main(int argc, char** argv)
         error_mode, 
         test_recursive, 
         test_rocblas, 
-        test_batched);
+        test_batched,
+        test_mixed);
 
     return 0;
 }

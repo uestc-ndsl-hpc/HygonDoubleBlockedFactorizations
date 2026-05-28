@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=syrk_fp32
+#SBATCH --job-name=syrk_fp16
 #SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --gres=dcu:1
@@ -11,7 +11,7 @@
 # ROCm + OpenMP Environment
 # =========================================================
 
-export ROCM_PATH=/public/software/compiler/rocm/dtk-23.10
+export ROCM_PATH=/public/software/compiler/rocm/dtk-24.04
 
 module load compiler/openmp/50
 
@@ -24,10 +24,10 @@ export PATH=$ROCM_PATH/bin:$PATH
 
 ROOT_DIR=$(pwd)
 
-BUILD_DIR=${ROOT_DIR}/build
+BUILD_DIR=${ROOT_DIR}/build_half
 EXEC=${BUILD_DIR}/benchmark_syrk
 
-RESULT_DIR=${ROOT_DIR}/results/fp32/syrk
+RESULT_DIR=${ROOT_DIR}/results/fp16/syrk
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -55,9 +55,11 @@ ERROR_MODE=3
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_BATCHED=1
+PRECISION="fp16"
 
 echo "==================================================" | tee ${SUMMARY_LOG}
 echo "SYRK Benchmark Start" | tee -a ${SUMMARY_LOG}
+echo "Precision          : ${PRECISION}" | tee -a ${SUMMARY_LOG}
 echo "Enable Error Check : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
 echo "Test rocBLAS       : ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
@@ -100,6 +102,7 @@ do
         ${TEST_RECURSIVE} \
         ${TEST_ROCBLAS} \
         ${TEST_BATCHED} \
+        ${PRECISION} \
         ${NBS[@]} \
         2>&1 | tee ${OUT_FILE}
 

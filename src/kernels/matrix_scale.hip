@@ -1,91 +1,106 @@
 #include <hip/hip_runtime.h>
 #include <cmath>
-#include "kernels/matrix_scale.h"
 
 extern "C" {
 
 // ======================================================
-// SPD scaling proxy: find max abs on diagonal
+// 异步清零辅助核函数
+// ======================================================
+__global__ void clear_max_kernel(unsigned int* global_max)
+{
+    if (threadIdx.x == 0 && blockIdx.x == 0)
+    {
+        *global_max = 0;
+    }
+}
+
+// ======================================================
+// SPD 缩放代理：在对角线上寻找绝对值最大值
 // ======================================================
 __global__ void max_abs_kernel(
     const float* __restrict__ A,
-    float* __restrict__ global_max,
+    unsigned int* __restrict__ global_max,
     int n,
     int lda)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < n)
     {
-        // For SPD, diagonal elements are sufficient proxies for magnitude
-        float val = fabsf(A[idx + idx * lda]);
+        float val = fabsf(A[idx + (size_t)idx * lda]);
         unsigned int iv = __float_as_uint(val);
-        atomicMax((unsigned int*)global_max, iv);
+        atomicMax(global_max, iv);
     }
 }
 
-// ======================================================
-// Scale lower triangle (Industry standard mapping)
-// ======================================================
-__global__ void scale_matrix_kernel(
+__global__ void scale_matrix_kernel_coalesced(
     float* __restrict__ A,
-    int rows,
-    int cols,
-    int lda,
-    float scale)
-{
-    // Industry convention: 
-    // x dimension maps to independent work units (columns)
-    // y dimension maps to fast-changing index (rows)
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-
-    // Boundary check and lower triangle mask
-    if (col < cols && row < rows && col <= row)
-    {
-        A[row + col * lda] *= scale;
-    }
-}
-
-void launch_max_abs(
-    const float* A,
-    float* global_max,
     int n,
     int lda,
+    const unsigned int* __restrict__ global_max_uint_ptr,
+    bool inverse) // false: 正向缩放, true: Cholesky 逆向还原
+{
+    int col = blockIdx.x;
+
+    __shared__ float scale;
+    if (threadIdx.x == 0)
+    {
+        unsigned int max_uint = *global_max_uint_ptr;
+        float max_val = __uint_as_float(max_uint);
+        if (max_val > 0.0f) {
+            if (inverse) {
+                scale = sqrtf(max_val / SCALE_TARGET);
+            } else {
+                scale = SCALE_TARGET / max_val;
+            }
+        } else {
+            scale = 1.0f;
+        }
+    }
+    __syncthreads();
+
+    int start_row = col;
+    int end_row = n;
+
+    for (int r = start_row + threadIdx.x; r < end_row; r += blockDim.x)
+    {
+        A[r + (size_t)col * lda] *= scale;
+    }
+}
+
+// ======================================================
+// 全异步统一控制 Launcher
+// ======================================================
+void launch_auto_scale(
+    float* A,
+    int n,
+    int lda,
+    unsigned int* d_max_val,
+    bool inverse,
     hipStream_t stream)
 {
     if (n <= 0) return;
-    constexpr int BLOCK = 256;
-    int GRID = (n + BLOCK - 1) / BLOCK;
 
-    hipLaunchKernelGGL(max_abs_kernel, dim3(GRID), dim3(BLOCK), 0, stream, A, global_max, n, lda);
-}
+    if (!inverse)
+    {
+        hipLaunchKernelGGL(clear_max_kernel, dim3(1), dim3(1), 0, stream, d_max_val);
 
-void launch_scale_matrix(
-    float* A,
-    int rows,
-    int cols,
-    int lda,
-    float scale,
-    hipStream_t stream)
-{
-    // Industry Standard: x for cols, y for rows
-    dim3 block(16, 16); 
-    dim3 grid(
-        (cols + block.x - 1) / block.x,
-        (rows + block.y - 1) / block.y
-    );
+        constexpr int BLOCK = 256;
+        int GRID = (n + BLOCK - 1) / BLOCK;
+        hipLaunchKernelGGL(max_abs_kernel, dim3(GRID), dim3(BLOCK), 0, stream, A, d_max_val, n, lda);
+    }
 
+    constexpr int BLOCK_SIZE = 256;
     hipLaunchKernelGGL(
-        scale_matrix_kernel,
-        grid,
-        block,
+        scale_matrix_kernel_coalesced,
+        dim3(n),            // 启动 n 个线程块，每个线程块处理一列
+        dim3(BLOCK_SIZE),   // 每个线程块包含 256 个线程
         0,
         stream,
         A,
-        rows,
-        cols,
+        n,
         lda,
-        scale);
+        d_max_val,
+        inverse);
 }
 
 } // extern "C"
