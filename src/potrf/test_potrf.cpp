@@ -179,7 +179,7 @@ void run_all_benchmarks(
     hipStream_t main_stream;
     ROCBLAS_CHECK(rocblas_get_stream(handle, &main_stream));
 
-    StreamPool pool(4);
+    StreamPool pool(16);
 
     size_t num_elements = (size_t)n * (size_t)n;
     size_t bytes = num_elements * sizeof(T);
