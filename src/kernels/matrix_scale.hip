@@ -48,9 +48,9 @@ __global__ void scale_matrix_kernel_coalesced(
         float max_val = __uint_as_float(max_uint);
         if (max_val > 0.0f) {
             if (inverse) {
-                scale = sqrtf(max_val / 50000.0f);
+                scale = sqrtf(max_val / SCALE_TARGET);
             } else {
-                scale = 50000.0f / max_val;
+                scale = SCALE_TARGET / max_val;
             }
         } else {
             scale = 1.0f;

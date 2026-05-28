@@ -2,15 +2,14 @@
 #include <hip/hip_fp16.h>
 
 #include "kernels/fp16_convert.h"
+#include "utils/error_check.h"
 
 extern "C" {
 
 // ======================================================
-// FP32 -> FP16
-// Column-major matrix conversion
+// FP32 -> FP16 (合并内存访问)
 // ======================================================
-
-__global__ void fp32_to_fp16_kernel(
+__global__ void fp32_to_fp16_kernel_coalesced(
     const float* __restrict__ src,
     __half* __restrict__ dst,
     int rows,
@@ -18,23 +17,22 @@ __global__ void fp32_to_fp16_kernel(
     int ld_src,
     int ld_dst)
 {
+    int col = blockIdx.y;
     int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (row < rows && col < cols)
+    if (col < cols && row < rows)
     {
-        int src_idx = row + col * ld_src;
-        int dst_idx = row + col * ld_dst;
+        size_t src_idx = row + (size_t)col * ld_src;
+        size_t dst_idx = row + (size_t)col * ld_dst;
 
         dst[dst_idx] = __float2half(src[src_idx]);
     }
 }
 
 // ======================================================
-// FP16 -> FP32
-// Column-major matrix conversion
+// FP16 -> FP32 (合并内存访问)
 // ======================================================
-__global__ void fp16_to_fp32_kernel(
+__global__ void fp16_to_fp32_kernel_coalesced(
     const __half* __restrict__ src,
     float* __restrict__ dst,
     int rows,
@@ -42,20 +40,20 @@ __global__ void fp16_to_fp32_kernel(
     int ld_src,
     int ld_dst)
 {
+    int col = blockIdx.y;
     int row = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (row < rows && col < cols)
+    if (col < cols && row < rows)
     {
-        int src_idx = row + col * ld_src;
-        int dst_idx = row + col * ld_dst;
+        size_t src_idx = row + (size_t)col * ld_src;
+        size_t dst_idx = row + (size_t)col * ld_dst;
 
         dst[dst_idx] = __half2float(src[src_idx]);
     }
 }
 
 // ======================================================
-// launcher
+// Launchers
 // ======================================================
 
 void launch_fp32_to_fp16(
@@ -67,13 +65,17 @@ void launch_fp32_to_fp16(
     int ld_dst,
     hipStream_t stream)
 {
-    dim3 block(16, 16);
+    if (rows <= 0 || cols <= 0) return;
+
+    constexpr int BLOCK_SIZE = 256;
+    dim3 block(BLOCK_SIZE, 1);
+
     dim3 grid(
-        (rows + block.x - 1) / block.x,
-        (cols + block.y - 1) / block.y);
+        (rows + BLOCK_SIZE - 1) / BLOCK_SIZE,
+        cols);
 
     hipLaunchKernelGGL(
-        fp32_to_fp16_kernel,
+        fp32_to_fp16_kernel_coalesced,
         grid,
         block,
         0,
@@ -95,19 +97,27 @@ void launch_fp16_to_fp32(
     int ld_dst,
     hipStream_t stream)
 {
-    dim3 block(16, 16);
+    if (rows <= 0 || cols <= 0) return;
+
+    constexpr int BLOCK_SIZE = 256;
+    dim3 block(BLOCK_SIZE, 1);
+    
     dim3 grid(
-        (rows + block.x - 1) / block.x,
-        (cols + block.y - 1) / block.y);
+        (rows + BLOCK_SIZE - 1) / BLOCK_SIZE,
+        cols);
 
     hipLaunchKernelGGL(
-        fp16_to_fp32_kernel,
+        fp16_to_fp32_kernel_coalesced,
         grid,
         block,
         0,
         stream,
-        src, dst, rows, cols, ld_src, ld_dst);
+        src, 
+        dst, 
+        rows, 
+        cols, 
+        ld_src, 
+        ld_dst);
 }
-
 
 } // extern "C"

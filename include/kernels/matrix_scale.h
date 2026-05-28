@@ -1,6 +1,8 @@
 #pragma once
 #include <hip/hip_runtime.h>
 
+static constexpr float SCALE_TARGET = 65504.0f;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
