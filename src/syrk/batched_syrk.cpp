@@ -4,7 +4,7 @@
 #include <rocblas/rocblas.h>
 
 #include <algorithm>
-#include "utils/mixed_gemm.h"
+#include "gemm/mixed_gemm.h"
 #include "utils/error_check.h"
 
 extern "C" {
