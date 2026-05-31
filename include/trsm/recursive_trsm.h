@@ -1,7 +1,7 @@
 #pragma once
 
 #include <rocblas/rocblas.h>
-#include "utils/stream_pool.h"
+#include "utils/memory/stream_pool.h"
 
 #ifdef __cplusplus
 extern "C" {

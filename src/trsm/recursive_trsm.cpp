@@ -1,6 +1,6 @@
 #include "trsm/recursive_trsm.h"
 #include "utils/common/error_check.h"
-#include "utils/stream_pool.h"
+#include "utils/memory/stream_pool.h"
 #include "kernels/fp16_convert.h"
 #include "gemm/mixed_gemm.h"
 #include <hip/hip_runtime.h>

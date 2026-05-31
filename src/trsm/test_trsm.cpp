@@ -13,7 +13,7 @@
 #include "trsm/iterative_trsm.h"
 
 #include "utils/common/error_check.h"
-#include "utils/stream_pool.h"
+#include "utils/memory/stream_pool.h"
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_printer.h"
 #include "utils/benchmark/gpu_timer.h"

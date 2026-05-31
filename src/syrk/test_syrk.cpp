@@ -19,7 +19,7 @@
 #include "utils/device_buffer.h"
 #include "utils/benchmark/benchmark_runner.h"
 #include "utils/matrix/matrix_generator.h"
-#include "utils/stream_pool.h"
+#include "utils/memory/stream_pool.h"
 
 using namespace std;
 
