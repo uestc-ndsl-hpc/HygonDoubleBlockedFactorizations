@@ -2,7 +2,7 @@
 
 #include <vector>
 #include <string>
-#include "utils/benchmark_result.h"
+#include "utils/benchmark/benchmark_result.h"
 
 enum class ErrorMode
 {

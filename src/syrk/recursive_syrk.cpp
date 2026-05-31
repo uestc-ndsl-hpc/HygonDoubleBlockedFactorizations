@@ -1,5 +1,5 @@
 #include "syrk/recursive_syrk.h"
-#include "utils/error_check.h"
+#include "utils/common/error_check.h"
 #include <hip/hip_runtime.h>
 #include <iostream>
 

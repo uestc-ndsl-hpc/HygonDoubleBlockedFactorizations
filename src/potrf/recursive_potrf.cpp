@@ -2,7 +2,7 @@
 
 #include "trsm/recursive_trsm.h"
 #include "syrk/batched_syrk.h"
-#include "utils/error_check.h"
+#include "utils/common/error_check.h"
 #include "kernels/add_damping.h"
 #include "kernels/matrix_scale.h"
 

@@ -12,7 +12,7 @@
 #include "trsm/recursive_trsm.h"
 #include "trsm/iterative_trsm.h"
 
-#include "utils/error_check.h"
+#include "utils/common/error_check.h"
 #include "utils/stream_pool.h"
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_printer.h"

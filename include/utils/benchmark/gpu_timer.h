@@ -1,7 +1,7 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include "utils/error_check.h"
+#include "utils/common/error_check.h"
 
 // ============================================================================
 // GPU Timer
