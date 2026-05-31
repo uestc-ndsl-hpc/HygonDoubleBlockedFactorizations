@@ -17,7 +17,7 @@
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_printer.h"
 #include "utils/benchmark/gpu_timer.h"
-#include "utils/device_buffer.h"
+#include "utils/memory/device_buffer.h"
 #include "utils/benchmark/benchmark_runner.h"
 
 #include "utils/matrix/matrix_generator.h"

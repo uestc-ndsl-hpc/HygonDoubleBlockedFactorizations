@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <hip/hip_runtime.h>
-#include "error_check.h"
+#include "utils/common/error_check.h"
 
 template <typename T>
 class DeviceBuffer {
