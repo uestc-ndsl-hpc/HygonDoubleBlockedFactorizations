@@ -1,25 +1,12 @@
-#pragma once
-
+#include "utils/benchmark/benchmark_printer.h"
 #include <iostream>
 #include <iomanip>
-#include <vector>
-#include <string>
 
-#include "utils/benchmark_result.h"
-
-enum class ErrorMode
-{
-    None     = 0,
-    Forward  = 1,
-    Backward = 2,
-    Both     = 3
-};
-
-inline void print_benchmark_results(
+void print_benchmark_results(
     const std::string& title,
     const std::vector<BenchmarkResult>& results,
     ErrorMode error_mode,
-    int line_width = 110)
+    int line_width)
 {
     using namespace std;
 

@@ -14,7 +14,7 @@
 
 #include "utils/error_check.h"
 #include "utils/benchmark_result.h"
-#include "utils/benchmark_printer.h"
+#include "utils/benchmark/benchmark_printer.h"
 #include "utils/gpu_timer.h"
 #include "utils/device_buffer.h"
 #include "utils/benchmark_runner.h"
