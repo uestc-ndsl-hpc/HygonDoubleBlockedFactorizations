@@ -1,5 +1,5 @@
-#include "utils/stream_pool.h"
-#include "utils/error_check.h"
+#include "utils/memory/stream_pool.h"
+#include "utils/common/error_check.h"
 
 StreamPool::StreamPool(int num_streams) {
     contexts.resize(num_streams);

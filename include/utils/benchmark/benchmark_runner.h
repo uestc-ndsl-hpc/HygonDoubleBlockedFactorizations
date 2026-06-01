@@ -2,8 +2,8 @@
 #include <hip/hip_runtime.h>
 #include <string>
 #include <vector>
-#include "utils/benchmark_result.h"
-#include "utils/gpu_timer.h"
+#include "utils/benchmark/benchmark_result.h"
+#include "utils/benchmark/gpu_timer.h"
 
 class BenchmarkRunner {
 public:

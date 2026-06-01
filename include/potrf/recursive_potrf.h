@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/stream_pool.h"
+#include "utils/memory/stream_pool.h"
 #include <rocblas/rocblas.h>
 
 #ifdef __cplusplus

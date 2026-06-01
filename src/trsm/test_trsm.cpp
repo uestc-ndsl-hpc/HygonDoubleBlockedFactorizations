@@ -12,15 +12,15 @@
 #include "trsm/recursive_trsm.h"
 #include "trsm/iterative_trsm.h"
 
-#include "utils/error_check.h"
-#include "utils/stream_pool.h"
-#include "utils/benchmark_result.h"
-#include "utils/benchmark_printer.h"
-#include "utils/gpu_timer.h"
-#include "utils/device_buffer.h"
-#include "utils/benchmark_runner.h"
+#include "utils/common/error_check.h"
+#include "utils/memory/stream_pool.h"
+#include "utils/benchmark/benchmark_result.h"
+#include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/gpu_timer.h"
+#include "utils/memory/device_buffer.h"
+#include "utils/benchmark/benchmark_runner.h"
 
-#include "utils/matrix_generator.h" 
+#include "utils/matrix/matrix_generator.h"
 
 using namespace std;
 

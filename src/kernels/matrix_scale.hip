@@ -1,5 +1,6 @@
 #include <hip/hip_runtime.h>
 #include <cmath>
+#include "kernels/matrix_scale.h"
 
 extern "C" {
 
