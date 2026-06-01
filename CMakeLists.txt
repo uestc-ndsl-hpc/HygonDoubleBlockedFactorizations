@@ -1,5 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
-
+cmake_minimum_required(VERSION 3.21)
 # 1. 声明 CXX 和 HIP 语言支持
 project(TRSM_Benchmark LANGUAGES CXX HIP)
 
@@ -31,19 +30,35 @@ add_compile_definitions(
 )
 
 # =========================================================
-# Define Kernel Sources (核心：添加缺失的 HIP 物理源文件)
+# Define Kernel Sources
 # =========================================================
 
 set(KERNEL_SOURCES
     src/kernels/add_damping.hip
     src/kernels/fp16_convert.hip
     src/kernels/matrix_scale.hip
-    # 如果后续需要使用带自适应缩放的转换，可以取消注释下面这行：
-    # src/kernels/fp16_convert_with_matrix_scale.hip
 )
 
-# 显式指示 CMake 将这些文件作为 HIP 代码编译（兼容旧版 CMake）
+# 显式指示 CMake 将这些文件作为 HIP 代码编译
 set_source_files_properties(${KERNEL_SOURCES} PROPERTIES LANGUAGE HIP)
+
+# =========================================================
+# Define Common Utility Sources
+# =========================================================
+
+set(COMMON_UTIL_SOURCES
+    src/utils/memory/stream_pool.cpp             # 移动后的新流管理器路径
+    src/utils/benchmark/benchmark_printer.cpp   # 拆分后的结果打印实现
+    src/utils/matrix/matrix_generator.cpp       # 拆分并显式实例化后的矩阵生成实现
+)
+
+# =========================================================
+# Define GEMM Sources (补齐混合精度 GEMM 源文件)
+# =========================================================
+
+set(GEMM_SOURCES
+    src/gemm/mixed_gemm.cpp                      # 拆分后的混合精度 GEMM 实现
+)
 
 # =========================================================
 # TRSM Sources
@@ -52,9 +67,10 @@ set_source_files_properties(${KERNEL_SOURCES} PROPERTIES LANGUAGE HIP)
 set(TRSM_SOURCES
     src/trsm/iterative_trsm.cpp
     src/trsm/recursive_trsm.cpp
-    src/utils/stream_pool.cpp
     src/trsm/test_trsm.cpp
-    ${KERNEL_SOURCES} # 将核函数打包编译进可执行文件
+    ${COMMON_UTIL_SOURCES} # 打包引入重构后的公共工具源文件（替代旧 stream_pool.cpp）
+    ${GEMM_SOURCES}        # 引入混合精度 GEMM 实现
+    ${KERNEL_SOURCES}
 )
 
 # =========================================================
@@ -64,9 +80,10 @@ set(TRSM_SOURCES
 set(SYRK_SOURCES
     src/syrk/batched_syrk.cpp
     src/syrk/recursive_syrk.cpp
-    src/utils/stream_pool.cpp
     src/syrk/test_syrk.cpp
-    ${KERNEL_SOURCES} # 将核函数打包编译进可执行文件
+    ${COMMON_UTIL_SOURCES} # 打包引入重构后的公共工具源文件（替代旧 stream_pool.cpp）
+    ${GEMM_SOURCES}        # 引入混合精度 GEMM 实现
+    ${KERNEL_SOURCES}
 )
 
 # =========================================================
@@ -77,9 +94,10 @@ set(POTRF_SOURCES
     src/potrf/recursive_potrf.cpp
     src/potrf/test_potrf.cpp
     src/trsm/recursive_trsm.cpp
-    src/utils/stream_pool.cpp
     src/syrk/batched_syrk.cpp
-    ${KERNEL_SOURCES} # 将核函数打包编译进可执行文件
+    ${GEMM_SOURCES}        # 引入混合精度 GEMM 实现 (分块计算需要调用 mixed_gemm)
+    ${COMMON_UTIL_SOURCES} # 打包引入重构后的公共工具源文件（替代旧 stream_pool.cpp）
+    ${KERNEL_SOURCES}
 )
 
 # =========================================================
