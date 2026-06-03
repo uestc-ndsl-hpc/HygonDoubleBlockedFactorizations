@@ -6,9 +6,12 @@
 #include "utils/common/error_check.h"
 #include "kernels/add_damping.h"
 
-// ----------------------------------------------------------------------------
-// 1. generate_spd_matrix
-// ----------------------------------------------------------------------------
+unsigned int get_random_seed()
+{
+    std::random_device rd;
+    return rd();
+}
+
 template <typename T>
 void generate_spd_matrix(rocblas_handle handle, T* d_A, int n, int lda, unsigned int seed)
 {
@@ -62,11 +65,10 @@ void generate_spd_matrix(rocblas_handle handle, T* d_A, int n, int lda, unsigned
     }
     
     HIP_CHECK(hipStreamSynchronize(stream));
+
+    return;
 }
 
-// ----------------------------------------------------------------------------
-// 2. generate_syrk_matrices
-// ----------------------------------------------------------------------------
 template <typename T>
 void generate_syrk_matrices(rocblas_handle handle, T* d_A, T* d_C, int n, int k, int lda, int ldc, unsigned int seed)
 {
@@ -84,11 +86,10 @@ void generate_syrk_matrices(rocblas_handle handle, T* d_A, T* d_C, int n, int k,
     }
 
     HIP_CHECK(hipMemcpy(d_A, h_A.data(), bytes_A, hipMemcpyHostToDevice));
+
+    return;
 }
 
-// ----------------------------------------------------------------------------
-// 3. generate_stable_lower_triangular
-// ----------------------------------------------------------------------------
 template <typename T>
 void generate_stable_lower_triangular(T* A, int dim, int lda, unsigned int seed)
 {
@@ -108,11 +109,10 @@ void generate_stable_lower_triangular(T* A, int dim, int lda, unsigned int seed)
             }
         }
     }
+
+    return;
 }
 
-// ----------------------------------------------------------------------------
-// 4. generate_random_matrix
-// ----------------------------------------------------------------------------
 template <typename T>
 void generate_random_matrix(T* B, int n, int m, int ldb, unsigned int seed)
 {
@@ -124,11 +124,10 @@ void generate_random_matrix(T* B, int n, int m, int ldb, unsigned int seed)
             B[j * ldb + i] = static_cast<T>(dist(gen));
         }
     }
+
+    return;
 }
 
-// ============================================================================
-// Explicit Template Instantiation
-// ============================================================================
 template void generate_spd_matrix<float>(rocblas_handle, float*, int, int, unsigned int);
 template void generate_spd_matrix<double>(rocblas_handle, double*, int, int, unsigned int);
 
