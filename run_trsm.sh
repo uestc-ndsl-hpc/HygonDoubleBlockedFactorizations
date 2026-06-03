@@ -1,41 +1,21 @@
 #!/bin/bash
-#SBATCH --job-name=trsm_fp16
-#SBATCH --partition=normal
-#SBATCH --nodes=1
-#SBATCH --gres=dcu:1
-#SBATCH --ntasks-per-node=1
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-
-# =========================================================
-# ROCm + OpenMP Environment
-# =========================================================
 
 export ROCM_PATH=/public/software/compiler/rocm/dtk-23.10
-
-module load compiler/openmp/50
-
+export HIP_VISIBLE_DEVICES=0
 export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:$LD_LIBRARY_PATH
 export PATH=$ROCM_PATH/bin:$PATH
 
-# =========================================================
-# Project Paths
-# =========================================================
+export ROCBLAS_LAYER=0
+export TENSILE_DB=0
 
 ROOT_DIR=$(pwd)
-
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_trsm
-
-# 修改结果目录为 fp16
-RESULT_DIR=${ROOT_DIR}/results/trsm_fp16_fp32
+RESULT_DIR=${ROOT_DIR}/results/fp32/trsm
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
-
-# =========================================================
-# Benchmark Config
-# =========================================================
+rm -f ${SUMMARY_LOG}
 
 NS=(
     8192
@@ -48,41 +28,43 @@ NS=(
     65536
 )
 
-# M=N
 USE_EQUAL_M=1
-
-# 多个 NB
 NBS="256 512 1024 2048"
 
-# 功能开关（调整为：仅进行半精度 + 误差测试）
 ERROR_MODE=2
 TEST_RECURSIVE=1
-TEST_ROCBLAS=0
-TEST_ITERATIVE=0
-TEST_HALF=1
+TEST_ROCBLAS=1
+TEST_ITERATIVE=1
+TEST_HALF=0
 
-echo "==================================================" | tee ${SUMMARY_LOG}
-echo "TRSM FP16 Benchmark Start" | tee -a ${SUMMARY_LOG}
-echo "Error Mode         : ${ERROR_MODE} (3=Forward+Backward)" | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
+echo "TRSM Pure FP32 Benchmark Start (Direct Parameter Run)" | tee -a ${SUMMARY_LOG}
+echo "Error Mode         : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
 echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Iter (FP32)   : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP16)    : ${TEST_HALF}" | tee -a ${SUMMARY_LOG}
-echo "NBs                : ${NBS}" | tee -a ${SUMMARY_LOG}
+echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
-
-# =========================================================
-# Dependency Check
-# =========================================================
 
 echo "" | tee -a ${SUMMARY_LOG}
 echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
 
-ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+if [ -f "${EXEC}" ]; then
+    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+else
+    echo "Error: Executable ${EXEC} not found! Please build first." | tee -a ${SUMMARY_LOG}
+    exit 1
+fi
 
-# =========================================================
-# Run Benchmark
-# =========================================================
+NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
+if [ "$NUMA_NODE" != "-1" ] && [ ! -z "$NUMA_NODE" ]; then
+    LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
+    echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a ${SUMMARY_LOG}
+else
+    LAUNCH_PREFIX=""
+    echo "Warning: No direct NUMA affinity mapping found. Running without numactl." | tee -a ${SUMMARY_LOG}
+fi
 
 for N in "${NS[@]}"
 do
@@ -93,15 +75,12 @@ do
     fi
 
     echo "" | tee -a ${SUMMARY_LOG}
-    echo ">>> Running Benchmark: N=${N}, M=${M}" | tee -a ${SUMMARY_LOG}
+    echo ">>> Running TRSM Benchmark: N=${N}, M=${M}" | tee -a ${SUMMARY_LOG}
 
     OUT_FILE=${RESULT_DIR}/trsm_N${N}_M${M}.log
+    echo "Output Detail -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
 
-    echo "Output -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
-
-    # 按照新 main 函数的 argv 映射顺序传参：
-    # 1:N, 2:M, 3:ERROR_MODE, 4:TEST_RECURSIVE, 5:TEST_ROCBLAS, 6:TEST_ITERATIVE, 7:TEST_HALF, 8+:NBS
-    ${EXEC} \
+    ${LAUNCH_PREFIX} ${EXEC} \
         ${N} \
         ${M} \
         ${ERROR_MODE} \
@@ -112,9 +91,11 @@ do
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 
+    cat ${OUT_FILE} >> ${SUMMARY_LOG}
 done
 
 echo "" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
-echo "TRSM FP16 Benchmark Finished" | tee -a ${SUMMARY_LOG}
+echo "TRSM Pure FP32 Benchmark Finished"                   | tee -a ${SUMMARY_LOG}
+echo "Final Summary written to: ${SUMMARY_LOG}"            | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
