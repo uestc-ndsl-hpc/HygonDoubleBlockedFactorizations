@@ -2,8 +2,11 @@
 #include <hip/hip_runtime.h>
 #include <string>
 #include <vector>
+#include <numeric>
+#include <algorithm>
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/gpu_timer.h"
+#include "utils/common/error_check.h"
 
 class BenchmarkRunner {
 public:
@@ -19,40 +22,57 @@ public:
         VerifyFunc&& verify,
         GflopsFunc&& calc_gflops)
     {
-        // 1. Warmup
-        reset();
+        const int warmup_iters = 3;
+        for (int i = 0; i < warmup_iters; ++i) {
+            reset();
+            HIP_CHECK(hipDeviceSynchronize());
+            target();
+        }
         HIP_CHECK(hipDeviceSynchronize());
-        target();
 
-        // 2. Real Run
-        reset();
-        HIP_CHECK(hipDeviceSynchronize());
+        const int profile_iters = 10;
+        std::vector<float> iter_times(profile_iters);
 
         GPUTimer timer;
-        float ms = timer.measure(stream_, [&]() {
-            target();
-        });
+        for (int i = 0; i < profile_iters; ++i) {
+            reset();
+            HIP_CHECK(hipDeviceSynchronize());
+            
+            iter_times[i] = timer.measure(stream_, [&]() {
+                target();
+            });
+        }
+        HIP_CHECK(hipDeviceSynchronize());
+
+        float total_ms = std::accumulate(iter_times.begin(), iter_times.end(), 0.0f);
+        double ms = static_cast<double>(total_ms / profile_iters);
 
         double gflops = calc_gflops(ms);
         double forward_error = -1.0;
         double backward_error = -1.0;
 
-        // 3. Optional Verify (在测时循环外执行)
+        reset();
+        HIP_CHECK(hipDeviceSynchronize());
+        target();
+        HIP_CHECK(hipDeviceSynchronize());
         verify(forward_error, backward_error);
 
+        if (name.find("rocBLAS") != std::string::npos) {
+            baseline_time_ = ms;
+        }
         double speedup = (baseline_time_ > 0.0) ? (baseline_time_ / ms) : 0.0;
 
         results_.push_back({
             name,
             nb_str,
-            static_cast<double>(ms),
+            ms,
             gflops,
             speedup,
             forward_error,
             backward_error
         });
 
-        return static_cast<double>(ms);
+        return ms;
     }
 
 private:

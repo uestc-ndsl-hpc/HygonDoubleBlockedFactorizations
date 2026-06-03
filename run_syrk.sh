@@ -1,40 +1,22 @@
 #!/bin/bash
-#SBATCH --job-name=syrk_fp16
-#SBATCH --partition=normal
-#SBATCH --nodes=1
-#SBATCH --gres=dcu:1
-#SBATCH --ntasks-per-node=1
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-
-# =========================================================
-# ROCm + OpenMP Environment
-# =========================================================
 
 export ROCM_PATH=/public/software/compiler/rocm/dtk-24.04
-
-module load compiler/openmp/50
-
+export HIP_VISIBLE_DEVICES=0
 export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:$LD_LIBRARY_PATH
 export PATH=$ROCM_PATH/bin:$PATH
 
-# =========================================================
-# Project Paths
-# =========================================================
+export ROCBLAS_LAYER=0
+export TENSILE_DB=0
 
 ROOT_DIR=$(pwd)
-
-BUILD_DIR=${ROOT_DIR}/build_half
+BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_syrk
 
-RESULT_DIR=${ROOT_DIR}/results/fp16/syrk
+RESULT_DIR=${ROOT_DIR}/results/fp32/syrk
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
-
-# =========================================================
-# Benchmark Config
-# =========================================================
+rm -f ${SUMMARY_LOG}
 
 NS=(
     8192
@@ -48,37 +30,42 @@ NS=(
 )
 
 USE_EQUAL_K=1
+NBS="256 512 1024 2048"
 
-NBS=(256 512 1024 2048)
-
-ERROR_MODE=3
+ERROR_MODE=2
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_BATCHED=1
-PRECISION="fp16"
+TEST_MIXED=0
 
-echo "==================================================" | tee ${SUMMARY_LOG}
-echo "SYRK Benchmark Start" | tee -a ${SUMMARY_LOG}
-echo "Precision          : ${PRECISION}" | tee -a ${SUMMARY_LOG}
-echo "Enable Error Check : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
-echo "Test rocBLAS       : ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
-echo "Test Recursive     : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
-echo "Test Batched       : ${TEST_BATCHED}" | tee -a ${SUMMARY_LOG}
-echo "NBs                : ${NBS[*]}" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
-
-# =========================================================
-# Dependency Check
-# =========================================================
+echo "SYRK Pure FP32 Benchmark Start (Direct Interactive Run)" | tee -a ${SUMMARY_LOG}
+echo "Error Mode         : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
+echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
+echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
+echo "Test Batch (FP32)  : ${TEST_BATCHED}" | tee -a ${SUMMARY_LOG}
+echo "Test Batch (Mixed) : ${TEST_MIXED}" | tee -a ${SUMMARY_LOG}
+echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
 
 echo "" | tee -a ${SUMMARY_LOG}
 echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
 
-ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+if [ -f "${EXEC}" ]; then
+    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+else
+    echo "Error: Executable ${EXEC} not found! Please build first." | tee -a ${SUMMARY_LOG}
+    exit 1
+fi
 
-# =========================================================
-# Run Benchmark
-# =========================================================
+NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
+if [ "$NUMA_NODE" != "-1" ] && [ ! -z "$NUMA_NODE" ]; then
+    LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
+    echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a ${SUMMARY_LOG}
+else
+    LAUNCH_PREFIX=""
+    echo "Warning: No direct NUMA affinity mapping found. Running without numactl." | tee -a ${SUMMARY_LOG}
+fi
 
 for N in "${NS[@]}"
 do
@@ -89,26 +76,27 @@ do
     fi
 
     echo "" | tee -a ${SUMMARY_LOG}
-    echo ">>> Running Benchmark: N=${N}, K=${K}" | tee -a ${SUMMARY_LOG}
+    echo ">>> Running SYRK Benchmark: N=${N}, K=${K}" | tee -a ${SUMMARY_LOG}
 
     OUT_FILE=${RESULT_DIR}/syrk_N${N}_K${K}.log
+    echo "Output Detail -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
 
-    echo "Output -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
-
-    ${EXEC} \
+    ${LAUNCH_PREFIX} ${EXEC} \
         ${N} \
         ${K} \
         ${ERROR_MODE} \
         ${TEST_RECURSIVE} \
         ${TEST_ROCBLAS} \
         ${TEST_BATCHED} \
-        ${PRECISION} \
-        ${NBS[@]} \
+        ${TEST_MIXED} \
+        ${NBS} \
         2>&1 | tee ${OUT_FILE}
 
+    cat ${OUT_FILE} >> ${SUMMARY_LOG}
 done
 
 echo "" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
-echo "SYRK Benchmark Finished" | tee -a ${SUMMARY_LOG}
+echo "SYRK Pure FP32 Benchmark Finished"                   | tee -a ${SUMMARY_LOG}
+echo "Final Summary written to: ${SUMMARY_LOG}"            | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}

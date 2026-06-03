@@ -83,7 +83,9 @@ double verify_backward_error_sampled(
     double diff_norm_sq = 0.0;
     double a_norm_sq    = 0.0;
 
-    std::mt19937 gen(2026);
+    // Use non-deterministic random device seed
+    std::random_device rd;
+    std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist_row(0, n - 1);
     std::uniform_int_distribution<int> dist_col(0, n - 1);
 
@@ -151,11 +153,9 @@ void call_recursive_potrf(
         if (precision_type == 2) {
             recursive_potrf_mixed_driver(handle, pool, A, lda, n, nb, info);
         } else {
-            // 调用标准单精度算法
             recursive_potrf(handle, pool, A, lda, n, nb, info);
         }
     } else {
-        // 调用双精度算法
         recursive_potrf_double(handle, pool, A, lda, n, nb, info);
     }
 }
@@ -187,7 +187,7 @@ void run_all_benchmarks(
     DeviceBuffer<int> d_info(1);
     DeviceBuffer<T> d_A_orig(num_elements);
 
-    generate_spd_matrix<T>(handle, d_A_orig, n, n, 2026);
+    generate_spd_matrix<T>(handle, d_A_orig, n, n);
     vector<T> h_A(num_elements);
     HIP_CHECK(hipMemcpy(h_A.data(), d_A_orig, bytes, hipMemcpyDeviceToHost));
 
@@ -247,7 +247,6 @@ void run_all_benchmarks(
             vector<T> h_res(num_elements);
             HIP_CHECK(hipMemcpy(h_res.data(), d_A, bytes, hipMemcpyDeviceToHost));
 
-            // 计算前向误差
             if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both) {
                 f_err = verify_potrf_against_double_ref(
                     h_res.data(),
@@ -256,7 +255,6 @@ void run_all_benchmarks(
                     n);
             }
 
-            // 计算后向误差
             if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
                 b_err = verify_backward_error_sampled(
                     h_res.data(),
@@ -303,9 +301,9 @@ void run_all_benchmarks(
         }
     }
 
-    // ============================================================
-    // Print
-    // ============================================================
+    // ========================================================================
+    // Output Summary
+    // ========================================================================
     print_benchmark_results(
         "POTRF Benchmark Summary (N = " + std::to_string(n) + ")",
         results,
@@ -326,7 +324,7 @@ int main(int argc, char** argv)
 
     bool test_rocsolver = true;
     bool test_recursive = true;
-    int error_input     = 0; // 对应传参：0=None, 1=Forward, 2=Backward, 3=Both
+    int error_input     = 0; // 0=None, 1=Forward, 2=Backward, 3=Both
     int precision_type  = 0; // 0=float, 1=double, 2=mixed
 
     vector<int> nbs;
@@ -353,32 +351,17 @@ int main(int argc, char** argv)
     if (precision_type == 1) {
         cout << "Running benchmark in DOUBLE precision\n";
         run_all_benchmarks<double>(
-            n,
-            nbs,
-            test_rocsolver,
-            test_recursive,
-            error_mode,
-            precision_type);
+            n, nbs, test_rocsolver, test_recursive, error_mode, precision_type);
     }
     else if (precision_type == 2) {
         cout << "Running benchmark in MIXED (FP16/FP32 Tensor Cores) precision\n";
         run_all_benchmarks<float>(
-            n,
-            nbs,
-            test_rocsolver,
-            test_recursive,
-            error_mode,
-            precision_type);
+            n, nbs, test_rocsolver, test_recursive, error_mode, precision_type);
     }
     else {
         cout << "Running benchmark in FLOAT precision\n";
         run_all_benchmarks<float>(
-            n,
-            nbs,
-            test_rocsolver,
-            test_recursive,
-            error_mode,
-            precision_type);
+            n, nbs, test_rocsolver, test_recursive, error_mode, precision_type);
     }
 
     return 0;
