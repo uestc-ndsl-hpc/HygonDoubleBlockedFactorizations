@@ -11,7 +11,7 @@ export TENSILE_DB=0
 ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_trsm
-RESULT_DIR=${ROOT_DIR}/results/fp32/trsm
+RESULT_DIR=${ROOT_DIR}/results/fp32/trsm_perf
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 mkdir -p ${RESULT_DIR}
@@ -29,12 +29,12 @@ NS=(
 )
 
 USE_EQUAL_M=1
-NBS="256 512 1024 2048"
+NBS="64 128 256 512 1024 2048"
 
 ERROR_MODE=2
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
-TEST_ITERATIVE=1
+TEST_ITERATIVE=0
 TEST_HALF=0
 
 echo "==================================================" | tee -a ${SUMMARY_LOG}

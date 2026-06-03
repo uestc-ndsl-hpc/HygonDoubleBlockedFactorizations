@@ -6,11 +6,13 @@
 struct RocblasStreamContext {
     hipStream_t stream;
     rocblas_handle handle;
+    hipEvent_t event;
 };
 
 class StreamPool {
 public:
     std::vector<RocblasStreamContext> contexts;
+    hipEvent_t main_event;
 
     StreamPool(int num_streams = 4);
     ~StreamPool();

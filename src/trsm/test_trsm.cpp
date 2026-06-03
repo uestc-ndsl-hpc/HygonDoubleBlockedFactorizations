@@ -108,7 +108,7 @@ void run_all_benchmarks(
     int lda = m; 
     int ldb = n; 
 
-    StreamPool pool(4);
+    StreamPool pool(3);
 
     // Host Memory Setup
     vector<float> h_A(m * m);

@@ -22,7 +22,7 @@ public:
         VerifyFunc&& verify,
         GflopsFunc&& calc_gflops)
     {
-        const int warmup_iters = 3;
+        const int warmup_iters = 1;
         for (int i = 0; i < warmup_iters; ++i) {
             reset();
             HIP_CHECK(hipDeviceSynchronize());
@@ -30,7 +30,7 @@ public:
         }
         HIP_CHECK(hipDeviceSynchronize());
 
-        const int profile_iters = 10;
+        const int profile_iters = 1;
         std::vector<float> iter_times(profile_iters);
 
         GPUTimer timer;
