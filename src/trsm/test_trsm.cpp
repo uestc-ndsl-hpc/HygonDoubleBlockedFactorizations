@@ -63,12 +63,12 @@ double verify_relative_error(const vector<T_REF>& ref, const vector<float>& res,
 }
 
 // ============================================================================
-// BACKWARD ERROR (Sampled) - Fixed Math Logic & Size_t Overflow
+// BACKWARD ERROR (Sampled)
 // ============================================================================
 double verify_backward_error_sampled(
-    const vector<float>& A,          // 系数三角矩阵 (M x M)
-    const vector<float>& B_original, // 原始右端项 (N x M)
-    const vector<float>& X_result,   // 计算出的解矩阵 (N x M)
+    const vector<float>& A,          // 系数三角矩阵 L (M x M)
+    const vector<float>& B_original, // 原始右端项 B (N x M)
+    const vector<float>& X_result,   // 计算出的解矩阵 X (N x M)
     int n,                           // B, X 的行数
     int m,                           // B, X 的列数，同时也是 A 的阶数
     int lda,                         // A 的主维步长
@@ -90,15 +90,14 @@ double verify_backward_error_sampled(
     size_t ldb_s = static_cast<size_t>(ldb);
 
     for (int s = 0; s < sample_count; ++s) {
-        int row = dist_row(gen); // 目标解的行索引 (0 ~ n-1)
-        int col = dist_col(gen); // 目标解的列索引 (0 ~ m-1)
+        int row = dist_row(gen); // 目标元素的行索引 (0 ~ n-1)
+        int col = dist_col(gen); // 目标元素的列索引 (0 ~ m-1)
         double reconstructed = 0.0;
 
-        for (int k = 0; k <= row; ++k) {
-            size_t idx_A = static_cast<size_t>(k) * lda_s + static_cast<size_t>(row);
-            size_t idx_X = static_cast<size_t>(col) * ldb_s + static_cast<size_t>(k);
-
-            reconstructed += static_cast<double>(A[idx_A]) * static_cast<double>(X_result[idx_X]);
+        for (int k = 0; k <= col; ++k) {
+            size_t idx_X = static_cast<size_t>(k) * ldb_s + static_cast<size_t>(row);
+            size_t idx_A = static_cast<size_t>(k) * lda_s + static_cast<size_t>(col);
+            reconstructed += static_cast<double>(X_result[idx_X]) * static_cast<double>(A[idx_A]);
         }
 
         size_t idx_B = static_cast<size_t>(col) * ldb_s + static_cast<size_t>(row);
