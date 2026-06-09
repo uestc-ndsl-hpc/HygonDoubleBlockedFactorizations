@@ -17,6 +17,8 @@ static inline void sync_stream_pool(StreamPool* pool) {
     for (int i = 0; i < pool->size(); ++i) {
         HIP_CHECK(hipStreamSynchronize(pool->get(i).stream));
     }
+
+    return;
 }
 
 // ============================================================================
@@ -58,7 +60,8 @@ void batched_syrk_bottom_up(
         int offset = b * nb;
         auto& ctx = pool->get(b); // 轮询分发至硬件流
 
-        // 论文思路：直接调用单次 GEMM 更新对角线小块，不进行内部的 K 轴切分
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
+
         rocblas_sgemm(
             ctx.handle,
             rocblas_operation_none,
@@ -68,15 +71,16 @@ void batched_syrk_bottom_up(
             A + offset, lda,
             A + offset, lda,
             &beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
 
-    // 独立处理对角线尾部残差块
     int tail = n % nb;
     if (tail > 0)
     {
         int offset = num_blocks * nb;
         auto& ctx = pool->get(num_blocks);
+
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
 
         rocblas_sgemm(
             ctx.handle,
@@ -87,10 +91,8 @@ void batched_syrk_bottom_up(
             A + offset, lda,
             A + offset, lda,
             &beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
-
-    // 论文要求：第一阶段对角线元素必须全部落盘，才能开始计算依赖它们的非对角线矩形
     sync_stream_pool(pool);
 
     // -------------------------------------------------------------------------
@@ -107,6 +109,8 @@ void batched_syrk_bottom_up(
             int offset = b * 2 * S;
             auto& ctx = pool->get(b); 
 
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
             rocblas_sgemm(
                 ctx.handle,
                 rocblas_operation_none,
@@ -116,7 +120,7 @@ void batched_syrk_bottom_up(
                 A + offset + S, lda,
                 A + offset, lda,
                 &beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
         // 处理该层残差块的合并
@@ -128,6 +132,8 @@ void batched_syrk_bottom_up(
             int tail_N = S;
             auto& ctx = pool->get(batch_count);
 
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
             rocblas_sgemm(
                 ctx.handle,
                 rocblas_operation_none,
@@ -137,12 +143,13 @@ void batched_syrk_bottom_up(
                 A + offset + S, lda,
                 A + offset, lda,
                 &beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
-        // 论文的核心依赖约束：每一层循环是一个时间步，上层的计算依赖下层的结果，必须强制同步
         sync_stream_pool(pool);
     }
+
+    return;
 }
 
 
@@ -181,6 +188,8 @@ void batched_syrk_bottom_up_double(
         int offset = b * nb;
         auto& ctx = pool->get(b);
 
+        double* C_block = C + offset + (size_t)offset * (size_t)ldc;
+
         rocblas_dgemm(
             ctx.handle,
             rocblas_operation_none,
@@ -190,7 +199,7 @@ void batched_syrk_bottom_up_double(
             A + offset, lda,
             A + offset, lda,
             &beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
 
     int tail = n % nb;
@@ -198,6 +207,8 @@ void batched_syrk_bottom_up_double(
     {
         int offset = num_blocks * nb;
         auto& ctx = pool->get(num_blocks);
+
+        double* C_block = C + offset + (size_t)offset * (size_t)ldc;
 
         rocblas_dgemm(
             ctx.handle,
@@ -208,7 +219,7 @@ void batched_syrk_bottom_up_double(
             A + offset, lda,
             A + offset, lda,
             &beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
 
     sync_stream_pool(pool);
@@ -224,6 +235,8 @@ void batched_syrk_bottom_up_double(
             int offset = b * 2 * S;
             auto& ctx = pool->get(b);
 
+            double* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
             rocblas_dgemm(
                 ctx.handle,
                 rocblas_operation_none,
@@ -233,7 +246,7 @@ void batched_syrk_bottom_up_double(
                 A + offset + S, lda,
                 A + offset, lda,
                 &beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
         int rem = n % (2 * S);
@@ -244,6 +257,8 @@ void batched_syrk_bottom_up_double(
             int tail_N = S;
             auto& ctx = pool->get(batch_count);
 
+            double* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
             rocblas_dgemm(
                 ctx.handle,
                 rocblas_operation_none,
@@ -253,11 +268,13 @@ void batched_syrk_bottom_up_double(
                 A + offset + S, lda,
                 A + offset, lda,
                 &beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
         sync_stream_pool(pool);
     }
+
+    return;
 }
 
 
@@ -296,6 +313,8 @@ void batched_syrk_bottom_up_mixed(
         int offset = b * nb;
         auto& ctx = pool->get(b); 
 
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
+
         launch_mixed_gemm(
             ctx.handle,
             ctx.stream,
@@ -306,7 +325,7 @@ void batched_syrk_bottom_up_mixed(
             A + offset, lda,
             A + offset, lda,
             beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
 
     int tail = n % nb;
@@ -314,6 +333,8 @@ void batched_syrk_bottom_up_mixed(
     {
         int offset = num_blocks * nb;
         auto& ctx = pool->get(num_blocks);
+
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
 
         launch_mixed_gemm(
             ctx.handle,
@@ -325,7 +346,7 @@ void batched_syrk_bottom_up_mixed(
             A + offset, lda,
             A + offset, lda,
             beta,
-            C + offset + offset * ldc, ldc);
+            C_block, ldc);
     }
 
     sync_stream_pool(pool);
@@ -341,6 +362,8 @@ void batched_syrk_bottom_up_mixed(
             int offset = b * 2 * S;
             auto& ctx = pool->get(b);
 
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
             launch_mixed_gemm(
                 ctx.handle,
                 ctx.stream,
@@ -351,7 +374,7 @@ void batched_syrk_bottom_up_mixed(
                 A + offset + S, lda,
                 A + offset, lda,
                 beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
         int rem = n % (2 * S);
@@ -361,6 +384,8 @@ void batched_syrk_bottom_up_mixed(
             int tail_M = rem - S;
             int tail_N = S;
             auto& ctx = pool->get(batch_count);
+
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
 
             launch_mixed_gemm(
                 ctx.handle,
@@ -372,11 +397,13 @@ void batched_syrk_bottom_up_mixed(
                 A + offset + S, lda,
                 A + offset, lda,
                 beta,
-                C + (offset + S) + offset * ldc, ldc);
+                C_block, ldc);
         }
 
         sync_stream_pool(pool);
     }
+
+    return;
 }
 
 } // extern "C"

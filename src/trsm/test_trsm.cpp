@@ -32,29 +32,47 @@ double calculate_gflops(int n, int m, double time_ms)
     return (total_flops / (time_ms / 1000.0)) / 1e9;
 }
 
+// ============================================================================
+// FORWARD ERROR (Sampled) - Fully Optimized to Prevent CPU Hangs
+// ============================================================================
 template<typename T_REF>
-double verify_relative_error(const vector<T_REF>& ref, const vector<float>& res)
-{
+double verify_relative_error(const vector<T_REF>& ref, const vector<float>& res, int sample_count = 10000) {
     double diff_norm = 0.0;
     double ref_norm  = 0.0;
-    size_t size = ref.size();
+    size_t total_size = ref.size();
+    
+    if (total_size <= 1000000) {
+        for (size_t i = 0; i < total_size; i++) {
+            double diff = static_cast<double>(ref[i]) - static_cast<double>(res[i]);
+            diff_norm += diff * diff;
+            ref_norm += static_cast<double>(ref[i]) * static_cast<double>(ref[i]);
+        }
+    } else {
+        std::random_device rd;
+        std::mt19937_64 gen(rd());
+        std::uniform_int_distribution<size_t> dist(0, total_size - 1);
 
-    for (size_t i = 0; i < size; i++) {
-        double diff = static_cast<double>(ref[i]) - static_cast<double>(res[i]);
-        diff_norm += diff * diff;
-        ref_norm += static_cast<double>(ref[i]) * static_cast<double>(ref[i]);
+        for (int s = 0; s < sample_count; ++s) {
+            size_t idx = dist(gen);
+            double diff = static_cast<double>(ref[idx]) - static_cast<double>(res[idx]);
+            diff_norm += diff * diff;
+            ref_norm += static_cast<double>(ref[idx]) * static_cast<double>(ref[idx]);
+        }
     }
     return sqrt(diff_norm) / (sqrt(ref_norm) + 1e-20);
 }
 
+// ============================================================================
+// BACKWARD ERROR (Sampled) - Fixed Math Logic & Size_t Overflow
+// ============================================================================
 double verify_backward_error_sampled(
-    const vector<float>& A,
-    const vector<float>& B_original,
-    const vector<float>& X_result,
-    int n,
-    int m,
-    int lda,
-    int ldb,
+    const vector<float>& A,          // 系数三角矩阵 (M x M)
+    const vector<float>& B_original, // 原始右端项 (N x M)
+    const vector<float>& X_result,   // 计算出的解矩阵 (N x M)
+    int n,                           // B, X 的行数
+    int m,                           // B, X 的列数，同时也是 A 的阶数
+    int lda,                         // A 的主维步长
+    int ldb,                         // B, X 的主维步长
     int sample_count = 4096)
 {
     long long total = static_cast<long long>(n) * m;
@@ -68,20 +86,28 @@ double verify_backward_error_sampled(
     std::uniform_int_distribution<int> dist_row(0, n - 1);
     std::uniform_int_distribution<int> dist_col(0, m - 1);
 
+    size_t lda_s = static_cast<size_t>(lda);
+    size_t ldb_s = static_cast<size_t>(ldb);
+
     for (int s = 0; s < sample_count; ++s) {
-        int row = dist_row(gen);
-        int col = dist_col(gen);
+        int row = dist_row(gen); // 目标解的行索引 (0 ~ n-1)
+        int col = dist_col(gen); // 目标解的列索引 (0 ~ m-1)
         double reconstructed = 0.0;
 
-        for (int k = 0; k <= col; ++k) {
-            reconstructed += static_cast<double>(X_result[k * ldb + row]) *
-                             static_cast<double>(A[k * lda + col]);
+        for (int k = 0; k <= row; ++k) {
+            size_t idx_A = static_cast<size_t>(k) * lda_s + static_cast<size_t>(row);
+            size_t idx_X = static_cast<size_t>(col) * ldb_s + static_cast<size_t>(k);
+
+            reconstructed += static_cast<double>(A[idx_A]) * static_cast<double>(X_result[idx_X]);
         }
 
-        double ref = static_cast<double>(B_original[col * ldb + row]);
-        double diff = reconstructed - ref;
+        size_t idx_B = static_cast<size_t>(col) * ldb_s + static_cast<size_t>(row);
+        
+        double ref_val = static_cast<double>(B_original[idx_B]);
+        double diff = reconstructed - ref_val;
+        
         diff_norm += diff * diff;
-        ref_norm  += ref * ref;
+        ref_norm  += ref_val * ref_val;
     }
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }

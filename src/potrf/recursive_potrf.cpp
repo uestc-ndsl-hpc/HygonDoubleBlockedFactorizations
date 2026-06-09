@@ -49,10 +49,8 @@ void recursive_potrf(rocblas_handle handle, StreamPool* pool,
     int n2 = n - n1;
 
     float* A11 = A;
-
     float* A21 = A + n1;
-
-     float* A22 = A + (size_t)n1 * (size_t)lda + n1;
+    float* A22 = A + (size_t)n1 * (size_t)lda + n1;
 
     // ==================================================
     // POTRF(A11)
@@ -101,6 +99,8 @@ void recursive_potrf(rocblas_handle handle, StreamPool* pool,
         n2,
         nb,
         info);
+    
+    return;
 }
 
 // ======================================================
@@ -134,9 +134,7 @@ void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
     int n2 = n - n1;
 
     double* A11 = A;
-
     double* A21 = A + n1;
-
     double* A22 = A + (size_t)n1 * (size_t)lda + n1;
 
     recursive_potrf_double(
@@ -170,6 +168,8 @@ void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
         n2,
         nb,
         info);
+    
+    return;
 }
 
 void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
@@ -194,17 +194,21 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
 
         float* A_backup = d_leaf_backup;
         bool use_temp_backup = (d_leaf_backup == nullptr);
-        size_t backup_pitch = n * sizeof(float);
+
+        size_t backup_pitch = (size_t)n * sizeof(float);
+        size_t lda_pitch    = (size_t)lda * sizeof(float);
+        size_t width_bytes  = (size_t)n * sizeof(float);
 
         if (use_temp_backup) {
-            HIP_CHECK(hipMallocAsync(&A_backup, n * n * sizeof(float), stream));
+            size_t total_bytes = (size_t)n * (size_t)n * sizeof(float);
+            HIP_CHECK(hipMallocAsync(&A_backup, total_bytes, stream));
         }
 
         // 保存原始备份
         HIP_CHECK(hipMemcpy2DAsync(
             A_backup, backup_pitch,
-            A, lda * sizeof(float),
-            n * sizeof(float), n,
+            A, lda_pitch,
+            width_bytes, n,
             hipMemcpyDeviceToDevice, stream));
 
         // 第一次尝试不加阻尼分解
@@ -223,9 +227,9 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
             while (host_info > 0 && attempts < 5)
             {
                 HIP_CHECK(hipMemcpy2DAsync(
-                    A, lda * sizeof(float),
+                    A, lda_pitch,
                     A_backup, backup_pitch,
-                    n * sizeof(float), n,
+                    width_bytes, n,
                     hipMemcpyDeviceToDevice, stream));
 
                 int zero = 0;
@@ -262,7 +266,7 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
     // 1. POTRF(A11) - 分解左上角
     recursive_potrf_mixed(handle, pool, A11, lda, n1, nb, info, lambda, d_leaf_backup);
 
-    // 2. TRSM - 通过 Tensor Cores 加速（全异步执行，不进行任何 CPU-GPU 握手同步）
+    // 2. TRSM - 通过 Tensor Cores 加速
     recursive_trsm_mixed(handle, pool, A11, lda, A21, lda, n2, n1, nb);
 
     // 3. SYRK - 通过 Tensor Cores 加速
@@ -270,6 +274,8 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
 
     // 4. POTRF(A22) - 分解右下角
     recursive_potrf_mixed(handle, pool, A22, lda, n2, nb, info, lambda, d_leaf_backup);
+
+    return;
 }
 
 // ==========================================================================================
@@ -289,19 +295,20 @@ void recursive_potrf_mixed_driver(
     hipStream_t stream;
     rocblas_get_stream(handle, &stream);
 
-    // 1. 执行自动前向缩放（统一到最大 65504.0f）
+    // 1. 执行自动前向缩放
     unsigned int* d_max_val = nullptr;
     HIP_CHECK(hipMallocAsync(&d_max_val, sizeof(unsigned int), stream));
     launch_auto_scale(A, n, lda, d_max_val, false, stream);
     
     // 2. 预分配叶子节点备份空间
     float* d_leaf_backup = nullptr;
-    HIP_CHECK(hipMallocAsync(&d_leaf_backup, (size_t)nb * nb * sizeof(float), stream));
+    size_t backup_size = (size_t)nb * (size_t)nb * sizeof(float);
+    HIP_CHECK(hipMallocAsync(&d_leaf_backup, backup_size, stream));
 
     // 3. 初始阻尼值计算
     float scaled_lambda = SCALE_TARGET * 1e-4f; 
 
-    // 4. 提交全异步递归 Cholesky（GPU 队列中将实现无阻碍的流水线并行）
+    // 4. 提交全异步递归 Cholesky
     recursive_potrf_mixed(handle, pool, A, lda, n, nb, info, scaled_lambda, d_leaf_backup);
 
     // 5. 还原缩放
@@ -310,6 +317,8 @@ void recursive_potrf_mixed_driver(
     // 6. 异步清理工作区
     HIP_CHECK(hipFreeAsync(d_leaf_backup, stream));
     HIP_CHECK(hipFreeAsync(d_max_val, stream));
+
+    return;
 }
 
 } // extern "C"
