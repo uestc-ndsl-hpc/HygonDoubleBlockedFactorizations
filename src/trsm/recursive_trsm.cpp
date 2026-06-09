@@ -46,11 +46,13 @@ void recursive_trsm_internal(rocblas_handle handle,
                   n, m2, m1,
                   &alpha_gemm,
                   B, ldb,                      
-                  A + m1, lda,                 
+                  A + (size_t)m1, lda,
                   &beta_gemm,
-                  B + (size_t)m1 * ldb, ldb);  
+                  B + (size_t)m1 * (size_t)ldb, ldb);  
 
-    recursive_trsm_internal(handle, A + (size_t)m1 * lda + m1, lda, B + (size_t)m1 * ldb, ldb, n, m2, nb);
+    recursive_trsm_internal(handle, A + (size_t)m1 * (size_t)lda + m1, lda, B + (size_t)m1 * (size_t)ldb, ldb, n, m2, nb);
+    
+    return;
 }
 
 // ======================================================
@@ -88,11 +90,13 @@ void recursive_trsm_double_internal(rocblas_handle handle,
                   n, m2, m1,
                   &alpha_gemm,
                   B, ldb,
-                  A + m1, lda,
+                  A + (size_t)m1, lda,
                   &beta_gemm,
-                  B + (size_t)m1 * ldb, ldb);
+                  B + (size_t)m1 * (size_t)ldb, ldb);
 
-    recursive_trsm_double_internal(handle, A + (size_t)m1 * lda + m1, lda, B + (size_t)m1 * ldb, ldb, n, m2, nb);
+    recursive_trsm_double_internal(handle, A + (size_t)m1 * (size_t)lda + m1, lda, B + (size_t)m1 * (size_t)ldb, ldb, n, m2, nb);
+    
+    return;
 }
 
 // ======================================================
@@ -126,10 +130,12 @@ void recursive_trsm(
 
         HIP_CHECK(hipEventCreate(&events[i]));
 
+        float* B_chunk = B + (size_t)row_start;
+
         recursive_trsm_internal(
             ctx.handle,
             A, lda,
-            B + row_start, ldb,
+            B_chunk, ldb,
             current_n, m, nb);
 
         HIP_CHECK(hipEventRecord(events[i], ctx.stream));
@@ -142,6 +148,8 @@ void recursive_trsm(
     for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
+    
+    return;
 }
 
 // ======================================================
@@ -176,10 +184,12 @@ void recursive_trsm_double(
 
         HIP_CHECK(hipEventCreate(&events[i]));
 
+        double* B_chunk = B + (size_t)row_start;
+
         recursive_trsm_double_internal(
             ctx.handle,
             A, lda,
-            B + row_start, ldb,
+            B_chunk, ldb,
             current_n, m, nb);
 
         HIP_CHECK(hipEventRecord(events[i], ctx.stream));
@@ -192,6 +202,8 @@ void recursive_trsm_double(
     for (int i = 0; i < num_chunks; i++) {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
+    
+    return;
 }
 
 // ======================================================
@@ -257,20 +269,22 @@ void recursive_trsm_mixed_internal(
         m1,                           // GEMM K 维
         -1.0f,                        // alpha = -1.0
         B, ldb,                       // 对应矩阵 A_gemm (即 B1)
-        A + m1, lda,                  // 对应矩阵 B_gemm (即 A21)
+        A + (size_t)m1, lda,          // 对应矩阵 B_gemm (即 A21)
         1.0f,                         // beta = 1.0
-        B + (size_t)m1 * ldb, ldb     // 对应输出矩阵 C_gemm (即 B2)
+        B + (size_t)m1 * (size_t)ldb, ldb     // 对应输出矩阵 C_gemm (即 B2)
     );
 
     recursive_trsm_mixed_internal(
         handle,
-        A + (size_t)m1 * lda + m1,
+        A + (size_t)m1 * (size_t)lda + m1,
         lda,
-        B + (size_t)m1 * ldb,
+        B + (size_t)m1 * (size_t)ldb,
         ldb,
         n,
         m2,
         nb);
+        
+    return;
 }
 
 // ======================================================
@@ -316,11 +330,13 @@ void recursive_trsm_mixed(
 
         HIP_CHECK(hipEventCreate(&events[i]));
 
+        float* B_chunk = B + (size_t)row_start;
+
         recursive_trsm_mixed_internal(
             ctx.handle,
             A,
             lda,
-            B + row_start,
+            B_chunk,
             ldb,
             current_n,
             m,
@@ -338,6 +354,8 @@ void recursive_trsm_mixed(
     {
         HIP_CHECK(hipEventDestroy(events[i]));
     }
+    
+    return;
 }
 
 } // extern "C"
