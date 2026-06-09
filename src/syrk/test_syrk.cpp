@@ -30,15 +30,20 @@ double calculate_gflops(int n, int k, double time_ms) {
     return (flops / (time_ms / 1000.0)) / 1e9;
 }
 
-// Relative Frobenius norm error calculation for lower triangular part
+// ============================================================================
+// FORWARD ERROR (Relative Frobenius Norm) - Fully Fixed for Large Matrices
+// ============================================================================
 template<typename T_REF>
 double verify_relative_error_lower(const vector<T_REF>& ref, const vector<float>& res, int n) {
     double diff_norm = 0.0;
     double ref_norm  = 0.0;
 
-    for (int j = 0; j < n; j++) {
-        for (int i = j; i < n; i++) {
-            int idx = j * n + i;
+    size_t n_s = static_cast<size_t>(n);
+
+    for (size_t j = 0; j < n_s; j++) {
+        for (size_t i = j; i < n_s; i++) {
+            size_t idx = j * n_s + i;
+            
             double diff = static_cast<double>(ref[idx]) - static_cast<double>(res[idx]);
             diff_norm += diff * diff;
             ref_norm += static_cast<double>(ref[idx]) * static_cast<double>(ref[idx]);
@@ -47,7 +52,9 @@ double verify_relative_error_lower(const vector<T_REF>& ref, const vector<float>
     return sqrt(diff_norm) / (sqrt(ref_norm) + 1e-20);
 }
 
-// Sampled backward error verification using hardware random device
+// ============================================================================
+// BACKWARD ERROR (Sampled) - Fully Fixed for Large Matrices
+// ============================================================================
 double verify_backward_error_sampled(
     const vector<float>& A,
     const vector<float>& C_original,
@@ -67,6 +74,9 @@ double verify_backward_error_sampled(
     std::uniform_int_distribution<int> dist_row(0, n - 1);
     std::uniform_int_distribution<int> dist_col(0, n - 1);
 
+    size_t lda_s = static_cast<size_t>(lda);
+    size_t ldc_s = static_cast<size_t>(ldc);
+
     for (int s = 0; s < sample_count; ) {
         int row = dist_row(gen);
         int col = dist_col(gen);
@@ -76,16 +86,22 @@ double verify_backward_error_sampled(
         }
 
         double reconstructed = 0.0;
+
         for (int l = 0; l < k; ++l) {
-            reconstructed += static_cast<double>(A[l * lda + row]) *
-                             static_cast<double>(A[l * lda + col]);
+            size_t idx_l_row = static_cast<size_t>(l) * lda_s + static_cast<size_t>(row);
+            size_t idx_l_col = static_cast<size_t>(l) * lda_s + static_cast<size_t>(col);
+
+            reconstructed += static_cast<double>(A[idx_l_row]) *
+                             static_cast<double>(A[idx_l_col]);
         }
 
-        reconstructed = static_cast<double>(alpha) * reconstructed +
-                        static_cast<double>(beta) * static_cast<double>(C_original[col * ldc + row]);
+        size_t idx_C = static_cast<size_t>(col) * ldc_s + static_cast<size_t>(row);
 
-        double res = static_cast<double>(C_result[col * ldc + row]);
-        double diff = res - reconstructed;
+        reconstructed = static_cast<double>(alpha) * reconstructed +
+                        static_cast<double>(beta) * static_cast<double>(C_original[idx_C]);
+
+        double res_val = static_cast<double>(C_result[idx_C]);
+        double diff = res_val - reconstructed;
 
         diff_norm += diff * diff;
         ref_norm  += reconstructed * reconstructed;

@@ -83,11 +83,12 @@ double verify_backward_error_sampled(
     double diff_norm_sq = 0.0;
     double a_norm_sq    = 0.0;
 
-    // Use non-deterministic random device seed
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist_row(0, n - 1);
     std::uniform_int_distribution<int> dist_col(0, n - 1);
+
+    size_t lda_s = static_cast<size_t>(lda);
 
     for (int s = 0; s < sample_count; ) {
         int row = dist_row(gen);
@@ -100,12 +101,16 @@ double verify_backward_error_sampled(
         double reconstructed = 0.0;
 
         for (int k = 0; k <= col; ++k) {
-            double Lik = static_cast<double>(L_res[k * lda + row]);
-            double Ljk = static_cast<double>(L_res[k * lda + col]);
+            size_t idx_ik = static_cast<size_t>(k) * lda_s + static_cast<size_t>(row);
+            size_t idx_jk = static_cast<size_t>(k) * lda_s + static_cast<size_t>(col);
+            
+            double Lik = static_cast<double>(L_res[idx_ik]);
+            double Ljk = static_cast<double>(L_res[idx_jk]);
             reconstructed += Lik * Ljk;
         }
 
-        double a_val = static_cast<double>(A_orig[col * lda + row]);
+        size_t idx_A = static_cast<size_t>(col) * lda_s + static_cast<size_t>(row);
+        double a_val = static_cast<double>(A_orig[idx_A]);
         double diff = a_val - reconstructed;
 
         double factor = (row == col) ? 1.0 : 2.0;
