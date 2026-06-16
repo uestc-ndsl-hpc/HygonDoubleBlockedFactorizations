@@ -27,6 +27,8 @@ void run_iterative_cases(TrsmBenchmarkContext& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 } // namespace trsm_benchmark

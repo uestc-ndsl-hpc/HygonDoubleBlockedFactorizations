@@ -310,6 +310,8 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         120);
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 } // namespace syrk_benchmark

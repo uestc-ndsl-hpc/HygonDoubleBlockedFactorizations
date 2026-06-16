@@ -27,6 +27,8 @@ void run_recursive_cases(SyrkBenchmarkContext& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 } // namespace syrk_benchmark

@@ -239,6 +239,8 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         120);
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 } // namespace
@@ -255,6 +257,8 @@ void run_potrf_benchmarks(const PotrfBenchmarkOptions& options)
         std::cout << "Running benchmark in FLOAT precision\n";
         run_all_benchmarks<float>(options);
     }
+
+    return;
 }
 
 } // namespace potrf_benchmark

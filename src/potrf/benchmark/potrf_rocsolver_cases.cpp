@@ -24,6 +24,8 @@ void call_rocsolver_potrf(
     } else {
         ROCBLAS_CHECK(rocsolver_dpotrf(handle, uplo, n, A, lda, info));
     }
+
+    return;
 }
 
 } // namespace
@@ -51,6 +53,8 @@ void run_rocsolver_case(PotrfBenchmarkContext<T>& context)
         context.calc_gflops);
 
     context.results.back().speedup = 1.0;
+
+    return;
 }
 
 template void run_rocsolver_case<float>(PotrfBenchmarkContext<float>& context);

@@ -28,6 +28,8 @@ void call_recursive_potrf(
     } else {
         recursive_potrf_double(handle, pool, A, lda, n, nb, info);
     }
+
+    return;
 }
 
 } // namespace
@@ -57,6 +59,8 @@ void run_recursive_cases(PotrfBenchmarkContext<T>& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 template void run_recursive_cases<float>(PotrfBenchmarkContext<float>& context);

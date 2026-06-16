@@ -29,6 +29,8 @@ void run_rocblas_case(TrsmBenchmarkContext& context)
         context.calc_gflops);
 
     context.results.back().speedup = 1.0;
+
+    return;
 }
 
 } // namespace trsm_benchmark

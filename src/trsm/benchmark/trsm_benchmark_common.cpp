@@ -290,6 +290,8 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         120);
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 } // namespace trsm_benchmark

@@ -28,6 +28,8 @@ void run_recursive_cases(TrsmBenchmarkContext& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 } // namespace trsm_benchmark
