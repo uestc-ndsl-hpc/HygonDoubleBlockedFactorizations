@@ -24,6 +24,26 @@ void launch_hss_gemm(
 
     if (m <= 0 || n <= 0 || (k <= 0 && beta == 1.0f)) return;
 
+    if (transA == rocblas_operation_none && transB != rocblas_operation_none) {
+        launch_hss_gemm_f32a_kernel(
+            transA,
+            transB,
+            m,
+            n,
+            k,
+            alpha,
+            A_f32,
+            lda,
+            B_f32,
+            ldb,
+            beta,
+            C_f32,
+            ldc,
+            stream);
+
+        return;
+    }
+
     rocblas_half* A_half = nullptr;
 
     int rows_A = (transA == rocblas_operation_none) ? m : k;
