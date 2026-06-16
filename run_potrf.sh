@@ -16,9 +16,32 @@ module load compiler/openmp/50 2>/dev/null || true
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BUILD_DIR=${BUILD_DIR:-"${ROOT_DIR}/build"}
-EXEC=${EXEC:-"${BUILD_DIR}/benchmark_potrf"}
 RESULT_DIR=${RESULT_DIR:-"${ROOT_DIR}/results/fp32/potrf"}
 SUMMARY_LOG=${SUMMARY_LOG:-"${RESULT_DIR}/summary.log"}
+
+find_executable() {
+    if [ -n "${EXEC:-}" ]; then
+        echo "${EXEC}"
+        return
+    fi
+
+    local candidates=(
+        "${BUILD_DIR}/src/potrf/benchmark_potrf"
+        "${BUILD_DIR}/benchmark_potrf"
+    )
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [ -x "${candidate}" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
+
+    echo "${candidates[0]}"
+}
+
+EXEC=$(find_executable)
 
 NS=${NS:-"8192 16384 24576 32768 40960"}
 NBS=${NBS:-"256 512 1024 2048"}
