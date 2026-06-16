@@ -280,6 +280,8 @@ void run_all_benchmarks(
     );
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 int main(int argc, char** argv)

@@ -40,6 +40,8 @@ void syrk_internal(rocblas_handle handle, T* A, int lda, T* C, int ldc, int n, i
         rocblas_dgemm(handle, rocblas_operation_none, rocblas_operation_transpose,
                       n2, n1, k, &alpha_g, A + n1, lda, A, lda, &beta_g, C + n1, ldc);
     }
+
+    return;
 }
 
 // ======================================================
@@ -82,6 +84,8 @@ void recursive_syrk_parallel(rocblas_handle handle, float* A, int lda, float* C,
     ROCBLAS_CHECK(rocblas_destroy_handle(h2));
     HIP_CHECK(hipStreamDestroy(s1));
     HIP_CHECK(hipStreamDestroy(s2));
+
+    return;
 }
 
 // 双精度并行接口
@@ -117,4 +121,6 @@ void recursive_syrk_parallel_double(rocblas_handle handle, double* A, int lda, d
     ROCBLAS_CHECK(rocblas_destroy_handle(h2));
     HIP_CHECK(hipStreamDestroy(s1));
     HIP_CHECK(hipStreamDestroy(s2));
+
+    return;
 }

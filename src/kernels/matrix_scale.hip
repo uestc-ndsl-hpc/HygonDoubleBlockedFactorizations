@@ -13,6 +13,8 @@ __global__ void clear_max_kernel(unsigned int* global_max)
     {
         *global_max = 0;
     }
+
+    return;
 }
 
 // ======================================================
@@ -31,6 +33,8 @@ __global__ void max_abs_kernel(
         unsigned int iv = __float_as_uint(val);
         atomicMax(global_max, iv);
     }
+
+    return;
 }
 
 __global__ void scale_matrix_kernel_coalesced(
@@ -66,6 +70,8 @@ __global__ void scale_matrix_kernel_coalesced(
     {
         A[r + (size_t)col * lda] *= scale;
     }
+
+    return;
 }
 
 // ======================================================
@@ -102,6 +108,8 @@ void launch_auto_scale(
         lda,
         d_max_val,
         inverse);
+
+    return;
 }
 
 } // extern "C"

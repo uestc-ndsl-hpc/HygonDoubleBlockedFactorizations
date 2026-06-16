@@ -19,6 +19,8 @@ __global__ void add_damping_kernel(
     {
         A[idx + (size_t)idx * lda] += lambda;
     }
+
+    return;
 }
 
 void launch_add_damping(
@@ -41,6 +43,8 @@ void launch_add_damping(
         n,
         lda,
         lambda);
+
+    return;
 }
 
 // ======================================================
@@ -57,6 +61,8 @@ __global__ void add_damping_kernel_double(
     {
         A[idx + (size_t)idx * lda] += lambda;
     }
+
+    return;
 }
 
 void launch_add_damping_double(
@@ -79,6 +85,8 @@ void launch_add_damping_double(
         n,
         lda,
         lambda);
+
+    return;
 }
 
 } // extern "C"

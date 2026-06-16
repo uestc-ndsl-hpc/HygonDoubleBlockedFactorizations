@@ -142,6 +142,8 @@ void call_rocsolver_potrf(
     } else {
         ROCBLAS_CHECK(rocsolver_dpotrf(handle, uplo, n, A, lda, info));
     }
+
+    return;
 }
 
 template <typename T>
@@ -163,6 +165,8 @@ void call_recursive_potrf(
     } else {
         recursive_potrf_double(handle, pool, A, lda, n, nb, info);
     }
+
+    return;
 }
 
 // ============================================================================
@@ -317,6 +321,8 @@ void run_all_benchmarks(
     );
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 // ============================================================================

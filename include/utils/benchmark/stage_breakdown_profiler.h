@@ -27,6 +27,8 @@ public:
     void clear()
     {
         entries_.clear();
+
+        return;
     }
 
     void add_sample(const std::string& name, double elapsed_ms, double work = 0.0)
@@ -44,6 +46,8 @@ public:
         it->total_time_ms += elapsed_ms;
         it->total_work += work;
         it->call_count += 1;
+
+        return;
     }
 
     template <typename Func>
@@ -65,6 +69,8 @@ public:
         HIP_CHECK(hipEventDestroy(stop));
 
         add_sample(name, static_cast<double>(elapsed_ms), work);
+
+        return;
     }
 
     double total_time_ms() const
@@ -121,6 +127,8 @@ public:
         }
 
         cout << string(line_width, '=') << "\n";
+
+        return;
     }
 
 private:

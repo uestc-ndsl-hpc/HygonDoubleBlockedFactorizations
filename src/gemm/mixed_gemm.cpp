@@ -91,6 +91,8 @@ void launch_mixed_gemm(
     HIP_CHECK(hipFreeAsync(A_half, stream));
     HIP_CHECK(hipFreeAsync(B_half, stream));
     HIP_CHECK(hipFreeAsync(C_half, stream));
+
+    return;
 }
 
 } // extern "C"

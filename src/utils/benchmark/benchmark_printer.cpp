@@ -58,4 +58,6 @@ void print_benchmark_results(
     }
 
     cout << string(line_width, '=') << "\n";
+
+    return;
 }

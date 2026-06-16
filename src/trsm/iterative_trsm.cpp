@@ -55,6 +55,8 @@ void iterative_trsm_right_looking(
                 B + (size_t)(i + current_nb) * ldb, ldb);
         }
     }
+
+    return;
 }
 
 }

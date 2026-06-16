@@ -27,6 +27,8 @@ __global__ void fp32_to_fp16_kernel_coalesced(
 
         dst[dst_idx] = __float2half(src[src_idx]);
     }
+
+    return;
 }
 
 // ======================================================
@@ -50,6 +52,8 @@ __global__ void fp16_to_fp32_kernel_coalesced(
 
         dst[dst_idx] = __half2float(src[src_idx]);
     }
+
+    return;
 }
 
 // ======================================================
@@ -86,6 +90,8 @@ void launch_fp32_to_fp16(
         cols,
         ld_src,
         ld_dst);
+
+    return;
 }
 
 void launch_fp16_to_fp32(
@@ -118,6 +124,8 @@ void launch_fp16_to_fp32(
         cols, 
         ld_src, 
         ld_dst);
+
+    return;
 }
 
 } // extern "C"
