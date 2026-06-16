@@ -39,10 +39,18 @@ const char* hygon_hss_gemm_backend_name()
     const bool tile_a = use_tile_a_conversion();
     const char* kernel = hygon_hss_custom_kernel_name();
 
-    if (std::strcmp(kernel, "custom_nt_legacy_64x64x16") == 0) {
+    if (std::strcmp(kernel, "custom_nt_auto") == 0) {
+        return tile_a
+            ? "custom_tile_a_nt_auto"
+            : "custom_preconvert_a_nt_auto";
+    } else if (std::strcmp(kernel, "custom_nt_legacy_64x64x16") == 0) {
         return tile_a
             ? "custom_tile_a_nt_legacy_64x64x16"
             : "custom_preconvert_a_nt_legacy_64x64x16";
+    } else if (std::strcmp(kernel, "custom_nt_square_128x128x32_mix") == 0) {
+        return tile_a
+            ? "custom_tile_a_nt_square_128x128x32_mix"
+            : "custom_preconvert_a_nt_square_128x128x32_mix";
     }
 
     return tile_a
