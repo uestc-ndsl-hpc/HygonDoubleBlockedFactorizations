@@ -1,6 +1,7 @@
 set(KERNEL_SOURCES
     add_damping.hip
     fp16_convert.hip
+    hss_gemm.hip
     matrix_scale.hip
 )
 
