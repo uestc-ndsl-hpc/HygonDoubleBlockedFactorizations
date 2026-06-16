@@ -21,6 +21,34 @@ void launch_mixed_gemm(
     float beta,
     float* C_f32, int ldc);
 
+void launch_hss_gemm(
+    rocblas_handle handle,
+    hipStream_t stream,
+    rocblas_operation transA,
+    rocblas_operation transB,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const float* A_f32, int lda,
+    const float* B_f32, int ldb,
+    float beta,
+    float* C_f32, int ldc);
+
+void launch_hhs_gemm(
+    rocblas_handle handle,
+    hipStream_t stream,
+    rocblas_operation transA,
+    rocblas_operation transB,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const float* A_f32, int lda,
+    const float* B_f32, int ldb,
+    float beta,
+    float* C_f32, int ldc);
+
 #ifdef __cplusplus
 }
 #endif
