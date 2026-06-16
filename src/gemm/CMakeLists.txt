@@ -18,5 +18,6 @@ add_executable(benchmark_gemm
 hygon_apply_benchmark_options(benchmark_gemm)
 hygon_link_rocm(benchmark_gemm)
 target_link_libraries(benchmark_gemm
+    hygon_gemm
     hygon_utils
 )

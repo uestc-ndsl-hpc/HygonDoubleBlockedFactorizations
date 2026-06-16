@@ -1,7 +1,12 @@
 #include "kernels/hss_gemm.h"
 
+#include <cstdlib>
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
+
+#if defined(HYGON_ENABLE_ROCWMMA)
+#include <rocwmma/rocwmma.hpp>
+#endif
 
 namespace {
 
@@ -11,6 +16,19 @@ constexpr int NT_BLOCK_N = 64;
 constexpr int NT_BLOCK_K = 16;
 constexpr int NT_THREAD_TILE_M = 4;
 constexpr int NT_THREAD_TILE_N = 4;
+
+#if defined(HYGON_ENABLE_ROCWMMA)
+constexpr int WMMA_M = 16;
+constexpr int WMMA_N = 16;
+constexpr int WMMA_K = 16;
+constexpr int WMMA_WARPS_M = 4;
+constexpr int WMMA_WARPS_N = 4;
+constexpr int WMMA_BLOCK_M = WMMA_M * WMMA_WARPS_M;
+constexpr int WMMA_BLOCK_N = WMMA_N * WMMA_WARPS_N;
+constexpr int WMMA_BLOCK_K = WMMA_K;
+constexpr int WMMA_WAVE_SIZE = 64;
+constexpr int WMMA_THREADS = WMMA_WARPS_M * WMMA_WARPS_N * WMMA_WAVE_SIZE;
+#endif
 
 __device__ __forceinline__ __half load_op_a(
     const __half* __restrict__ A,
@@ -293,6 +311,124 @@ __global__ void hss_gemm_nt_f32a_kernel(
     return;
 }
 
+#if defined(HYGON_ENABLE_ROCWMMA)
+__global__ __launch_bounds__(WMMA_THREADS) void hss_gemm_nt_f32a_wmma_kernel(
+    int m,
+    int n,
+    int k,
+    const float* __restrict__ A,
+    int lda,
+    const float* __restrict__ B,
+    int ldb,
+    float* __restrict__ C,
+    int ldc)
+{
+    int linear_tid = static_cast<int>(threadIdx.x);
+    int wave_id = linear_tid / WMMA_WAVE_SIZE;
+    int wave_m = wave_id / WMMA_WARPS_N;
+    int wave_n = wave_id - wave_m * WMMA_WARPS_N;
+
+    int tile_row = blockIdx.x * WMMA_BLOCK_M + wave_m * WMMA_M;
+    int tile_col = blockIdx.y * WMMA_BLOCK_N + wave_n * WMMA_N;
+
+    __shared__ __half lds_a[WMMA_BLOCK_K][WMMA_BLOCK_M];
+    __shared__ __half lds_b[WMMA_BLOCK_K][WMMA_BLOCK_N];
+    __shared__ float lds_c[WMMA_BLOCK_N][WMMA_BLOCK_M];
+
+    using frag_a_t = rocwmma::fragment<
+        rocwmma::matrix_a,
+        WMMA_M,
+        WMMA_N,
+        WMMA_K,
+        __half,
+        rocwmma::col_major>;
+    using frag_b_t = rocwmma::fragment<
+        rocwmma::matrix_b,
+        WMMA_M,
+        WMMA_N,
+        WMMA_K,
+        __half,
+        rocwmma::row_major>;
+    using frag_c_t = rocwmma::fragment<
+        rocwmma::accumulator,
+        WMMA_M,
+        WMMA_N,
+        WMMA_K,
+        float>;
+
+    frag_a_t frag_a;
+    frag_b_t frag_b;
+    frag_c_t frag_c;
+    rocwmma::fill_fragment(frag_c, 0.0f);
+
+    for (int tile_k = 0; tile_k < k; tile_k += WMMA_BLOCK_K) {
+        for (int idx = linear_tid; idx < WMMA_BLOCK_K * WMMA_BLOCK_M; idx += WMMA_THREADS) {
+            int kk = idx / WMMA_BLOCK_M;
+            int row = idx - kk * WMMA_BLOCK_M;
+            int global_row = blockIdx.x * WMMA_BLOCK_M + row;
+            int global_k = tile_k + kk;
+
+            lds_a[kk][row] =
+                (global_row < m && global_k < k)
+                    ? __float2half(A[global_row + static_cast<size_t>(global_k) * lda])
+                    : __float2half(0.0f);
+        }
+
+        for (int idx = linear_tid; idx < WMMA_BLOCK_K * WMMA_BLOCK_N; idx += WMMA_THREADS) {
+            int kk = idx / WMMA_BLOCK_N;
+            int col = idx - kk * WMMA_BLOCK_N;
+            int global_col = blockIdx.y * WMMA_BLOCK_N + col;
+            int global_k = tile_k + kk;
+
+            lds_b[kk][col] =
+                (global_col < n && global_k < k)
+                    ? __float2half(B[global_col + static_cast<size_t>(global_k) * ldb])
+                    : __float2half(0.0f);
+        }
+
+        __syncthreads();
+
+        const __half* tile_a = &lds_a[0][wave_m * WMMA_M];
+        const __half* tile_b = &lds_b[0][wave_n * WMMA_N];
+        rocwmma::load_matrix_sync(frag_a, tile_a, WMMA_BLOCK_M);
+        rocwmma::load_matrix_sync(frag_b, tile_b, WMMA_BLOCK_N);
+        rocwmma::mma_sync(frag_c, frag_a, frag_b, frag_c);
+
+        __syncthreads();
+    }
+
+    float* tile_scratch = &lds_c[wave_n * WMMA_N][wave_m * WMMA_M];
+    rocwmma::store_matrix_sync(tile_scratch, frag_c, WMMA_BLOCK_M, rocwmma::mem_col_major);
+    __syncthreads();
+
+    for (int idx = linear_tid; idx < WMMA_BLOCK_M * WMMA_BLOCK_N; idx += WMMA_THREADS) {
+        int local_col = idx / WMMA_BLOCK_M;
+        int local_row = idx - local_col * WMMA_BLOCK_M;
+        int row = blockIdx.x * WMMA_BLOCK_M + local_row;
+        int col = blockIdx.y * WMMA_BLOCK_N + local_col;
+        if (row < m && col < n) {
+            size_t c_idx = row + static_cast<size_t>(col) * ldc;
+            C[c_idx] -= lds_c[local_col][local_row];
+        }
+    }
+}
+#endif
+
+__host__ bool hss_wmma_disabled()
+{
+#if defined(HYGON_ENABLE_ROCWMMA)
+    const char* value = std::getenv("HYGON_HSS_DISABLE_WMMA");
+    if (value == nullptr) {
+        return false;
+    }
+
+    return value[0] == '1' || value[0] == 'y' || value[0] == 'Y' ||
+           value[0] == 't' || value[0] == 'T';
+#else
+    return true;
+#endif
+}
+
 } // namespace
 
 extern "C" {
@@ -400,6 +536,32 @@ void launch_hss_gemm_f32a_kernel(
     bool subtract_update = (alpha == -1.0f && beta == 1.0f);
 
     if (!use_trans_a && use_trans_b) {
+#if defined(HYGON_ENABLE_ROCWMMA)
+        if (subtract_update && !hss_wmma_disabled()) {
+            dim3 block(WMMA_THREADS);
+            dim3 grid(
+                (m + WMMA_BLOCK_M - 1) / WMMA_BLOCK_M,
+                (n + WMMA_BLOCK_N - 1) / WMMA_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_f32a_wmma_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                A_f32,
+                lda,
+                B_f32,
+                ldb,
+                C_f32,
+                ldc);
+            return;
+        }
+#endif
+
         dim3 block(NT_BLOCK_M / NT_THREAD_TILE_M, NT_BLOCK_N / NT_THREAD_TILE_N);
         dim3 grid(
             (m + NT_BLOCK_M - 1) / NT_BLOCK_M,

@@ -54,6 +54,9 @@ log "DTK environment    : ${ROCM_PATH}"
 log "Executable         : ${EXEC}"
 log "Result directory   : ${RESULT_DIR}"
 log "Target device      : HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}"
+log "GEMM_TOTAL_SIZE    : ${GEMM_TOTAL_SIZE:-32768}"
+log "GEMM_VERIFY        : ${GEMM_VERIFY:-0}"
+log "Disable HSS WMMA   : ${HYGON_HSS_DISABLE_WMMA:-0}"
 log "=================================================="
 
 if [ ! -x "${EXEC}" ]; then
@@ -75,7 +78,7 @@ log "Dependency check passed."
 log ""
 log "Starting GEMM benchmark..."
 
-if ! "${EXEC}" 2>&1 | tee -a "${SUMMARY_LOG}"; then
+if ! "${EXEC}" "$@" 2>&1 | tee -a "${SUMMARY_LOG}"; then
     log "Error: benchmark failed."
     exit 1
 fi
