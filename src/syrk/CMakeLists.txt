@@ -15,6 +15,11 @@ target_link_libraries(hygon_syrk
 
 add_executable(benchmark_syrk
     test_syrk.cpp
+    benchmark/syrk_batched_cases.cpp
+    benchmark/syrk_benchmark_common.cpp
+    benchmark/syrk_mixed_cases.cpp
+    benchmark/syrk_recursive_cases.cpp
+    benchmark/syrk_rocblas_cases.cpp
 )
 
 hygon_apply_benchmark_options(benchmark_syrk)
