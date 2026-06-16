@@ -16,6 +16,11 @@ target_link_libraries(hygon_trsm
 
 add_executable(benchmark_trsm
     test_trsm.cpp
+    benchmark/trsm_benchmark_common.cpp
+    benchmark/trsm_iterative_cases.cpp
+    benchmark/trsm_mixed_cases.cpp
+    benchmark/trsm_recursive_cases.cpp
+    benchmark/trsm_rocblas_cases.cpp
 )
 
 hygon_apply_benchmark_options(benchmark_trsm)
