@@ -24,6 +24,22 @@ void launch_hss_gemm_kernel(
     int ldc,
     hipStream_t stream);
 
+void launch_hss_gemm_f32a_kernel(
+    rocblas_operation transA,
+    rocblas_operation transB,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const float* A_f32,
+    int lda,
+    const float* B_f32,
+    int ldb,
+    float beta,
+    float* C_f32,
+    int ldc,
+    hipStream_t stream);
+
 #ifdef __cplusplus
 }
 #endif
