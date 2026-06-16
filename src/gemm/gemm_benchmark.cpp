@@ -302,7 +302,8 @@ void print_usage(const char* program)
          << "  GEMM_TOTAL_SIZE=N             Simulated parent matrix size.\n"
          << "  GEMM_WARMUP=N                 Warmup iterations.\n"
          << "  GEMM_ITERS=N                  Timed iterations.\n";
-    cerr << "  HYGON_HSS_DISABLE_WMMA=1      Force the legacy scalar HSS kernel when available.\n";
+    cerr << "  HYGON_HSS_A_MODE=preconvert|tile\n"
+         << "  HYGON_HSS_KERNEL=tuned|legacy\n";
 }
 
 BenchmarkOptions parse_options(int argc, char** argv)
@@ -341,7 +342,8 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
     cout << "  GEMM update benchmark for right-looking Cholesky on DCU K100_AI\n";
     cout << "  Operation: C(M x N) = C - A(M x K) * B(N x K)^T\n";
     cout << "  HSS path: launch_hss_gemm(N, T), FP32 inputs, FP32 output, mixed-precision kernel internally\n";
-    cout << "  Set HYGON_HSS_DISABLE_WMMA=1 to compare the legacy scalar HSS kernel.\n";
+    cout << "  HSS backend: " << hygon_hss_gemm_backend_name()
+         << " (true HSS: half A, single B, single C)\n";
     cout << "  Total matrix size: " << options.total_matrix_size
          << ", warmup: " << options.num_warmup
          << ", iterations: " << options.num_iters

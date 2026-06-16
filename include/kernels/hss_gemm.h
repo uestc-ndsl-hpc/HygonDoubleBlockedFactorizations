@@ -40,6 +40,8 @@ void launch_hss_gemm_f32a_kernel(
     int ldc,
     hipStream_t stream);
 
+const char* hygon_hss_custom_kernel_name();
+
 #ifdef __cplusplus
 }
 #endif
