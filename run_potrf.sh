@@ -1,115 +1,130 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -u
+set -o pipefail
 
-# =========================================================
-# DTK 运行环境配置 (适配 dtk-26.04 环境)
-# =========================================================
-export ROCM_PATH=/opt/dtk-26.04
-export HIP_VISIBLE_DEVICES=0
+ROCM_PATH=${ROCM_PATH:-/opt/dtk-26.04}
+HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
 
-# 如果运行提示找不到 openmp 模块，可以直接注释掉这一行
-module load compiler/openmp/50 2>/dev/null
-
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:$LD_LIBRARY_PATH
-export PATH=$ROCM_PATH/bin:$PATH
-
-# 关闭底层复杂的 Trace 追踪与内核调试打印，确保释放全部硬件计算吞吐
+export ROCM_PATH
+export HIP_VISIBLE_DEVICES
+export LD_LIBRARY_PATH="${ROCM_PATH}/lib:${ROCM_PATH}/llvm/lib:${LD_LIBRARY_PATH:-}"
+export PATH="${ROCM_PATH}/bin:${PATH}"
 export ROCBLAS_LAYER=0
 export TENSILE_DB=0
 
-# =========================================================
-# 项目路径与输出管理
-# =========================================================
-ROOT_DIR=$(pwd)
-BUILD_DIR=${ROOT_DIR}/build
-EXEC=${BUILD_DIR}/benchmark_potrf
-RESULT_DIR=${ROOT_DIR}/results/fp32/potrf
-SUMMARY_LOG=${RESULT_DIR}/summary.log
+module load compiler/openmp/50 2>/dev/null || true
 
-mkdir -p ${RESULT_DIR}
-rm -f ${SUMMARY_LOG}
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BUILD_DIR=${BUILD_DIR:-"${ROOT_DIR}/build"}
+RESULT_DIR=${RESULT_DIR:-"${ROOT_DIR}/results/fp32/potrf"}
+SUMMARY_LOG=${SUMMARY_LOG:-"${RESULT_DIR}/summary.log"}
 
-# =========================================================
-# 测试参数矩阵配置
-# =========================================================
-NS=(
-    8192
-    16384
-    24576
-    32768
-    40960
-)
-NBS="256 512 1024 2048"
+find_executable() {
+    if [ -n "${EXEC:-}" ]; then
+        echo "${EXEC}"
+        return
+    fi
 
-ERROR_MODE=2       # 2 = Backward 采样后向误差
-TEST_ROCSOLVER=1   # 1 = 测试原生系统库作为 Baseline
-TEST_RECURSIVE=1   # 1 = 测试自定义递归分块算子
-PRECISION=0        # 0 = 纯 FP32 精度测试
+    local candidates=(
+        "${BUILD_DIR}/src/potrf/benchmark_potrf"
+        "${BUILD_DIR}/benchmark_potrf"
+    )
 
-# =========================================================
-# 基础日志输出 (打印测试元数据)
-# =========================================================
-echo "==================================================" | tee -a ${SUMMARY_LOG}
-echo "POTRF High-Performance Benchmark (Direct Run)"       | tee -a ${SUMMARY_LOG}
-echo "DTK Environment    : ${ROCM_PATH}"                  | tee -a ${SUMMARY_LOG}
-echo "Precision Mode     : ${PRECISION} (0=FP32)"         | tee -a ${SUMMARY_LOG}
-echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG}
-echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
-echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
-echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
-echo "==================================================" | tee -a ${SUMMARY_LOG}
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [ -x "${candidate}" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
 
-# =========================================================
-# 依赖完整性校验
-# =========================================================
-echo "" | tee -a ${SUMMARY_LOG}
-echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
+    echo "${candidates[0]}"
+}
 
-if [ -f "${EXEC}" ]; then
-    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
-else
-    echo "Error: Executable ${EXEC} not found! Please build the target first." | tee -a ${SUMMARY_LOG}
+EXEC=$(find_executable)
+
+NS=${NS:-"8192 16384 24576 32768 40960"}
+NBS=${NBS:-"256 512 1024 2048"}
+
+ERROR_MODE=${ERROR_MODE:-2}
+TEST_ROCSOLVER=${TEST_ROCSOLVER:-1}
+TEST_RECURSIVE=${TEST_RECURSIVE:-1}
+PRECISION=${PRECISION:-0}
+
+mkdir -p "${RESULT_DIR}"
+: > "${SUMMARY_LOG}"
+
+log() {
+    echo "$*" | tee -a "${SUMMARY_LOG}"
+}
+
+log "=================================================="
+log "POTRF benchmark"
+log "DTK environment    : ${ROCM_PATH}"
+log "Executable         : ${EXEC}"
+log "Result directory   : ${RESULT_DIR}"
+log "Precision mode     : ${PRECISION} (0=FP32, 1=FP64, 2=mixed)"
+log "Error mode         : ${ERROR_MODE} (0=none, 1=forward, 2=backward, 3=both)"
+log "Test rocSOLVER     : ${TEST_ROCSOLVER}"
+log "Test recursive     : ${TEST_RECURSIVE}"
+log "N sweep            : ${NS}"
+log "NB sweep           : ${NBS}"
+log "=================================================="
+
+if [ ! -x "${EXEC}" ]; then
+    log "Error: executable not found or not executable: ${EXEC}"
+    log "Build benchmark_potrf before running this script."
     exit 1
 fi
 
-# =========================================================
-# NUMA 硬件架构亲和性绑定
-# =========================================================
-NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
-if [ "$NUMA_NODE" != "-1" ] && [ ! -z "$NUMA_NODE" ]; then
-    LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
-    echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a ${SUMMARY_LOG}
+log ""
+log "Checking binary dependencies..."
+missing_deps=$(ldd "${EXEC}" 2>/dev/null | grep "not found" || true)
+if [ -n "${missing_deps}" ]; then
+    log "${missing_deps}"
+    log "Error: missing shared libraries."
+    exit 1
+fi
+log "Dependency check passed."
+
+NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null || true)
+if [ -n "${NUMA_NODE}" ] && [ "${NUMA_NODE}" != "-1" ] && command -v numactl >/dev/null 2>&1; then
+    LAUNCH_PREFIX=(numactl "--cpunodebind=${NUMA_NODE}" "--membind=${NUMA_NODE}")
+    log "NUMA binding enabled: node ${NUMA_NODE}"
 else
-    LAUNCH_PREFIX=""
-    echo "Warning: No direct NUMA affinity mapping found. Running without numactl constraints." | tee -a ${SUMMARY_LOG}
+    LAUNCH_PREFIX=()
+    log "NUMA binding disabled."
 fi
 
-# =========================================================
-# 循环迭代测试核心流水线
-# =========================================================
-for N in "${NS[@]}"
-do
-    echo "" | tee -a ${SUMMARY_LOG}
-    echo ">>> Running POTRF Benchmark: N=${N}" | tee -a ${SUMMARY_LOG}
+run_one_case() {
+    local n=$1
+    local out_file="${RESULT_DIR}/potrf_N${n}.log"
 
-    OUT_FILE=${RESULT_DIR}/potrf_N${N}.log
-    echo "Output Detail Target -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
+    log ""
+    log ">>> Running POTRF benchmark: N=${n}"
+    log "Output file: ${out_file}"
 
-    # 直接在前台执行
-    ${LAUNCH_PREFIX} ${EXEC} \
-        ${N} \
-        ${TEST_ROCSOLVER} \
-        ${TEST_RECURSIVE} \
-        ${ERROR_MODE} \
-        ${PRECISION} \
+    if ! "${LAUNCH_PREFIX[@]}" "${EXEC}" \
+        "${n}" \
+        "${TEST_ROCSOLVER}" \
+        "${TEST_RECURSIVE}" \
+        "${ERROR_MODE}" \
+        "${PRECISION}" \
         ${NBS} \
-        2>&1 | tee ${OUT_FILE}
+        2>&1 | tee "${out_file}"; then
+        log "Error: benchmark failed for N=${n}."
+        exit 1
+    fi
 
-    # 将详细输出完整导入到汇总总日志中
-    cat ${OUT_FILE} >> ${SUMMARY_LOG}
+    cat "${out_file}" >> "${SUMMARY_LOG}"
+}
+
+for n in ${NS}; do
+    run_one_case "${n}"
 done
 
-echo "" | tee -a ${SUMMARY_LOG}
-echo "==================================================" | tee -a ${SUMMARY_LOG}
-echo "POTRF High-Performance Benchmark Finished"           | tee -a ${SUMMARY_LOG}
-echo "Final Master Summary written to: ${SUMMARY_LOG}"      | tee -a ${SUMMARY_LOG}
-echo "==================================================" | tee -a ${SUMMARY_LOG}
+log ""
+log "=================================================="
+log "POTRF benchmark finished"
+log "Summary log: ${SUMMARY_LOG}"
+log "=================================================="
