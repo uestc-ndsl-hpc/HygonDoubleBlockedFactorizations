@@ -57,6 +57,7 @@ log "Target device      : HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}"
 log "GEMM_TOTAL_SIZE    : ${GEMM_TOTAL_SIZE:-32768}"
 log "GEMM_VERIFY        : ${GEMM_VERIFY:-0}"
 log "HSS A mode         : ${HYGON_HSS_A_MODE:-preconvert}"
+log "HSS input mode     : ${HYGON_HSS_INPUT_MODE:-true_hss}"
 log "HSS kernel         : ${HYGON_HSS_KERNEL:-auto}"
 log "=================================================="
 

@@ -13,6 +13,9 @@ constexpr int NT_BLOCK_N = 64;
 constexpr int NT_BLOCK_K = 16;
 constexpr int NT_THREAD_TILE_M = 4;
 constexpr int NT_THREAD_TILE_N = 4;
+constexpr int NT_THREADS_X = NT_BLOCK_M / NT_THREAD_TILE_M;
+constexpr int NT_THREADS_Y = NT_BLOCK_N / NT_THREAD_TILE_N;
+constexpr int NT_THREADS = NT_THREADS_X * NT_THREADS_Y;
 
 constexpr int TUNED_BLOCK_M = 128;
 constexpr int TUNED_BLOCK_N = 64;
@@ -140,6 +143,11 @@ __device__ __forceinline__ float hss_mixed_fma(__half a, float b, float acc)
     return __builtin_fmaf(__half2float(a), b, acc);
 }
 
+__device__ __forceinline__ float hss_mixed_fma(__half a, __half b, float acc)
+{
+    return __builtin_fmaf(__half2float(a), __half2float(b), acc);
+}
+
 __device__ __forceinline__ __half load_op_a(
     const __half* __restrict__ A,
     int row,
@@ -153,6 +161,17 @@ __device__ __forceinline__ __half load_op_a(
 
 __device__ __forceinline__ float load_op_b(
     const float* __restrict__ B,
+    int row,
+    int col,
+    int ldb,
+    bool transB)
+{
+    return transB ? B[col + static_cast<size_t>(row) * ldb]
+                  : B[row + static_cast<size_t>(col) * ldb];
+}
+
+__device__ __forceinline__ __half load_op_b_half(
+    const __half* __restrict__ B,
     int row,
     int col,
     int ldb,
@@ -195,6 +214,57 @@ __global__ void hss_gemm_kernel(
         tile_b[threadIdx.x][threadIdx.y] =
             (b_row < k && col < n) ? load_op_b(B, b_row, col, ldb, transB)
                                    : 0.0f;
+
+        __syncthreads();
+
+        for (int q = 0; q < TILE; ++q) {
+            acc = hss_mixed_fma(tile_a[threadIdx.x][q], tile_b[q][threadIdx.y], acc);
+        }
+
+        __syncthreads();
+    }
+
+    if (row < m && col < n) {
+        size_t idx = row + static_cast<size_t>(col) * ldc;
+        C[idx] = alpha * acc + beta * C[idx];
+    }
+
+    return;
+}
+
+__global__ void hss_gemm_hh_kernel(
+    bool transA,
+    bool transB,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const __half* __restrict__ A,
+    int lda,
+    const __half* __restrict__ B,
+    int ldb,
+    float beta,
+    float* __restrict__ C,
+    int ldc)
+{
+    int row = blockIdx.x * TILE + threadIdx.x;
+    int col = blockIdx.y * TILE + threadIdx.y;
+
+    __shared__ __half tile_a[TILE][TILE];
+    __shared__ __half tile_b[TILE][TILE];
+
+    float acc = 0.0f;
+
+    for (int tile = 0; tile < k; tile += TILE) {
+        int a_col = tile + threadIdx.y;
+        int b_row = tile + threadIdx.x;
+
+        tile_a[threadIdx.x][threadIdx.y] =
+            (row < m && a_col < k) ? load_op_a(A, row, a_col, lda, transA)
+                                   : __float2half(0.0f);
+        tile_b[threadIdx.x][threadIdx.y] =
+            (b_row < k && col < n) ? load_op_b_half(B, b_row, col, ldb, transB)
+                                   : __float2half(0.0f);
 
         __syncthreads();
 
@@ -1219,6 +1289,157 @@ __global__ __launch_bounds__(SQUARE4_THREADS) void hss_gemm_nt_square4_f32a_kern
     return;
 }
 
+#define DEFINE_HSS_NT_HH_KERNEL(NAME, BLOCK_M, BLOCK_N, BLOCK_K, THREAD_TILE_M, THREAD_TILE_N, THREADS) \
+__global__ __launch_bounds__(THREADS) void NAME(                                          \
+    int m,                                                                                \
+    int n,                                                                                \
+    int k,                                                                                \
+    float alpha,                                                                          \
+    const __half* __restrict__ A,                                                         \
+    int lda,                                                                              \
+    const __half* __restrict__ B,                                                         \
+    int ldb,                                                                              \
+    float beta,                                                                           \
+    float* __restrict__ C,                                                                \
+    int ldc,                                                                              \
+    bool subtract_update)                                                                 \
+{                                                                                         \
+    int local_row_base = threadIdx.x * (THREAD_TILE_M);                                   \
+    int local_col_base = threadIdx.y * (THREAD_TILE_N);                                   \
+    int global_row_base = blockIdx.x * (BLOCK_M) + local_row_base;                        \
+    int global_col_base = blockIdx.y * (BLOCK_N) + local_col_base;                        \
+                                                                                          \
+    __shared__ __half tile_a[(BLOCK_K)][(BLOCK_M)];                                       \
+    __shared__ __half tile_b[(BLOCK_K)][(BLOCK_N)];                                       \
+                                                                                          \
+    float acc[(THREAD_TILE_M)][(THREAD_TILE_N)] = {};                                     \
+                                                                                          \
+    int linear_tid = threadIdx.y * blockDim.x + threadIdx.x;                              \
+                                                                                          \
+    for (int tile_k = 0; tile_k < k; tile_k += (BLOCK_K)) {                               \
+        for (int idx = linear_tid;                                                        \
+             idx < (BLOCK_K) * (BLOCK_M);                                                 \
+             idx += (THREADS)) {                                                          \
+            int kk = idx / (BLOCK_M);                                                     \
+            int row = idx - kk * (BLOCK_M);                                               \
+            int global_row = blockIdx.x * (BLOCK_M) + row;                                \
+            int global_k = tile_k + kk;                                                   \
+                                                                                          \
+            tile_a[kk][row] =                                                             \
+                (global_row < m && global_k < k)                                          \
+                    ? A[global_row + static_cast<size_t>(global_k) * lda]                 \
+                    : __float2half(0.0f);                                                 \
+        }                                                                                 \
+                                                                                          \
+        for (int idx = linear_tid;                                                        \
+             idx < (BLOCK_K) * (BLOCK_N);                                                 \
+             idx += (THREADS)) {                                                          \
+            int kk = idx / (BLOCK_N);                                                     \
+            int col = idx - kk * (BLOCK_N);                                               \
+            int global_col = blockIdx.y * (BLOCK_N) + col;                                \
+            int global_k = tile_k + kk;                                                   \
+                                                                                          \
+            tile_b[kk][col] =                                                             \
+                (global_k < k && global_col < n)                                          \
+                    ? B[global_col + static_cast<size_t>(global_k) * ldb]                 \
+                    : __float2half(0.0f);                                                 \
+        }                                                                                 \
+                                                                                          \
+        __syncthreads();                                                                  \
+                                                                                          \
+        _Pragma("unroll")                                                                \
+        for (int kk = 0; kk < (BLOCK_K); ++kk) {                                          \
+            __half b_frag[(THREAD_TILE_N)];                                               \
+                                                                                          \
+            _Pragma("unroll")                                                            \
+            for (int j = 0; j < (THREAD_TILE_N); ++j) {                                   \
+                b_frag[j] = tile_b[kk][local_col_base + j];                               \
+            }                                                                             \
+                                                                                          \
+            _Pragma("unroll")                                                            \
+            for (int i = 0; i < (THREAD_TILE_M); ++i) {                                   \
+                __half a_frag = tile_a[kk][local_row_base + i];                           \
+                _Pragma("unroll")                                                        \
+                for (int j = 0; j < (THREAD_TILE_N); ++j) {                               \
+                    acc[i][j] = hss_mixed_fma(a_frag, b_frag[j], acc[i][j]);              \
+                }                                                                         \
+            }                                                                             \
+        }                                                                                 \
+                                                                                          \
+        __syncthreads();                                                                  \
+    }                                                                                     \
+                                                                                          \
+    _Pragma("unroll")                                                                    \
+    for (int j = 0; j < (THREAD_TILE_N); ++j) {                                           \
+        int col = global_col_base + j;                                                    \
+        if (col >= n) {                                                                   \
+            continue;                                                                     \
+        }                                                                                 \
+                                                                                          \
+        _Pragma("unroll")                                                                \
+        for (int i = 0; i < (THREAD_TILE_M); ++i) {                                       \
+            int row = global_row_base + i;                                                \
+            if (row < m) {                                                                \
+                size_t c_idx = row + static_cast<size_t>(col) * ldc;                      \
+                if (subtract_update) {                                                    \
+                    C[c_idx] -= acc[i][j];                                                \
+                } else {                                                                  \
+                    C[c_idx] = alpha * acc[i][j] + beta * C[c_idx];                       \
+                }                                                                         \
+            }                                                                             \
+        }                                                                                 \
+    }                                                                                     \
+                                                                                          \
+    return;                                                                               \
+}
+
+DEFINE_HSS_NT_HH_KERNEL(
+    hss_gemm_nt_hh_kernel,
+    NT_BLOCK_M,
+    NT_BLOCK_N,
+    NT_BLOCK_K,
+    NT_THREAD_TILE_M,
+    NT_THREAD_TILE_N,
+    NT_THREADS)
+
+DEFINE_HSS_NT_HH_KERNEL(
+    hss_gemm_nt_tuned_hh_kernel,
+    TUNED_BLOCK_M,
+    TUNED_BLOCK_N,
+    TUNED_BLOCK_K,
+    TUNED_THREAD_TILE_M,
+    TUNED_THREAD_TILE_N,
+    TUNED_THREADS)
+
+DEFINE_HSS_NT_HH_KERNEL(
+    hss_gemm_nt_square_hh_kernel,
+    SQUARE_BLOCK_M,
+    SQUARE_BLOCK_N,
+    SQUARE_BLOCK_K,
+    SQUARE_THREAD_TILE_M,
+    SQUARE_THREAD_TILE_N,
+    SQUARE_THREADS)
+
+DEFINE_HSS_NT_HH_KERNEL(
+    hss_gemm_nt_wide128_hh_kernel,
+    WIDE128_BLOCK_M,
+    WIDE128_BLOCK_N,
+    WIDE128_BLOCK_K,
+    WIDE128_THREAD_TILE_M,
+    WIDE128_THREAD_TILE_N,
+    WIDE128_THREADS)
+
+DEFINE_HSS_NT_HH_KERNEL(
+    hss_gemm_nt_square4_hh_kernel,
+    SQUARE4_BLOCK_M,
+    SQUARE4_BLOCK_N,
+    SQUARE4_BLOCK_K,
+    SQUARE4_THREAD_TILE_M,
+    SQUARE4_THREAD_TILE_N,
+    SQUARE4_THREADS)
+
+#undef DEFINE_HSS_NT_HH_KERNEL
+
 } // namespace
 
 extern "C" {
@@ -1396,6 +1617,183 @@ void launch_hss_gemm_kernel(
             A_half,
             lda,
             B_f32,
+            ldb,
+            beta,
+            C_f32,
+            ldc);
+    }
+
+    return;
+}
+
+void launch_hss_gemm_true_kernel(
+    rocblas_operation transA,
+    rocblas_operation transB,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const __half* A_half,
+    int lda,
+    const __half* B_half,
+    int ldb,
+    float beta,
+    float* C_f32,
+    int ldc,
+    hipStream_t stream)
+{
+    if (m <= 0 || n <= 0 || (k <= 0 && beta == 1.0f)) {
+        return;
+    }
+
+    bool use_trans_a = (transA != rocblas_operation_none);
+    bool use_trans_b = (transB != rocblas_operation_none);
+    bool subtract_update = (alpha == -1.0f && beta == 1.0f);
+
+    if (!use_trans_a && use_trans_b) {
+        HssNtKernel kernel = hss_select_nt_kernel(m, n, k);
+        if (kernel == HssNtKernel::Legacy64x64x16) {
+            dim3 block(NT_THREADS_X, NT_THREADS_Y);
+            dim3 grid(
+                (m + NT_BLOCK_M - 1) / NT_BLOCK_M,
+                (n + NT_BLOCK_N - 1) / NT_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+        } else if (kernel == HssNtKernel::Square128x128x32) {
+            dim3 block(SQUARE_THREADS_X, SQUARE_THREADS_Y);
+            dim3 grid(
+                (m + SQUARE_BLOCK_M - 1) / SQUARE_BLOCK_M,
+                (n + SQUARE_BLOCK_N - 1) / SQUARE_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_square_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+        } else if (kernel == HssNtKernel::Wide64x128x32) {
+            dim3 block(WIDE128_THREADS_X, WIDE128_THREADS_Y);
+            dim3 grid(
+                (m + WIDE128_BLOCK_M - 1) / WIDE128_BLOCK_M,
+                (n + WIDE128_BLOCK_N - 1) / WIDE128_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_wide128_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+        } else if (kernel == HssNtKernel::Square4x128x128x32) {
+            dim3 block(SQUARE4_THREADS_X, SQUARE4_THREADS_Y);
+            dim3 grid(
+                (m + SQUARE4_BLOCK_M - 1) / SQUARE4_BLOCK_M,
+                (n + SQUARE4_BLOCK_N - 1) / SQUARE4_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_square4_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+        } else {
+            dim3 block(TUNED_THREADS_X, TUNED_THREADS_Y);
+            dim3 grid(
+                (m + TUNED_BLOCK_M - 1) / TUNED_BLOCK_M,
+                (n + TUNED_BLOCK_N - 1) / TUNED_BLOCK_N);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_tuned_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+        }
+    } else {
+        dim3 block(TILE, TILE);
+        dim3 grid(
+            (m + TILE - 1) / TILE,
+            (n + TILE - 1) / TILE);
+
+        hipLaunchKernelGGL(
+            hss_gemm_hh_kernel,
+            grid,
+            block,
+            0,
+            stream,
+            use_trans_a,
+            use_trans_b,
+            m,
+            n,
+            k,
+            alpha,
+            A_half,
+            lda,
+            B_half,
             ldb,
             beta,
             C_f32,

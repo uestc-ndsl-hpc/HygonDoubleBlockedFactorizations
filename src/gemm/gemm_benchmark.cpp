@@ -12,6 +12,7 @@
 #include <rocblas/rocblas.h>
 
 #include "gemm/mixed_gemm.h"
+#include "kernels/fp16_convert.h"
 #include "utils/benchmark/gpu_timer.h"
 #include "utils/common/error_check.h"
 #include "utils/memory/device_buffer.h"
@@ -251,6 +252,207 @@ double run_hss_gemm(
     return static_cast<double>(total_time_ms) / num_iters;
 }
 
+double run_hss_gemm_core_preconverted(
+    rocblas_handle handle,
+    hipStream_t stream,
+    int m,
+    int n,
+    int k,
+    const __half* d_A_half,
+    const __half* d_B_half,
+    float* d_C,
+    size_t size_C,
+    const vector<float>* h_C_initial,
+    int num_warmup,
+    int num_iters)
+{
+    float alpha = -1.0f;
+    float beta = 1.0f;
+    int lda = m;
+    int ldb = n;
+    int ldc = m;
+
+    for (int w = 0; w < num_warmup; ++w) {
+        launch_hss_gemm_preconverted(
+            handle,
+            stream,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            m,
+            n,
+            k,
+            alpha,
+            d_A_half,
+            lda,
+            d_B_half,
+            ldb,
+            beta,
+            d_C,
+            ldc);
+    }
+    HIP_CHECK(hipStreamSynchronize(stream));
+    reset_c(stream, d_C, size_C, h_C_initial);
+    HIP_CHECK(hipStreamSynchronize(stream));
+
+    GPUTimer timer;
+    float total_time_ms = timer.measure(stream, [&]() {
+        for (int i = 0; i < num_iters; ++i) {
+            launch_hss_gemm_preconverted(
+                handle,
+                stream,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                m,
+                n,
+                k,
+                alpha,
+                d_A_half,
+                lda,
+                d_B_half,
+                ldb,
+                beta,
+                d_C,
+                ldc);
+        }
+    });
+
+    HIP_CHECK(hipGetLastError());
+    return static_cast<double>(total_time_ms) / num_iters;
+}
+
+double run_rocblas_hss_gemm_preconverted(
+    rocblas_handle handle,
+    hipStream_t stream,
+    int m,
+    int n,
+    int k,
+    const rocblas_half* d_A_half,
+    const rocblas_half* d_B_half,
+    float* d_C,
+    size_t size_C,
+    const vector<float>* h_C_initial,
+    int num_warmup,
+    int num_iters)
+{
+    float alpha = -1.0f;
+    float beta = 1.0f;
+    int lda = m;
+    int ldb = n;
+    int ldc = m;
+
+    auto call_rocblas_hss = [&]() {
+        ROCBLAS_CHECK(rocblas_gemm_ex(
+            handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            m,
+            n,
+            k,
+            &alpha,
+            d_A_half,
+            rocblas_datatype_f16_r,
+            lda,
+            d_B_half,
+            rocblas_datatype_f16_r,
+            ldb,
+            &beta,
+            d_C,
+            rocblas_datatype_f32_r,
+            ldc,
+            d_C,
+            rocblas_datatype_f32_r,
+            ldc,
+            rocblas_datatype_f32_r,
+            rocblas_gemm_algo_standard,
+            0,
+            0));
+    };
+
+    for (int w = 0; w < num_warmup; ++w) {
+        call_rocblas_hss();
+    }
+    HIP_CHECK(hipStreamSynchronize(stream));
+    reset_c(stream, d_C, size_C, h_C_initial);
+    HIP_CHECK(hipStreamSynchronize(stream));
+
+    GPUTimer timer;
+    float total_time_ms = timer.measure(stream, [&]() {
+        for (int i = 0; i < num_iters; ++i) {
+            call_rocblas_hss();
+        }
+    });
+
+    return static_cast<double>(total_time_ms) / num_iters;
+}
+
+double run_half_a_single_b_gemm(
+    rocblas_handle handle,
+    hipStream_t stream,
+    int m,
+    int n,
+    int k,
+    const float* d_A,
+    const float* d_B,
+    float* d_C,
+    size_t size_C,
+    const vector<float>* h_C_initial,
+    int num_warmup,
+    int num_iters)
+{
+    float alpha = -1.0f;
+    float beta = 1.0f;
+    int lda = m;
+    int ldb = n;
+    int ldc = m;
+
+    for (int w = 0; w < num_warmup; ++w) {
+        launch_half_a_single_b_gemm(
+            handle,
+            stream,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            m,
+            n,
+            k,
+            alpha,
+            d_A,
+            lda,
+            d_B,
+            ldb,
+            beta,
+            d_C,
+            ldc);
+    }
+    HIP_CHECK(hipStreamSynchronize(stream));
+    reset_c(stream, d_C, size_C, h_C_initial);
+    HIP_CHECK(hipStreamSynchronize(stream));
+
+    GPUTimer timer;
+    float total_time_ms = timer.measure(stream, [&]() {
+        for (int i = 0; i < num_iters; ++i) {
+            launch_half_a_single_b_gemm(
+                handle,
+                stream,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                m,
+                n,
+                k,
+                alpha,
+                d_A,
+                lda,
+                d_B,
+                ldb,
+                beta,
+                d_C,
+                ldc);
+        }
+    });
+
+    HIP_CHECK(hipGetLastError());
+    return static_cast<double>(total_time_ms) / num_iters;
+}
+
 ErrorStats compare_device_matrices(
     hipStream_t stream,
     const float* d_ref,
@@ -303,6 +505,7 @@ void print_usage(const char* program)
          << "  GEMM_WARMUP=N                 Warmup iterations.\n"
          << "  GEMM_ITERS=N                  Timed iterations.\n";
     cerr << "  HYGON_HSS_A_MODE=preconvert|tile\n"
+         << "  HYGON_HSS_INPUT_MODE=true|half_a_single_b\n"
          << "  HYGON_HSS_KERNEL=auto|tuned|legacy|square|wide128|square4\n";
 }
 
@@ -341,9 +544,13 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
     cout << "======================================================================================================================\n";
     cout << "  GEMM update benchmark for right-looking Cholesky on DCU K100_AI\n";
     cout << "  Operation: C(M x N) = C - A(M x K) * B(N x K)^T\n";
-    cout << "  HSS path: launch_hss_gemm(N, T), FP32 inputs, FP32 output, mixed-precision kernel internally\n";
+    cout << "  HSS path: launch_hss_gemm(N, T), FP32 inputs, FP32 output, A/B converted to FP16 internally\n";
     cout << "  HSS backend: " << hygon_hss_gemm_backend_name()
-         << " (true HSS: half A, single B, single C)\n";
+         << " (true HSS: half A, half B, single C)\n";
+    cout << "  HSS core-only: A/B converted once, then custom true-HSS kernel only\n";
+    cout << "  rocBLAS HSS: rocblas_gemm_ex with half A/B, float C/D, float compute\n";
+    cout << "  Half-A baseline: " << hygon_half_a_single_b_backend_name()
+         << " (legacy comparison: half A, single B, single C)\n";
     cout << "  Total matrix size: " << options.total_matrix_size
          << ", warmup: " << options.num_warmup
          << ", iterations: " << options.num_iters
@@ -354,9 +561,18 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
          << setw(9) << "M"
          << setw(9) << "N"
          << setw(14) << "SGEMM ms"
+         << setw(14) << "HalfA ms"
+         << setw(14) << "rocHSS ms"
+         << setw(14) << "Core ms"
          << setw(14) << "HSS ms"
-         << setw(13) << "speedup"
+         << setw(13) << "HalfA spd"
+         << setw(13) << "rocHSS spd"
+         << setw(13) << "Core spd"
+         << setw(13) << "HSS spd"
          << setw(15) << "SGEMM GF/s"
+         << setw(15) << "HalfA GF/s"
+         << setw(15) << "rocHSS GF/s"
+         << setw(15) << "Core GF/s"
          << setw(15) << "HSS GF/s"
          << setw(14) << "max abs"
          << setw(14) << "rel L2"
@@ -378,9 +594,17 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
 
         DeviceBuffer<float> d_A(size_A);
         DeviceBuffer<float> d_B(size_B);
+        DeviceBuffer<rocblas_half> d_A_half(size_A);
+        DeviceBuffer<rocblas_half> d_B_half(size_B);
         bool verify_this_shape = options.verify && size_C <= options.verify_element_limit;
         DeviceBuffer<float> d_C_sgemm(size_C);
+        DeviceBuffer<float> d_C_half_a(verify_this_shape ? size_C : 0);
+        DeviceBuffer<float> d_C_roc_hss(verify_this_shape ? size_C : 0);
+        DeviceBuffer<float> d_C_core_hss(verify_this_shape ? size_C : 0);
         DeviceBuffer<float> d_C_hss(verify_this_shape ? size_C : 0);
+        float* d_C_half_a_target = verify_this_shape ? d_C_half_a.get() : d_C_sgemm.get();
+        float* d_C_roc_hss_target = verify_this_shape ? d_C_roc_hss.get() : d_C_sgemm.get();
+        float* d_C_core_hss_target = verify_this_shape ? d_C_core_hss.get() : d_C_sgemm.get();
         float* d_C_hss_target = verify_this_shape ? d_C_hss.get() : d_C_sgemm.get();
 
         vector<float> h_A;
@@ -405,8 +629,27 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
 
         reset_c(stream, d_C_sgemm, size_C, h_C_initial);
         if (verify_this_shape) {
+            reset_c(stream, d_C_half_a_target, size_C, h_C_initial);
+            reset_c(stream, d_C_roc_hss_target, size_C, h_C_initial);
+            reset_c(stream, d_C_core_hss_target, size_C, h_C_initial);
             reset_c(stream, d_C_hss_target, size_C, h_C_initial);
         }
+        launch_fp32_to_fp16(
+            d_A,
+            reinterpret_cast<__half*>(d_A_half.get()),
+            m,
+            k,
+            m,
+            m,
+            stream);
+        launch_fp32_to_fp16(
+            d_B,
+            reinterpret_cast<__half*>(d_B_half.get()),
+            n,
+            k,
+            n,
+            n,
+            stream);
         HIP_CHECK(hipStreamSynchronize(stream));
 
         double sgemm_ms = run_rocblas_sgemm(
@@ -418,6 +661,57 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
             d_A,
             d_B,
             d_C_sgemm,
+            size_C,
+            h_C_initial,
+            options.num_warmup,
+            options.num_iters);
+
+        reset_c(stream, d_C_half_a_target, size_C, h_C_initial);
+        HIP_CHECK(hipStreamSynchronize(stream));
+
+        double half_a_ms = run_half_a_single_b_gemm(
+            handle,
+            stream,
+            m,
+            n,
+            k,
+            d_A,
+            d_B,
+            d_C_half_a_target,
+            size_C,
+            h_C_initial,
+            options.num_warmup,
+            options.num_iters);
+
+        reset_c(stream, d_C_roc_hss_target, size_C, h_C_initial);
+        HIP_CHECK(hipStreamSynchronize(stream));
+
+        double roc_hss_ms = run_rocblas_hss_gemm_preconverted(
+            handle,
+            stream,
+            m,
+            n,
+            k,
+            d_A_half,
+            d_B_half,
+            d_C_roc_hss_target,
+            size_C,
+            h_C_initial,
+            options.num_warmup,
+            options.num_iters);
+
+        reset_c(stream, d_C_core_hss_target, size_C, h_C_initial);
+        HIP_CHECK(hipStreamSynchronize(stream));
+
+        double core_hss_ms = run_hss_gemm_core_preconverted(
+            handle,
+            stream,
+            m,
+            n,
+            k,
+            reinterpret_cast<const __half*>(d_A_half.get()),
+            reinterpret_cast<const __half*>(d_B_half.get()),
+            d_C_core_hss_target,
             size_C,
             h_C_initial,
             options.num_warmup,
@@ -451,16 +745,31 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
         }
 
         double sgemm_gflops = calculate_gemm_gflops(m, n, k, sgemm_ms);
+        double half_a_gflops = calculate_gemm_gflops(m, n, k, half_a_ms);
+        double roc_hss_gflops = calculate_gemm_gflops(m, n, k, roc_hss_ms);
+        double core_hss_gflops = calculate_gemm_gflops(m, n, k, core_hss_ms);
         double hss_gflops = calculate_gemm_gflops(m, n, k, hss_ms);
-        double speedup = hss_ms > 0.0 ? sgemm_ms / hss_ms : 0.0;
+        double half_a_speedup = half_a_ms > 0.0 ? sgemm_ms / half_a_ms : 0.0;
+        double roc_hss_speedup = roc_hss_ms > 0.0 ? sgemm_ms / roc_hss_ms : 0.0;
+        double core_hss_speedup = core_hss_ms > 0.0 ? sgemm_ms / core_hss_ms : 0.0;
+        double hss_speedup = hss_ms > 0.0 ? sgemm_ms / hss_ms : 0.0;
 
         cout << setw(8) << k
              << setw(9) << m
              << setw(9) << n
              << setw(14) << fixed << setprecision(3) << sgemm_ms
+             << setw(14) << fixed << setprecision(3) << half_a_ms
+             << setw(14) << fixed << setprecision(3) << roc_hss_ms
+             << setw(14) << fixed << setprecision(3) << core_hss_ms
              << setw(14) << fixed << setprecision(3) << hss_ms
-             << setw(13) << fixed << setprecision(3) << speedup
+             << setw(13) << fixed << setprecision(3) << half_a_speedup
+             << setw(13) << fixed << setprecision(3) << roc_hss_speedup
+             << setw(13) << fixed << setprecision(3) << core_hss_speedup
+             << setw(13) << fixed << setprecision(3) << hss_speedup
              << setw(15) << fixed << setprecision(1) << sgemm_gflops
+             << setw(15) << fixed << setprecision(1) << half_a_gflops
+             << setw(15) << fixed << setprecision(1) << roc_hss_gflops
+             << setw(15) << fixed << setprecision(1) << core_hss_gflops
              << setw(15) << fixed << setprecision(1) << hss_gflops;
 
         if (options.verify && !error.skipped) {
