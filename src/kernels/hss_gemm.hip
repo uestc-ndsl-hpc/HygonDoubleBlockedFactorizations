@@ -59,7 +59,8 @@ enum class HssNtKernel {
     Tuned128x64x32,
     Square128x128x32,
     Wide64x128x32,
-    Square4x128x128x32
+    Square4x128x128x32,
+    Mfma16x16x16
 };
 
 __host__ HssNtKernel hss_requested_nt_kernel()
@@ -100,6 +101,17 @@ __host__ HssNtKernel hss_requested_nt_kernel()
         return HssNtKernel::Square4x128x128x32;
     }
 
+#if HYGON_ENABLE_MFMA_KERNEL
+    if (std::strcmp(value, "mfma") == 0 ||
+        std::strcmp(value, "MFMA") == 0 ||
+        std::strcmp(value, "mfma16") == 0 ||
+        std::strcmp(value, "MFMA16") == 0 ||
+        std::strcmp(value, "mfma16x16x16") == 0 ||
+        std::strcmp(value, "MFMA16X16X16") == 0) {
+        return HssNtKernel::Mfma16x16x16;
+    }
+#endif
+
     return HssNtKernel::Auto;
 }
 
@@ -133,10 +145,17 @@ __host__ const char* hss_nt_kernel_name(HssNtKernel kernel)
         return "custom_nt_wide_64x128x32_4x4_mix";
     case HssNtKernel::Square4x128x128x32:
         return "custom_nt_square4_128x128x32_4x4_mix";
+    case HssNtKernel::Mfma16x16x16:
+        return "custom_nt_mfma_16x16x16_hh_experimental";
     }
 
     return "custom_nt_auto";
 }
+
+#if HYGON_ENABLE_MFMA_KERNEL
+typedef float hss_f32x4 __attribute__((ext_vector_type(4)));
+typedef _Float16 hss_f16x4 __attribute__((ext_vector_type(4)));
+#endif
 
 __device__ __forceinline__ float hss_mixed_fma(__half a, float b, float acc)
 {
@@ -282,6 +301,79 @@ __global__ void hss_gemm_hh_kernel(
 
     return;
 }
+
+#if HYGON_ENABLE_MFMA_KERNEL
+__global__ __launch_bounds__(64) void hss_gemm_nt_mfma_16x16x16_hh_kernel(
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const __half* __restrict__ A,
+    int lda,
+    const __half* __restrict__ B,
+    int ldb,
+    float beta,
+    float* __restrict__ C,
+    int ldc,
+    bool subtract_update)
+{
+    int lane = threadIdx.x;
+    int lane_row = lane & 15;
+    int lane_group = lane >> 4;
+    int row = blockIdx.x * 16 + lane_row;
+    int col_base = blockIdx.y * 16 + lane_group * 4;
+
+    const _Float16* __restrict__ A16 =
+        reinterpret_cast<const _Float16*>(A);
+    const _Float16* __restrict__ B16 =
+        reinterpret_cast<const _Float16*>(B);
+
+    hss_f32x4 acc = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    for (int tile_k = 0; tile_k < k; tile_k += 16) {
+        hss_f16x4 a_frag;
+        hss_f16x4 b_frag;
+
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            int kk = tile_k + lane_group * 4 + i;
+            int b_col = blockIdx.y * 16 + lane_row;
+
+            a_frag[i] = (row < m && kk < k)
+                ? A16[row + static_cast<size_t>(kk) * lda]
+                : static_cast<_Float16>(0.0f);
+            b_frag[i] = (b_col < n && kk < k)
+                ? B16[b_col + static_cast<size_t>(kk) * ldb]
+                : static_cast<_Float16>(0.0f);
+        }
+
+        acc = __builtin_amdgcn_mfma_f32_16x16x16f16(
+            a_frag,
+            b_frag,
+            acc,
+            0,
+            0,
+            0);
+    }
+
+    if (row < m) {
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            int col = col_base + i;
+            if (col < n) {
+                size_t c_idx = row + static_cast<size_t>(col) * ldc;
+                if (subtract_update) {
+                    C[c_idx] -= acc[i];
+                } else {
+                    C[c_idx] = alpha * acc[i] + beta * C[c_idx];
+                }
+            }
+        }
+    }
+
+    return;
+}
+#endif
 
 __global__ void hss_gemm_nt_kernel(
     int m,
@@ -1571,6 +1663,32 @@ void launch_hss_gemm_kernel(
                 C_f32,
                 ldc,
                 subtract_update);
+#if HYGON_ENABLE_MFMA_KERNEL
+        } else if (kernel == HssNtKernel::Mfma16x16x16) {
+            dim3 block(64);
+            dim3 grid(
+                (m + 15) / 16,
+                (n + 15) / 16);
+
+            hipLaunchKernelGGL(
+                hss_gemm_nt_mfma_16x16x16_hh_kernel,
+                grid,
+                block,
+                0,
+                stream,
+                m,
+                n,
+                k,
+                alpha,
+                A_half,
+                lda,
+                B_half,
+                ldb,
+                beta,
+                C_f32,
+                ldc,
+                subtract_update);
+#endif
         } else {
             dim3 block(TUNED_THREADS_X, TUNED_THREADS_Y);
             dim3 grid(
