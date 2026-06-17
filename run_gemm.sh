@@ -61,7 +61,8 @@ log "GEMM_VERIFY        : ${GEMM_VERIFY:-0}"
 log "HSS A mode         : ${HYGON_HSS_A_MODE:-preconvert}"
 log "HSS input mode     : ${HYGON_HSS_INPUT_MODE:-true_hss}"
 log "HSS kernel         : ${HYGON_HSS_KERNEL:-auto}"
-log "AMDGPU target      : ${HYGON_AMDGPU_TARGET_ID:-cmake default}"
+log "AMDGPU target      : ${HYGON_AMDGPU_TARGET:-cmake default}"
+log "AMDGPU features    : ${HYGON_AMDGPU_TARGET_FEATURES:-cmake default}"
 log "=================================================="
 
 if [ ! -x "${EXEC}" ]; then

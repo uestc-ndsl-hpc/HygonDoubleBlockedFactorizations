@@ -175,21 +175,30 @@ emit_with_save_temps() {
 
     local arch
     arch=$(detect_gpu_arch)
-    local target_id="${HYGON_AMDGPU_TARGET_ID:-${arch}}"
+    local target="${HYGON_AMDGPU_TARGET:-${arch}}"
+    local target_features="${HYGON_AMDGPU_TARGET_FEATURES:-+mai-insts}"
     local enable_mfma="${HYGON_ENABLE_MFMA_KERNEL:-1}"
     local temp_dir="${OUT_DIR}/hss_isa_temps"
     rm -rf "${temp_dir}"
     mkdir -p "${temp_dir}"
 
     local arch_args=()
-    if [ -n "${target_id}" ]; then
-        arch_args=(--offload-arch="${target_id}")
+    if [ -n "${target}" ]; then
+        arch_args=(--offload-arch="${target}")
+    fi
+
+    local feature_args=()
+    if [ "${enable_mfma}" = "1" ] && [ -n "${target_features}" ]; then
+        for feature in ${target_features//,/ }; do
+            feature_args+=(-Xclang -target-feature -Xclang "${feature}")
+        done
     fi
 
     echo "llvm-objdump not found; using hipcc -save-temps=obj fallback."
     echo "hipcc           : ${hipcc}"
     echo "GPU arch        : ${arch:-auto}"
-    echo "Target id       : ${target_id:-auto}"
+    echo "Target          : ${target:-auto}"
+    echo "Target features : ${target_features:-none}"
     echo "MFMA kernel     : ${enable_mfma}"
     echo "Temp dir        : ${temp_dir}"
 
@@ -197,10 +206,11 @@ emit_with_save_temps() {
         cd "${temp_dir}" &&
         "${hipcc}" -O3 -std=c++17 -D__HIP_PLATFORM_AMD__ \
             -DHYGON_ENABLE_MFMA_KERNEL="${enable_mfma}" \
-            -DHYGON_AMDGPU_TARGET_ID="\"${target_id}\"" \
+            -DHYGON_AMDGPU_TARGET="\"${target}\"" \
             -I"${ROCM_PATH}/include" \
             -I"${ROOT_DIR}/include" \
             "${arch_args[@]}" \
+            "${feature_args[@]}" \
             -save-temps=obj \
             -c "${ROOT_DIR}/src/kernels/hss_gemm.hip" \
             -o hss_gemm.o
