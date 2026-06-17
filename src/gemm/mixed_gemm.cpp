@@ -99,6 +99,8 @@ const char* hygon_hss_gemm_backend_name()
         return "custom_true_hss_preconvert_ab_nt_wide_64x128x32_4x4_mix";
     } else if (std::strcmp(kernel, "custom_nt_square4_128x128x32_4x4_mix") == 0) {
         return "custom_true_hss_preconvert_ab_nt_square4_128x128x32_4x4_mix";
+    } else if (std::strcmp(kernel, "custom_nt_mfma_16x16x16_hh_experimental") == 0) {
+        return "custom_true_hss_preconvert_ab_nt_mfma_16x16x16_experimental";
     }
 
     return "custom_true_hss_preconvert_ab_nt_tuned_128x64x32_mix";
