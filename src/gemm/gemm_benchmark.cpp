@@ -25,18 +25,34 @@ namespace {
 constexpr int kTotalMatrixSize = 32768;
 constexpr size_t kDefaultVerifyElementLimit = 32ull * 1024ull * 1024ull;
 
+struct GemmShape {
+    int m = 0;
+    int n = 0;
+    int k = 0;
+    string tag;
+    int launches = 1;
+    double workload_flops = 0.0;
+};
+
 struct BenchmarkOptions {
     vector<int> k_steps = {
         64, 128, 256, 384, 512, 768, 1024, 1536,
         2048, 3072, 4096, 6144, 8192, 12288, 16384
     };
+    vector<GemmShape> shapes;
+    string shape_mode = "sweep";
+    double workload_total_flops = 0.0;
     int total_matrix_size = kTotalMatrixSize;
+    int potrf_n = kTotalMatrixSize;
+    int potrf_nb = 256;
+    int shape_limit = 0;
     int num_warmup = 2;
     int num_iters = 5;
     bool verify = false;
     bool run_sgemm = true;
     bool run_rocblas_hss = true;
     bool run_custom_hss = true;
+    bool list_shapes = false;
     size_t verify_element_limit = kDefaultVerifyElementLimit;
 };
 
@@ -150,6 +166,263 @@ vector<int> parse_int_list_env(const char* name, const vector<int>& default_valu
     }
 
     return parsed_values.empty() ? default_value : parsed_values;
+}
+
+void add_workload_shape(
+    vector<GemmShape>& shapes,
+    const string& tag,
+    int m,
+    int n,
+    int k,
+    int launches = 1)
+{
+    if (m <= 0 || n <= 0 || k <= 0 || launches <= 0) {
+        return;
+    }
+
+    double flops = 2.0 * static_cast<double>(m) * n * k * launches;
+    for (GemmShape& shape : shapes) {
+        if (shape.tag == tag && shape.m == m && shape.n == n && shape.k == k) {
+            shape.launches += launches;
+            shape.workload_flops += flops;
+            return;
+        }
+    }
+
+    shapes.push_back({m, n, k, tag, launches, flops});
+}
+
+void enumerate_trsm_internal_shapes(
+    vector<GemmShape>& shapes,
+    int rows,
+    int cols,
+    int nb)
+{
+    if (rows <= 0 || cols <= nb) {
+        return;
+    }
+
+    int m1 = cols / 2;
+    int m2 = cols - m1;
+
+    enumerate_trsm_internal_shapes(shapes, rows, m1, nb);
+    add_workload_shape(shapes, "trsm", rows, m2, m1);
+    enumerate_trsm_internal_shapes(shapes, rows, m2, nb);
+}
+
+void enumerate_trsm_shapes(
+    vector<GemmShape>& shapes,
+    int rows,
+    int cols,
+    int nb)
+{
+    constexpr int kTrsmRowLimit = 8192;
+    if (rows <= kTrsmRowLimit) {
+        enumerate_trsm_internal_shapes(shapes, rows, cols, nb);
+        return;
+    }
+
+    int chunks = (rows + kTrsmRowLimit - 1) / kTrsmRowLimit;
+    for (int i = 0; i < chunks; ++i) {
+        int current_rows = min(kTrsmRowLimit, rows - i * kTrsmRowLimit);
+        enumerate_trsm_internal_shapes(shapes, current_rows, cols, nb);
+    }
+}
+
+void enumerate_syrk_shapes(
+    vector<GemmShape>& shapes,
+    int n,
+    int k,
+    int nb)
+{
+    if (n <= nb || k <= 0) {
+        return;
+    }
+
+    int num_blocks = n / nb;
+    for (int b = 0; b < num_blocks; ++b) {
+        add_workload_shape(shapes, "syrk", nb, nb, k);
+    }
+
+    int tail = n % nb;
+    if (tail > 0) {
+        add_workload_shape(shapes, "syrk-tail", tail, tail, k);
+    }
+
+    for (int i = 1; (n / (2 * i * nb) > 0) || (n % (2 * i * nb) > i * nb); i *= 2) {
+        int span = i * nb;
+        int batch_count = n / (2 * span);
+        for (int b = 0; b < batch_count; ++b) {
+            add_workload_shape(shapes, "syrk", span, span, k);
+        }
+
+        int rem = n % (2 * span);
+        if (rem > span) {
+            add_workload_shape(shapes, "syrk-tail", rem - span, span, k);
+        }
+    }
+}
+
+void enumerate_potrf_shapes(
+    vector<GemmShape>& shapes,
+    int n,
+    int nb)
+{
+    if (n <= nb) {
+        return;
+    }
+
+    int n1 = n / 2;
+    int n2 = n - n1;
+
+    enumerate_potrf_shapes(shapes, n1, nb);
+    enumerate_trsm_shapes(shapes, n2, n1, nb);
+    enumerate_syrk_shapes(shapes, n2, n1, nb);
+    enumerate_potrf_shapes(shapes, n2, nb);
+}
+
+bool parse_shape_token(const string& token, GemmShape& shape)
+{
+    vector<int> values;
+    string current;
+    for (char ch : token) {
+        if (ch == 'x' || ch == 'X' || ch == '*') {
+            if (current.empty()) {
+                return false;
+            }
+            values.push_back(atoi(current.c_str()));
+            current.clear();
+        } else if (ch >= '0' && ch <= '9') {
+            current.push_back(ch);
+        } else {
+            return false;
+        }
+    }
+
+    if (!current.empty()) {
+        values.push_back(atoi(current.c_str()));
+    }
+
+    if (values.size() != 3 || values[0] <= 0 || values[1] <= 0 || values[2] <= 0) {
+        return false;
+    }
+
+    shape = {values[0], values[1], values[2], "manual", 1, 2.0 * values[0] * values[1] * values[2]};
+    return true;
+}
+
+vector<GemmShape> parse_shape_list_env(const char* name)
+{
+    vector<GemmShape> shapes;
+    vector<string> tokens = split_env_list(getenv(name));
+    for (const string& token : tokens) {
+        GemmShape shape;
+        if (parse_shape_token(token, shape)) {
+            shapes.push_back(shape);
+        }
+    }
+
+    return shapes;
+}
+
+void sort_shapes_by_workload_weight(vector<GemmShape>& shapes)
+{
+    sort(shapes.begin(), shapes.end(), [](const GemmShape& a, const GemmShape& b) {
+        if (a.workload_flops != b.workload_flops) {
+            return a.workload_flops > b.workload_flops;
+        }
+        if (a.m != b.m) return a.m > b.m;
+        if (a.n != b.n) return a.n > b.n;
+        return a.k > b.k;
+    });
+}
+
+double sum_workload_flops(const vector<GemmShape>& shapes)
+{
+    double total = 0.0;
+    for (const GemmShape& shape : shapes) {
+        total += shape.workload_flops;
+    }
+
+    return total;
+}
+
+vector<GemmShape> make_default_sweep_shapes(const BenchmarkOptions& options)
+{
+    vector<GemmShape> shapes;
+    for (int k : options.k_steps) {
+        int m = options.total_matrix_size - k;
+        int n = options.total_matrix_size - k;
+        if (m > 0 && n > 0 && k > 0) {
+            add_workload_shape(shapes, "sweep", m, n, k);
+        }
+    }
+
+    return shapes;
+}
+
+string benchmark_mode_description(const BenchmarkOptions& options)
+{
+    if (options.shape_mode == "potrf") {
+        return "mixed POTRF HSS GEMM workload";
+    }
+
+    if (options.shape_mode == "manual") {
+        return "explicit GEMM shapes";
+    }
+
+    return "right-looking sweep";
+}
+
+vector<GemmShape> build_benchmark_shapes(const BenchmarkOptions& options)
+{
+    if (options.shape_mode == "sweep") {
+        return make_default_sweep_shapes(options);
+    }
+
+    return options.shapes;
+}
+
+void print_shape_plan(const BenchmarkOptions& options)
+{
+    vector<GemmShape> shapes = build_benchmark_shapes(options);
+    double total_workload_flops = options.workload_total_flops > 0.0
+        ? options.workload_total_flops
+        : sum_workload_flops(shapes);
+
+    cout << "GEMM shape plan\n";
+    cout << "  Shape mode: " << benchmark_mode_description(options) << "\n";
+    if (options.shape_mode == "potrf") {
+        cout << "  POTRF_N=" << options.potrf_n
+             << ", POTRF_NB=" << options.potrf_nb
+             << ", selected shapes=" << shapes.size()
+             << ", shape limit=" << (options.shape_limit > 0 ? options.shape_limit : 0)
+             << "\n";
+    } else {
+        cout << "  Selected shapes: " << shapes.size() << "\n";
+    }
+
+    cout << setw(8) << "K"
+         << setw(9) << "M"
+         << setw(9) << "N"
+         << setw(12) << "tag"
+         << setw(10) << "launch"
+         << setw(11) << "work %"
+         << "\n";
+    cout << "-----------------------------------------------------------\n";
+
+    for (const GemmShape& shape : shapes) {
+        double work_pct = total_workload_flops > 0.0
+            ? (100.0 * shape.workload_flops / total_workload_flops)
+            : 0.0;
+        cout << setw(8) << shape.k
+             << setw(9) << shape.m
+             << setw(9) << shape.n
+             << setw(12) << shape.tag
+             << setw(10) << shape.launches
+             << setw(11) << fixed << setprecision(2) << work_pct
+             << defaultfloat << "\n";
+    }
 }
 
 void parse_cases_env(BenchmarkOptions& options)
@@ -506,6 +779,12 @@ void print_usage(const char* program)
          << "  GEMM_VERIFY_ELEMENT_LIMIT=N   Max C elements copied for verification.\n"
          << "  GEMM_TOTAL_SIZE=N             Simulated parent matrix size.\n"
          << "  GEMM_K_STEPS=K1,K2,...        Comma-separated K sweep list.\n"
+         << "  GEMM_SHAPES=MxNxK,...         Explicit GEMM shape list.\n"
+         << "  GEMM_WORKLOAD=potrf           Use mixed POTRF TRSM/SYRK GEMM shapes.\n"
+         << "  GEMM_SHAPE_LIMIT=N            Run only the first N selected shapes.\n"
+         << "  GEMM_LIST_SHAPES=1            Print selected shapes without running GEMM.\n"
+         << "  POTRF_N=N                     POTRF workload matrix size.\n"
+         << "  POTRF_NB=NB                   POTRF workload leaf/block size.\n"
          << "  GEMM_CASES=sgemm,rochss,hss   Cases: sgemm,rochss,hss,all.\n"
          << "  GEMM_WARMUP=N                 Warmup iterations.\n"
          << "  GEMM_ITERS=N                  Timed iterations.\n"
@@ -519,10 +798,33 @@ BenchmarkOptions parse_options(int argc, char** argv)
     options.verify_element_limit =
         parse_size_env("GEMM_VERIFY_ELEMENT_LIMIT", kDefaultVerifyElementLimit);
     options.total_matrix_size = parse_int_env("GEMM_TOTAL_SIZE", options.total_matrix_size);
+    options.potrf_n = parse_int_env("POTRF_N", options.potrf_n);
+    options.potrf_nb = parse_int_env("POTRF_NB", options.potrf_nb);
+    options.shape_limit = parse_int_env("GEMM_SHAPE_LIMIT", 0);
     options.k_steps = parse_int_list_env("GEMM_K_STEPS", options.k_steps);
     options.num_warmup = parse_int_env("GEMM_WARMUP", options.num_warmup);
     options.num_iters = parse_int_env("GEMM_ITERS", options.num_iters);
+    options.list_shapes = parse_bool_env("GEMM_LIST_SHAPES", false);
     parse_cases_env(options);
+
+    options.shapes = parse_shape_list_env("GEMM_SHAPES");
+    if (!options.shapes.empty()) {
+        options.shape_mode = "manual";
+        options.workload_total_flops = sum_workload_flops(options.shapes);
+    }
+
+    string workload = to_lower_ascii(getenv("GEMM_WORKLOAD") ? getenv("GEMM_WORKLOAD") : "");
+    if (options.shapes.empty() &&
+        (workload == "potrf" || workload == "cholesky" || workload == "mixed_potrf")) {
+        enumerate_potrf_shapes(options.shapes, options.potrf_n, options.potrf_nb);
+        sort_shapes_by_workload_weight(options.shapes);
+        options.shape_mode = "potrf";
+        options.workload_total_flops = sum_workload_flops(options.shapes);
+    }
+    if (options.shape_limit > 0 &&
+        static_cast<size_t>(options.shape_limit) < options.shapes.size()) {
+        options.shapes.resize(static_cast<size_t>(options.shape_limit));
+    }
 
     if (argc >= 2) {
         string arg = argv[1];
@@ -533,6 +835,9 @@ BenchmarkOptions parse_options(int argc, char** argv)
 
         options.k_steps.clear();
         options.k_steps.push_back(atoi(argv[1]));
+        options.shapes.clear();
+        options.shape_mode = "sweep";
+        options.workload_total_flops = 0.0;
     }
 
     return options;
@@ -540,6 +845,11 @@ BenchmarkOptions parse_options(int argc, char** argv)
 
 void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
 {
+    vector<GemmShape> shapes = build_benchmark_shapes(options);
+    double total_workload_flops = options.workload_total_flops > 0.0
+        ? options.workload_total_flops
+        : sum_workload_flops(shapes);
+
     rocblas_handle handle;
     ROCBLAS_CHECK(rocblas_create_handle(&handle));
 
@@ -554,6 +864,13 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
     cout << "  Custom HSS: " << hygon_hss_gemm_backend_name()
          << " (half A, half B, single C)\n";
     cout << "  HSS inputs are converted to FP16 once before timing each shape.\n";
+    cout << "  Shape mode: " << benchmark_mode_description(options) << "\n";
+    if (options.shape_mode == "potrf") {
+        cout << "  POTRF workload controls: N=" << options.potrf_n
+             << ", NB=" << options.potrf_nb
+             << ", shape limit=" << (options.shape_limit > 0 ? options.shape_limit : 0)
+             << "\n";
+    }
     cout << "  Total matrix size: " << options.total_matrix_size
          << ", warmup: " << options.num_warmup
          << ", iterations: " << options.num_iters
@@ -564,7 +881,9 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
 
     cout << setw(8) << "K"
          << setw(9) << "M"
-         << setw(9) << "N";
+         << setw(9) << "N"
+         << setw(12) << "tag"
+         << setw(10) << "launch";
     if (options.run_sgemm) cout << setw(14) << "SGEMM ms";
     if (options.run_rocblas_hss) cout << setw(14) << "rocHSS ms";
     if (options.run_custom_hss) cout << setw(14) << "Custom ms";
@@ -573,16 +892,17 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
     if (options.run_sgemm) cout << setw(15) << "SGEMM GF/s";
     if (options.run_rocblas_hss) cout << setw(15) << "rocHSS GF/s";
     if (options.run_custom_hss) cout << setw(15) << "Custom GF/s";
+    cout << setw(11) << "work %";
     cout << setw(14) << "max abs"
          << setw(14) << "rel L2"
          << setw(12) << "verify"
          << "\n";
     cout << "----------------------------------------------------------------------------------------------------------------------\n";
 
-    for (int k : options.k_steps) {
-        int m = options.total_matrix_size - k;
-        int n = options.total_matrix_size - k;
-
+    for (const GemmShape& shape : shapes) {
+        int m = shape.m;
+        int n = shape.n;
+        int k = shape.k;
         if (m <= 0 || n <= 0 || k <= 0) {
             continue;
         }
@@ -717,10 +1037,15 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
         double custom_hss_gflops = calculate_gemm_gflops(m, n, k, custom_hss_ms);
         double roc_hss_speedup = roc_hss_ms > 0.0 ? sgemm_ms / roc_hss_ms : 0.0;
         double custom_hss_speedup = custom_hss_ms > 0.0 ? sgemm_ms / custom_hss_ms : 0.0;
+        double work_pct = total_workload_flops > 0.0
+            ? (100.0 * shape.workload_flops / total_workload_flops)
+            : 0.0;
 
         cout << setw(8) << k
              << setw(9) << m
-             << setw(9) << n;
+             << setw(9) << n
+             << setw(12) << shape.tag
+             << setw(10) << shape.launches;
         if (options.run_sgemm) cout << setw(14) << fixed << setprecision(3) << sgemm_ms;
         if (options.run_rocblas_hss) cout << setw(14) << fixed << setprecision(3) << roc_hss_ms;
         if (options.run_custom_hss) cout << setw(14) << fixed << setprecision(3) << custom_hss_ms;
@@ -733,6 +1058,7 @@ void run_right_looking_gemm_benchmark(const BenchmarkOptions& options)
         if (options.run_sgemm) cout << setw(15) << fixed << setprecision(1) << sgemm_gflops;
         if (options.run_rocblas_hss) cout << setw(15) << fixed << setprecision(1) << roc_hss_gflops;
         if (options.run_custom_hss) cout << setw(15) << fixed << setprecision(1) << custom_hss_gflops;
+        cout << setw(11) << fixed << setprecision(2) << work_pct;
 
         if (options.verify && !error.skipped) {
             cout << setw(14) << scientific << setprecision(2) << error.max_abs
@@ -762,6 +1088,11 @@ int main(int argc, char** argv)
 {
     try {
         BenchmarkOptions options = parse_options(argc, argv);
+        if (options.list_shapes) {
+            print_shape_plan(options);
+            return 0;
+        }
+
         run_right_looking_gemm_benchmark(options);
     } catch (const exception& e) {
         cerr << "Exception caught: " << e.what() << endl;
