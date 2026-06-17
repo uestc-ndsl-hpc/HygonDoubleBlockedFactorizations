@@ -788,6 +788,7 @@ void print_usage(const char* program)
          << "  GEMM_CASES=sgemm,rochss,hss   Cases: sgemm,rochss,hss,all.\n"
          << "  GEMM_WARMUP=N                 Warmup iterations.\n"
          << "  GEMM_ITERS=N                  Timed iterations.\n"
+         << "  HYGON_HSS_FAST=0|1            Enable exact-tile subtract-update fast path.\n"
          << "  HYGON_HSS_KERNEL=auto|tuned|legacy|square|wide128|square4\n";
 }
 

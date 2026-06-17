@@ -65,6 +65,7 @@ log "POTRF_NB           : ${POTRF_NB:-256}"
 log "GEMM_CASES         : ${GEMM_CASES:-sgemm,rochss,hss}"
 log "GEMM_VERIFY        : ${GEMM_VERIFY:-0}"
 log "HSS kernel         : ${HYGON_HSS_KERNEL:-auto}"
+log "HSS fast path      : ${HYGON_HSS_FAST:-1}"
 log "=================================================="
 
 if [ ! -x "${EXEC}" ]; then
