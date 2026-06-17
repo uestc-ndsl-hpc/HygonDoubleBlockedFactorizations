@@ -41,8 +41,8 @@ const char* hygon_hss_gemm_backend_name()
 
     if (std::strcmp(kernel, "custom_nt_auto") == 0) {
         return tile_a
-            ? "custom_tile_a_nt_auto"
-            : "custom_preconvert_a_nt_auto";
+            ? "custom_tile_a_nt_auto_legacy_small_square_large"
+            : "custom_preconvert_a_nt_auto_legacy_small_square_large";
     } else if (std::strcmp(kernel, "custom_nt_legacy_64x64x16") == 0) {
         return tile_a
             ? "custom_tile_a_nt_legacy_64x64x16"

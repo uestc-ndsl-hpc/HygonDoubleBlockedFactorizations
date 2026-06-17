@@ -80,7 +80,7 @@ __host__ HssNtKernel hss_select_nt_kernel(int m, int n, int k)
         return HssNtKernel::Legacy64x64x16;
     }
 
-    return HssNtKernel::Tuned128x64x32;
+    return HssNtKernel::Square128x128x32;
 }
 
 __host__ const char* hss_nt_kernel_name(HssNtKernel kernel)
