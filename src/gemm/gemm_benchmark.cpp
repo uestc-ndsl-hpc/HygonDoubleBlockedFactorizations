@@ -303,7 +303,7 @@ void print_usage(const char* program)
          << "  GEMM_WARMUP=N                 Warmup iterations.\n"
          << "  GEMM_ITERS=N                  Timed iterations.\n";
     cerr << "  HYGON_HSS_A_MODE=preconvert|tile\n"
-         << "  HYGON_HSS_KERNEL=auto|tuned|legacy|square\n";
+         << "  HYGON_HSS_KERNEL=auto|tuned|legacy|square|wide128|square4\n";
 }
 
 BenchmarkOptions parse_options(int argc, char** argv)

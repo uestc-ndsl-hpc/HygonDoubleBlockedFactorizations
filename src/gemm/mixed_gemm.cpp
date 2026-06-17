@@ -51,6 +51,14 @@ const char* hygon_hss_gemm_backend_name()
         return tile_a
             ? "custom_tile_a_nt_square_128x128x32_mix"
             : "custom_preconvert_a_nt_square_128x128x32_mix";
+    } else if (std::strcmp(kernel, "custom_nt_wide_64x128x32_4x4_mix") == 0) {
+        return tile_a
+            ? "custom_tile_a_nt_wide_64x128x32_4x4_mix"
+            : "custom_preconvert_a_nt_wide_64x128x32_4x4_mix";
+    } else if (std::strcmp(kernel, "custom_nt_square4_128x128x32_4x4_mix") == 0) {
+        return tile_a
+            ? "custom_tile_a_nt_square4_128x128x32_4x4_mix"
+            : "custom_preconvert_a_nt_square4_128x128x32_4x4_mix";
     }
 
     return tile_a

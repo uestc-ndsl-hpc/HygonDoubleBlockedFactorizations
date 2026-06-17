@@ -141,17 +141,25 @@ detect_gpu_arch() {
     fi
 
     if command -v hipconfig >/dev/null 2>&1; then
-        hipconfig --amdgpu-target 2>/dev/null | awk 'NF {print $1; exit}' | cut -d: -f1
-        return
+        local arch
+        arch=$(hipconfig --amdgpu-target 2>/dev/null | awk '/gfx/ {print $1; exit}' | cut -d: -f1)
+        if [ -n "${arch}" ]; then
+            echo "${arch}"
+            return
+        fi
     fi
 
     if command -v rocminfo >/dev/null 2>&1; then
-        rocminfo 2>/dev/null | awk '/Name: *gfx/ {print $2; exit}' | cut -d: -f1
-        return
+        local arch
+        arch=$(rocminfo 2>/dev/null | awk '/Name: *gfx/ {print $2; exit}' | cut -d: -f1)
+        if [ -n "${arch}" ]; then
+            echo "${arch}"
+            return
+        fi
     fi
 
     if command -v hipinfo >/dev/null 2>&1; then
-        hipinfo 2>/dev/null | awk '/gcnArchName/ {print $2; exit}' | cut -d: -f1
+        hipinfo 2>/dev/null | awk '/gcnArchName/ && /gfx/ {print $2; exit}' | cut -d: -f1
     fi
 }
 
