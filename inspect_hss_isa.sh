@@ -3,6 +3,8 @@ set -u
 set -o pipefail
 
 ROCM_PATH=${ROCM_PATH:-/opt/dtk-26.04}
+export ROCM_PATH
+export PATH="${ROCM_PATH}/bin:${ROCM_PATH}/llvm/bin:${PATH}"
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BUILD_DIR=${BUILD_DIR:-"${ROOT_DIR}/build"}
@@ -32,6 +34,11 @@ find_executable() {
 }
 
 find_objdump() {
+    if [ -n "${OBJDUMP:-}" ]; then
+        echo "${OBJDUMP}"
+        return
+    fi
+
     local candidates=(
         "${ROCM_PATH}/llvm/bin/llvm-objdump"
         "${ROCM_PATH}/bin/llvm-objdump"
@@ -98,34 +105,112 @@ if [ ! -x "${EXEC}" ]; then
     exit 1
 fi
 
-if [ -z "${OBJDUMP:-}" ]; then
-    echo "Error: llvm-objdump not found. Set ROCM_PATH or install LLVM objdump."
-    exit 1
-fi
-
-if [ "${#ISA_INPUTS[@]}" -eq 0 ]; then
-    echo "Error: no ISA input found. Set ISA_INPUT to a .o, .a, .hsaco, or executable."
-    exit 1
-fi
-
-: > "${ASM_LOG}"
-for input in "${ISA_INPUTS[@]}"; do
-    if [ ! -f "${input}" ] && [ ! -x "${input}" ]; then
-        continue
+emit_with_objdump() {
+    if [ -z "${OBJDUMP:-}" ]; then
+        return 1
     fi
 
+    if [ "${#ISA_INPUTS[@]}" -eq 0 ]; then
+        return 1
+    fi
+
+    : > "${ASM_LOG}"
+    for input in "${ISA_INPUTS[@]}"; do
+        if [ ! -f "${input}" ] && [ ! -x "${input}" ]; then
+            continue
+        fi
+
+        {
+            echo "=================================================="
+            echo "Input: ${input}"
+            echo "=================================================="
+        } >> "${ASM_LOG}"
+
+        if "${OBJDUMP}" --offloading -d --demangle "${input}" >> "${ASM_LOG}" 2>/dev/null; then
+            continue
+        fi
+
+        "${OBJDUMP}" -d --demangle "${input}" >> "${ASM_LOG}" 2>/dev/null || true
+    done
+}
+
+detect_gpu_arch() {
+    if [ -n "${GPU_ARCH:-}" ]; then
+        echo "${GPU_ARCH%%:*}"
+        return
+    fi
+
+    if command -v hipconfig >/dev/null 2>&1; then
+        hipconfig --amdgpu-target 2>/dev/null | awk 'NF {print $1; exit}' | cut -d: -f1
+        return
+    fi
+
+    if command -v rocminfo >/dev/null 2>&1; then
+        rocminfo 2>/dev/null | awk '/Name: *gfx/ {print $2; exit}' | cut -d: -f1
+        return
+    fi
+
+    if command -v hipinfo >/dev/null 2>&1; then
+        hipinfo 2>/dev/null | awk '/gcnArchName/ {print $2; exit}' | cut -d: -f1
+    fi
+}
+
+emit_with_save_temps() {
+    local hipcc="${HIPCC:-${ROCM_PATH}/bin/hipcc}"
+    if [ ! -x "${hipcc}" ] && command -v hipcc >/dev/null 2>&1; then
+        hipcc=$(command -v hipcc)
+    fi
+
+    if [ ! -x "${hipcc}" ]; then
+        return 1
+    fi
+
+    local arch
+    arch=$(detect_gpu_arch)
+    local temp_dir="${OUT_DIR}/hss_isa_temps"
+    rm -rf "${temp_dir}"
+    mkdir -p "${temp_dir}"
+
+    local arch_args=()
+    if [ -n "${arch}" ]; then
+        arch_args=(--offload-arch="${arch}")
+    fi
+
+    echo "llvm-objdump not found; using hipcc -save-temps=obj fallback."
+    echo "hipcc           : ${hipcc}"
+    echo "GPU arch        : ${arch:-auto}"
+    echo "Temp dir        : ${temp_dir}"
+
+    (
+        cd "${temp_dir}" &&
+        "${hipcc}" -O3 -std=c++17 -D__HIP_PLATFORM_AMD__ \
+            -I"${ROCM_PATH}/include" \
+            -I"${ROOT_DIR}/include" \
+            "${arch_args[@]}" \
+            -save-temps=obj \
+            -c "${ROOT_DIR}/src/kernels/hss_gemm.hip" \
+            -o hss_gemm.o
+    )
+
+    : > "${ASM_LOG}"
     {
         echo "=================================================="
-        echo "Input: ${input}"
+        echo "hipcc save-temps output: ${temp_dir}"
         echo "=================================================="
     } >> "${ASM_LOG}"
 
-    if "${OBJDUMP}" --offloading -d --demangle "${input}" >> "${ASM_LOG}" 2>/dev/null; then
-        continue
-    fi
+    find "${temp_dir}" -type f \
+        \( -name '*.s' -o -name '*.ll' -o -name '*.isa' -o -name '*.mir' \) \
+        -print -exec sed -n '1,200000p' {} \; >> "${ASM_LOG}"
+}
 
-    "${OBJDUMP}" -d --demangle "${input}" >> "${ASM_LOG}" 2>/dev/null || true
-done
+if ! emit_with_objdump; then
+    if ! emit_with_save_temps; then
+        echo "Error: neither llvm-objdump nor hipcc save-temps path is available."
+        echo "Set OBJDUMP=/path/to/objdump or HIPCC=/path/to/hipcc."
+        exit 1
+    fi
+fi
 
 count_pattern() {
     local pattern=$1
