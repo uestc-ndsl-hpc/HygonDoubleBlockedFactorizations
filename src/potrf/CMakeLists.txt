@@ -1,4 +1,5 @@
 add_library(hygon_potrf STATIC
+    blocked_potrf.cpp
     recursive_potrf.cpp
 )
 
@@ -18,6 +19,7 @@ target_link_libraries(hygon_potrf
 add_executable(benchmark_potrf
     test_potrf.cpp
     benchmark/potrf_benchmark_common.cpp
+    benchmark/potrf_blocked_cases.cpp
     benchmark/potrf_recursive_cases.cpp
     benchmark/potrf_rocsolver_cases.cpp
 )

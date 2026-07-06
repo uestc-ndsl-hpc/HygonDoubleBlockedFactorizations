@@ -30,7 +30,8 @@ NBS="256 512 1024 2048"
 
 ERROR_MODE=2       # 2 = sampled backward error
 TEST_ROCSOLVER=1   # 1 = use rocSOLVER as baseline
-TEST_RECURSIVE=1   # 1 = test recursive blocked POTRF
+TEST_BLOCKED=1     # 1 = test blocked right-looking POTRF
+TEST_RECURSIVE=1   # 1 = test recursive POTRF
 PRECISION=0        # 0 = FP32
 
 echo "==================================================" | tee -a ${SUMMARY_LOG}
@@ -40,6 +41,7 @@ echo "Result directory   : ${RESULT_DIR}"                 | tee -a ${SUMMARY_LOG
 echo "Precision Mode     : ${PRECISION} (0=FP32)"         | tee -a ${SUMMARY_LOG}
 echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG}
 echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
+echo "Test Blocked RL    : ${TEST_BLOCKED}"               | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
@@ -62,6 +64,7 @@ do
         ${TEST_RECURSIVE} \
         ${ERROR_MODE} \
         ${PRECISION} \
+        ${TEST_BLOCKED} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 

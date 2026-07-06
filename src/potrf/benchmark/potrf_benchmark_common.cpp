@@ -229,6 +229,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         run_rocsolver_case(context);
     }
 
+    if (options.test_blocked) {
+        run_blocked_cases(context);
+    }
+
     if (options.test_recursive) {
         run_recursive_cases(context);
     }

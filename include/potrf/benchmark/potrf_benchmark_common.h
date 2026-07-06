@@ -15,6 +15,7 @@ namespace potrf_benchmark {
 struct PotrfBenchmarkOptions {
     int n = 4096;
     bool test_rocsolver = true;
+    bool test_blocked = true;
     bool test_recursive = true;
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
@@ -46,5 +47,8 @@ void run_rocsolver_case(PotrfBenchmarkContext<T>& context);
 
 template <typename T>
 void run_recursive_cases(PotrfBenchmarkContext<T>& context);
+
+template <typename T>
+void run_blocked_cases(PotrfBenchmarkContext<T>& context);
 
 } // namespace potrf_benchmark

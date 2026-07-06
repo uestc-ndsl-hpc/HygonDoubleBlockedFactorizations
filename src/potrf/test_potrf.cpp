@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "potrf/benchmark/potrf_benchmark_common.h"
@@ -24,7 +25,14 @@ int main(int argc, char** argv)
         options.precision_type = std::atoi(argv[5]);
     }
 
-    for (int i = 6; i < argc; ++i) {
+    int nb_start = 6;
+    if (argc >= 7 &&
+        (std::strcmp(argv[6], "0") == 0 || std::strcmp(argv[6], "1") == 0)) {
+        options.test_blocked = std::atoi(argv[6]) != 0;
+        nb_start = 7;
+    }
+
+    for (int i = nb_start; i < argc; ++i) {
         options.nbs.push_back(std::atoi(argv[i]));
     }
 
