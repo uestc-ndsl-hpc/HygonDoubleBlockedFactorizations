@@ -4,7 +4,7 @@ add_library(hygon_utils STATIC
     memory/stream_pool.cpp
 )
 
-target_compile_options(hygon_utils PRIVATE -O3 -Wall)
+apply_benchmark_options(hygon_utils)
 target_link_libraries(hygon_utils
     PUBLIC
         rocblas

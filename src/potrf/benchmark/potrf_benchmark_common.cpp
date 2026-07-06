@@ -12,6 +12,7 @@
 #include <rocsolver/rocsolver.h>
 
 #include "utils/common/error_check.h"
+#include "utils/benchmark/benchmark_printer.h"
 #include "utils/matrix/matrix_generator.h"
 #include "utils/memory/device_buffer.h"
 

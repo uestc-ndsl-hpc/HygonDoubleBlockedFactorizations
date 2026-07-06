@@ -1,87 +1,38 @@
-#!/usr/bin/env bash
-set -u
-set -o pipefail
+#!/bin/bash
 
-ROCM_PATH=${ROCM_PATH:-/opt/dtk-26.04}
-HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+source "$(dirname "$0")/scripts/benchmark_env.sh"
 
-export ROCM_PATH
-export HIP_VISIBLE_DEVICES
-export LD_LIBRARY_PATH="${ROCM_PATH}/lib:${ROCM_PATH}/llvm/lib:${LD_LIBRARY_PATH:-}"
-export PATH="${ROCM_PATH}/bin:${PATH}"
-export ROCBLAS_LAYER=0
-export TENSILE_DB=0
+# DTK runtime setup. The default ROCM_PATH is /opt/dtk, but callers can
+# override it, for example: ROCM_PATH=/opt/dtk-26.04 ./run_gemm.sh
+setup_dtk_environment
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-BUILD_DIR=${BUILD_DIR:-"${ROOT_DIR}/build"}
-RESULT_DIR=${RESULT_DIR:-"${ROOT_DIR}/results/fp32/gemm"}
-SUMMARY_LOG=${SUMMARY_LOG:-"${RESULT_DIR}/summary.log"}
+ROOT_DIR=$(pwd)
+BUILD_DIR=${ROOT_DIR}/build
+EXEC=${BUILD_DIR}/benchmark_gemm
+RESULT_DIR=${ROOT_DIR}/results/fp32/gemm
+SUMMARY_LOG=${RESULT_DIR}/summary.log
 
-find_executable() {
-    if [ -n "${EXEC:-}" ]; then
-        echo "${EXEC}"
-        return
-    fi
+mkdir -p ${RESULT_DIR}
+rm -f ${SUMMARY_LOG}
 
-    local candidates=(
-        "${BUILD_DIR}/src/gemm/benchmark_gemm"
-        "${BUILD_DIR}/benchmark_gemm"
-    )
+echo "==================================================" | tee -a ${SUMMARY_LOG}
+echo "GEMM shape benchmark"                              | tee -a ${SUMMARY_LOG}
+echo "Executable         : ${EXEC}"                       | tee -a ${SUMMARY_LOG}
+echo "Result directory   : ${RESULT_DIR}"                 | tee -a ${SUMMARY_LOG}
+log_toolchain "${SUMMARY_LOG}"
+echo "Target Device ID   : HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}" | tee -a ${SUMMARY_LOG}
+echo "Total Matrix Size  : 32768"                         | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
 
-    local candidate
-    for candidate in "${candidates[@]}"; do
-        if [ -x "${candidate}" ]; then
-            echo "${candidate}"
-            return
-        fi
-    done
+check_benchmark_binary "${EXEC}" "${SUMMARY_LOG}" "rocblas|hipblas|amdhip64|hsa-runtime64"
 
-    echo "${candidates[0]}"
-}
+echo "" | tee -a ${SUMMARY_LOG}
+echo "Starting right-looking GEMM shape sweep..." | tee -a ${SUMMARY_LOG}
 
-EXEC=$(find_executable)
+${EXEC} 2>&1 | tee -a ${SUMMARY_LOG}
 
-mkdir -p "${RESULT_DIR}"
-: > "${SUMMARY_LOG}"
-
-log() {
-    echo "$*" | tee -a "${SUMMARY_LOG}"
-}
-
-log "=================================================="
-log "GEMM benchmark"
-log "DTK environment    : ${ROCM_PATH}"
-log "Executable         : ${EXEC}"
-log "Result directory   : ${RESULT_DIR}"
-log "Target device      : HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}"
-log "=================================================="
-
-if [ ! -x "${EXEC}" ]; then
-    log "Error: executable not found or not executable: ${EXEC}"
-    log "Build benchmark_gemm before running this script."
-    exit 1
-fi
-
-log ""
-log "Checking binary dependencies..."
-missing_deps=$(ldd "${EXEC}" 2>/dev/null | grep "not found" || true)
-if [ -n "${missing_deps}" ]; then
-    log "${missing_deps}"
-    log "Error: missing shared libraries."
-    exit 1
-fi
-log "Dependency check passed."
-
-log ""
-log "Starting GEMM benchmark..."
-
-if ! "${EXEC}" 2>&1 | tee -a "${SUMMARY_LOG}"; then
-    log "Error: benchmark failed."
-    exit 1
-fi
-
-log ""
-log "=================================================="
-log "GEMM benchmark finished"
-log "Summary log: ${SUMMARY_LOG}"
-log "=================================================="
+echo "" | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
+echo "GEMM shape benchmark finished"                      | tee -a ${SUMMARY_LOG}
+echo "Summary written to: ${SUMMARY_LOG}"                  | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}

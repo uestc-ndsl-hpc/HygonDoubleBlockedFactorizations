@@ -10,6 +10,7 @@
 #include <hip/hip_runtime.h>
 
 #include "utils/common/error_check.h"
+#include "utils/benchmark/benchmark_printer.h"
 #include "utils/matrix/matrix_generator.h"
 #include "utils/memory/device_buffer.h"
 
@@ -310,8 +311,6 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         120);
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
-
-    return;
 }
 
 } // namespace syrk_benchmark

@@ -2,7 +2,7 @@ add_library(hygon_gemm STATIC
     mixed_gemm.cpp
 )
 
-hygon_apply_benchmark_options(hygon_gemm)
+apply_benchmark_options(hygon_gemm)
 target_link_libraries(hygon_gemm
     PUBLIC
         rocblas
@@ -15,8 +15,9 @@ add_executable(benchmark_gemm
     gemm_benchmark.cpp
 )
 
-hygon_apply_benchmark_options(benchmark_gemm)
-hygon_link_rocm(benchmark_gemm)
+apply_benchmark_options(benchmark_gemm)
+link_rocm_runtime(benchmark_gemm)
 target_link_libraries(benchmark_gemm
     hygon_utils
+    hygon_kernels
 )

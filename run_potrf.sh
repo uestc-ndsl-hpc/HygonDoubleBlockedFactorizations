@@ -1,130 +1,75 @@
-#!/usr/bin/env bash
-set -u
-set -o pipefail
+#!/bin/bash
 
-ROCM_PATH=${ROCM_PATH:-/opt/dtk-26.04}
-HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+source "$(dirname "$0")/scripts/benchmark_env.sh"
 
-export ROCM_PATH
-export HIP_VISIBLE_DEVICES
-export LD_LIBRARY_PATH="${ROCM_PATH}/lib:${ROCM_PATH}/llvm/lib:${LD_LIBRARY_PATH:-}"
-export PATH="${ROCM_PATH}/bin:${PATH}"
-export ROCBLAS_LAYER=0
-export TENSILE_DB=0
+# DTK runtime setup. The default ROCM_PATH is /opt/dtk, but callers can
+# override it, for example: ROCM_PATH=/opt/dtk-26.04 ./run_potrf.sh
+setup_dtk_environment
 
-module load compiler/openmp/50 2>/dev/null || true
+# Some server shells expose OpenMP through environment modules. Keep this
+# optional so direct interactive runs still work when module is unavailable.
+module load compiler/openmp/50 2>/dev/null
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-BUILD_DIR=${BUILD_DIR:-"${ROOT_DIR}/build"}
-RESULT_DIR=${RESULT_DIR:-"${ROOT_DIR}/results/fp32/potrf"}
-SUMMARY_LOG=${SUMMARY_LOG:-"${RESULT_DIR}/summary.log"}
+ROOT_DIR=$(pwd)
+BUILD_DIR=${ROOT_DIR}/build
+EXEC=${BUILD_DIR}/benchmark_potrf
+RESULT_DIR=${ROOT_DIR}/results/fp32/potrf
+SUMMARY_LOG=${RESULT_DIR}/summary.log
 
-find_executable() {
-    if [ -n "${EXEC:-}" ]; then
-        echo "${EXEC}"
-        return
-    fi
+mkdir -p ${RESULT_DIR}
+rm -f ${SUMMARY_LOG}
 
-    local candidates=(
-        "${BUILD_DIR}/src/potrf/benchmark_potrf"
-        "${BUILD_DIR}/benchmark_potrf"
-    )
+NS=(
+    8192
+    16384
+    24576
+    32768
+    40960
+)
+NBS="256 512 1024 2048"
 
-    local candidate
-    for candidate in "${candidates[@]}"; do
-        if [ -x "${candidate}" ]; then
-            echo "${candidate}"
-            return
-        fi
-    done
+ERROR_MODE=2       # 2 = sampled backward error
+TEST_ROCSOLVER=1   # 1 = use rocSOLVER as baseline
+TEST_RECURSIVE=1   # 1 = test recursive blocked POTRF
+PRECISION=0        # 0 = FP32
 
-    echo "${candidates[0]}"
-}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
+echo "POTRF benchmark"                                    | tee -a ${SUMMARY_LOG}
+echo "Executable         : ${EXEC}"                       | tee -a ${SUMMARY_LOG}
+echo "Result directory   : ${RESULT_DIR}"                 | tee -a ${SUMMARY_LOG}
+echo "Precision Mode     : ${PRECISION} (0=FP32)"         | tee -a ${SUMMARY_LOG}
+echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG}
+echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
+echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
+echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
+log_toolchain "${SUMMARY_LOG}"
+echo "==================================================" | tee -a ${SUMMARY_LOG}
 
-EXEC=$(find_executable)
+check_benchmark_binary "${EXEC}" "${SUMMARY_LOG}" "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64"
+configure_numa_launch_prefix "${SUMMARY_LOG}"
 
-NS=${NS:-"8192 16384 24576 32768 40960"}
-NBS=${NBS:-"256 512 1024 2048"}
+for N in "${NS[@]}"
+do
+    echo "" | tee -a ${SUMMARY_LOG}
+    echo ">>> Running POTRF Benchmark: N=${N}" | tee -a ${SUMMARY_LOG}
 
-ERROR_MODE=${ERROR_MODE:-2}
-TEST_ROCSOLVER=${TEST_ROCSOLVER:-1}
-TEST_RECURSIVE=${TEST_RECURSIVE:-1}
-PRECISION=${PRECISION:-0}
+    OUT_FILE=${RESULT_DIR}/potrf_N${N}.log
+    echo "Output Detail Target -> ${OUT_FILE}" | tee -a ${SUMMARY_LOG}
 
-mkdir -p "${RESULT_DIR}"
-: > "${SUMMARY_LOG}"
-
-log() {
-    echo "$*" | tee -a "${SUMMARY_LOG}"
-}
-
-log "=================================================="
-log "POTRF benchmark"
-log "DTK environment    : ${ROCM_PATH}"
-log "Executable         : ${EXEC}"
-log "Result directory   : ${RESULT_DIR}"
-log "Precision mode     : ${PRECISION} (0=FP32, 1=FP64, 2=mixed)"
-log "Error mode         : ${ERROR_MODE} (0=none, 1=forward, 2=backward, 3=both)"
-log "Test rocSOLVER     : ${TEST_ROCSOLVER}"
-log "Test recursive     : ${TEST_RECURSIVE}"
-log "N sweep            : ${NS}"
-log "NB sweep           : ${NBS}"
-log "=================================================="
-
-if [ ! -x "${EXEC}" ]; then
-    log "Error: executable not found or not executable: ${EXEC}"
-    log "Build benchmark_potrf before running this script."
-    exit 1
-fi
-
-log ""
-log "Checking binary dependencies..."
-missing_deps=$(ldd "${EXEC}" 2>/dev/null | grep "not found" || true)
-if [ -n "${missing_deps}" ]; then
-    log "${missing_deps}"
-    log "Error: missing shared libraries."
-    exit 1
-fi
-log "Dependency check passed."
-
-NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null || true)
-if [ -n "${NUMA_NODE}" ] && [ "${NUMA_NODE}" != "-1" ] && command -v numactl >/dev/null 2>&1; then
-    LAUNCH_PREFIX=(numactl "--cpunodebind=${NUMA_NODE}" "--membind=${NUMA_NODE}")
-    log "NUMA binding enabled: node ${NUMA_NODE}"
-else
-    LAUNCH_PREFIX=()
-    log "NUMA binding disabled."
-fi
-
-run_one_case() {
-    local n=$1
-    local out_file="${RESULT_DIR}/potrf_N${n}.log"
-
-    log ""
-    log ">>> Running POTRF benchmark: N=${n}"
-    log "Output file: ${out_file}"
-
-    if ! "${LAUNCH_PREFIX[@]}" "${EXEC}" \
-        "${n}" \
-        "${TEST_ROCSOLVER}" \
-        "${TEST_RECURSIVE}" \
-        "${ERROR_MODE}" \
-        "${PRECISION}" \
+    ${LAUNCH_PREFIX} ${EXEC} \
+        ${N} \
+        ${TEST_ROCSOLVER} \
+        ${TEST_RECURSIVE} \
+        ${ERROR_MODE} \
+        ${PRECISION} \
         ${NBS} \
-        2>&1 | tee "${out_file}"; then
-        log "Error: benchmark failed for N=${n}."
-        exit 1
-    fi
+        2>&1 | tee ${OUT_FILE}
 
-    cat "${out_file}" >> "${SUMMARY_LOG}"
-}
-
-for n in ${NS}; do
-    run_one_case "${n}"
+    cat ${OUT_FILE} >> ${SUMMARY_LOG}
 done
 
-log ""
-log "=================================================="
-log "POTRF benchmark finished"
-log "Summary log: ${SUMMARY_LOG}"
-log "=================================================="
+echo "" | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}
+echo "POTRF benchmark finished"                           | tee -a ${SUMMARY_LOG}
+echo "Final summary written to: ${SUMMARY_LOG}"            | tee -a ${SUMMARY_LOG}
+echo "==================================================" | tee -a ${SUMMARY_LOG}

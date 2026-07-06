@@ -3,7 +3,7 @@ add_library(hygon_trsm STATIC
     recursive_trsm.cpp
 )
 
-hygon_apply_benchmark_options(hygon_trsm)
+apply_benchmark_options(hygon_trsm)
 target_link_libraries(hygon_trsm
     PUBLIC
         rocblas
@@ -23,8 +23,8 @@ add_executable(benchmark_trsm
     benchmark/trsm_rocblas_cases.cpp
 )
 
-hygon_apply_benchmark_options(benchmark_trsm)
-hygon_link_rocm(benchmark_trsm)
+apply_benchmark_options(benchmark_trsm)
+link_rocm_runtime(benchmark_trsm)
 target_link_libraries(benchmark_trsm
     hygon_trsm
     hygon_utils

@@ -2,25 +2,6 @@
 
 #include "syrk/benchmark/syrk_benchmark_common.h"
 
-namespace {
-
-ErrorMode parse_error_mode(int error_input)
-{
-    if (error_input == 1) {
-        return ErrorMode::Forward;
-    }
-    if (error_input == 2) {
-        return ErrorMode::Backward;
-    }
-    if (error_input == 3) {
-        return ErrorMode::Both;
-    }
-
-    return ErrorMode::None;
-}
-
-} // namespace
-
 int main(int argc, char** argv)
 {
     syrk_benchmark::SyrkBenchmarkOptions options;
@@ -51,12 +32,11 @@ int main(int argc, char** argv)
     for (int i = 8; i < argc; ++i) {
         options.nbs.push_back(std::atoi(argv[i]));
     }
-
     if (options.nbs.empty()) {
         options.nbs.push_back(256);
     }
 
-    options.error_mode = parse_error_mode(error_input);
+    options.error_mode = parse_benchmark_error_mode(error_input);
     syrk_benchmark::run_syrk_benchmarks(options);
 
     return 0;

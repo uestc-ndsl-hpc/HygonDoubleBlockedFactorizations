@@ -3,14 +3,7 @@
 #include <vector>
 #include <string>
 #include "utils/benchmark/benchmark_result.h"
-
-enum class ErrorMode
-{
-    None     = 0,
-    Forward  = 1,
-    Backward = 2,
-    Both     = 3
-};
+#include "utils/benchmark/error_mode.h"
 
 void print_benchmark_results(
     const std::string& title,

@@ -2,25 +2,6 @@
 
 #include "trsm/benchmark/trsm_benchmark_common.h"
 
-namespace {
-
-ErrorMode parse_error_mode(int error_input)
-{
-    if (error_input == 1) {
-        return ErrorMode::Forward;
-    }
-    if (error_input == 2) {
-        return ErrorMode::Backward;
-    }
-    if (error_input == 3) {
-        return ErrorMode::Both;
-    }
-
-    return ErrorMode::None;
-}
-
-} // namespace
-
 int main(int argc, char** argv)
 {
     trsm_benchmark::TrsmBenchmarkOptions options;
@@ -60,7 +41,7 @@ int main(int argc, char** argv)
         options.nbs.push_back(256);
     }
 
-    options.error_mode = parse_error_mode(error_input);
+    options.error_mode = parse_benchmark_error_mode(error_input);
     trsm_benchmark::run_trsm_benchmarks(options);
 
     return 0;

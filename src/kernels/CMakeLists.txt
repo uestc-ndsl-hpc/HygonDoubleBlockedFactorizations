@@ -10,7 +10,7 @@ add_library(hygon_kernels STATIC
     ${KERNEL_SOURCES}
 )
 
-target_compile_options(hygon_kernels PRIVATE -O3 -Wall)
+apply_benchmark_options(hygon_kernels)
 target_link_libraries(hygon_kernels
     amdhip64
 )

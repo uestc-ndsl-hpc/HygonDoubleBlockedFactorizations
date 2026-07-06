@@ -3,7 +3,7 @@ add_library(hygon_syrk STATIC
     recursive_syrk.cpp
 )
 
-hygon_apply_benchmark_options(hygon_syrk)
+apply_benchmark_options(hygon_syrk)
 target_link_libraries(hygon_syrk
     PUBLIC
         rocblas
@@ -22,8 +22,8 @@ add_executable(benchmark_syrk
     benchmark/syrk_rocblas_cases.cpp
 )
 
-hygon_apply_benchmark_options(benchmark_syrk)
-hygon_link_rocm(benchmark_syrk)
+apply_benchmark_options(benchmark_syrk)
+link_rocm_runtime(benchmark_syrk)
 target_link_libraries(benchmark_syrk
     hygon_syrk
     hygon_utils
