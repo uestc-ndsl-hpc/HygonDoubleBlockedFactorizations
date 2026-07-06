@@ -31,6 +31,7 @@ ERROR_MODE=2
 TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_BATCHED=1
+TEST_PAPER=1
 TEST_MIXED=0
 
 echo "==================================================" | tee -a ${SUMMARY_LOG}
@@ -40,6 +41,7 @@ echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (FP32)  : ${TEST_BATCHED}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (Mixed) : ${TEST_MIXED}" | tee -a ${SUMMARY_LOG}
+echo "Test PaperSched    : ${TEST_PAPER}" | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
@@ -69,6 +71,7 @@ do
         ${TEST_ROCBLAS} \
         ${TEST_BATCHED} \
         ${TEST_MIXED} \
+        ${TEST_PAPER} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 

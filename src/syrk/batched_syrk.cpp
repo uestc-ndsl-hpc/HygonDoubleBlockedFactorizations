@@ -4,6 +4,7 @@
 #include <rocblas/rocblas.h>
 
 #include <algorithm>
+#include <vector>
 #include "gemm/mixed_gemm.h"
 #include "utils/common/error_check.h"
 
@@ -16,6 +17,26 @@ static inline void sync_stream_pool(StreamPool* pool) {
     if (!pool) return;
     for (int i = 0; i < pool->size(); ++i) {
         HIP_CHECK(hipStreamSynchronize(pool->get(i).stream));
+    }
+
+    return;
+}
+
+static inline void wait_stream_pool_on_main(rocblas_handle base_handle, StreamPool* pool) {
+    if (!pool) return;
+
+    hipStream_t main_stream = nullptr;
+    ROCBLAS_CHECK(rocblas_get_stream(base_handle, &main_stream));
+
+    std::vector<hipEvent_t> events(pool->size(), nullptr);
+    for (int i = 0; i < pool->size(); ++i) {
+        HIP_CHECK(hipEventCreateWithFlags(&events[i], hipEventDisableTiming));
+        HIP_CHECK(hipEventRecord(events[i], pool->get(i).stream));
+        HIP_CHECK(hipStreamWaitEvent(main_stream, events[i], 0));
+    }
+
+    for (hipEvent_t event : events) {
+        HIP_CHECK(hipEventDestroy(event));
     }
 
     return;
@@ -148,6 +169,124 @@ void batched_syrk_bottom_up(
 
         sync_stream_pool(pool);
     }
+
+    return;
+}
+
+void batched_syrk_paper_schedule(
+    rocblas_handle base_handle,
+    StreamPool* pool,
+    float* A,
+    int lda,
+    float* C,
+    int ldc,
+    int n,
+    int k,
+    int nb)
+{
+    if (n <= 0 || k <= 0 || nb <= 0) return;
+
+    if (!pool || pool->size() == 0 || n <= nb)
+    {
+        float alpha = -1.0f;
+        float beta  = 1.0f;
+        rocblas_ssyrk(base_handle, rocblas_fill_lower, rocblas_operation_none,
+                      n, k, &alpha, A, lda, &beta, C, ldc);
+        return;
+    }
+
+    float alpha = -1.0f;
+    float beta  = 1.0f;
+
+    int num_blocks = n / nb;
+
+    for (int b = 0; b < num_blocks; b++)
+    {
+        int offset = b * nb;
+        auto& ctx = pool->get(b);
+
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
+
+        ROCBLAS_CHECK(rocblas_sgemm(
+            ctx.handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            nb, nb, k,
+            &alpha,
+            A + offset, lda,
+            A + offset, lda,
+            &beta,
+            C_block, ldc));
+    }
+
+    int tail = n % nb;
+    if (tail > 0)
+    {
+        int offset = num_blocks * nb;
+        auto& ctx = pool->get(num_blocks);
+
+        float* C_block = C + offset + (size_t)offset * (size_t)ldc;
+
+        ROCBLAS_CHECK(rocblas_sgemm(
+            ctx.handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            tail, tail, k,
+            &alpha,
+            A + offset, lda,
+            A + offset, lda,
+            &beta,
+            C_block, ldc));
+    }
+
+    for (int i = 1; (n / (2 * i * nb) > 0) || (n % (2 * i * nb) > i * nb); i *= 2)
+    {
+        int S = i * nb;
+        int batch_count = n / (2 * S);
+
+        for (int b = 0; b < batch_count; b++)
+        {
+            int offset = b * 2 * S;
+            auto& ctx = pool->get(num_blocks + b);
+
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
+            ROCBLAS_CHECK(rocblas_sgemm(
+                ctx.handle,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                S, S, k,
+                &alpha,
+                A + offset + S, lda,
+                A + offset, lda,
+                &beta,
+                C_block, ldc));
+        }
+
+        int rem = n % (2 * S);
+        if (rem > S)
+        {
+            int offset = batch_count * 2 * S;
+            int tail_M = rem - S;
+            int tail_N = S;
+            auto& ctx = pool->get(num_blocks + batch_count);
+
+            float* C_block = C + (offset + S) + (size_t)offset * (size_t)ldc;
+
+            ROCBLAS_CHECK(rocblas_sgemm(
+                ctx.handle,
+                rocblas_operation_none,
+                rocblas_operation_transpose,
+                tail_M, tail_N, k,
+                &alpha,
+                A + offset + S, lda,
+                A + offset, lda,
+                &beta,
+                C_block, ldc));
+        }
+    }
+
+    wait_stream_pool_on_main(base_handle, pool);
 
     return;
 }

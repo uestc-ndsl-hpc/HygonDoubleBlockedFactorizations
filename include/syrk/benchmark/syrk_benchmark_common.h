@@ -19,6 +19,7 @@ struct SyrkBenchmarkOptions {
     bool test_recursive = true;
     bool test_rocblas = true;
     bool test_batched = true;
+    bool test_paper = true;
     bool test_mixed = true;
     std::vector<int> nbs;
 };
@@ -47,6 +48,7 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options);
 void run_rocblas_case(SyrkBenchmarkContext& context);
 void run_recursive_cases(SyrkBenchmarkContext& context);
 void run_batched_cases(SyrkBenchmarkContext& context);
+void run_paper_cases(SyrkBenchmarkContext& context);
 void run_mixed_cases(SyrkBenchmarkContext& context);
 
 } // namespace syrk_benchmark

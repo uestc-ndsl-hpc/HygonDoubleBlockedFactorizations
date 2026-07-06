@@ -26,6 +26,11 @@ void batched_syrk_bottom_up(rocblas_handle handle, StreamPool* pool,
                             float* C, int ldc,
                             int n, int k, int nb);
 
+void batched_syrk_paper_schedule(rocblas_handle handle, StreamPool* pool,
+                                 float* A, int lda,
+                                 float* C, int ldc,
+                                 int n, int k, int nb);
+
 /**
  * @brief 自底向上的 Batched SYRK 算法 (双精度)
  */

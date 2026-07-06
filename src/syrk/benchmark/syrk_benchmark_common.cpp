@@ -300,6 +300,10 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         run_batched_cases(context);
     }
 
+    if (options.test_paper) {
+        run_paper_cases(context);
+    }
+
     if (options.test_mixed) {
         run_mixed_cases(context);
     }
