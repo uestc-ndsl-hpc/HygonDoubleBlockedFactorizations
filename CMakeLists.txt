@@ -74,6 +74,11 @@ set(TRSM_SOURCES
 set(SYRK_SOURCES
     src/syrk/batched_syrk.cpp
     src/syrk/recursive_syrk.cpp
+    src/syrk/benchmark/syrk_batched_cases.cpp
+    src/syrk/benchmark/syrk_benchmark_common.cpp
+    src/syrk/benchmark/syrk_mixed_cases.cpp
+    src/syrk/benchmark/syrk_recursive_cases.cpp
+    src/syrk/benchmark/syrk_rocblas_cases.cpp
     src/syrk/test_syrk.cpp
     ${COMMON_UTIL_SOURCES}
     ${GEMM_SOURCES}
