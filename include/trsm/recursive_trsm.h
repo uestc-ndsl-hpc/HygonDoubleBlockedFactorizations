@@ -1,7 +1,6 @@
 #pragma once
 
 #include <rocblas/rocblas.h>
-#include "utils/memory/stream_pool.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,7 +12,6 @@ extern "C" {
 
 void recursive_trsm(
     rocblas_handle handle,
-    StreamPool* pool,
     float* A, int lda,
     float* B, int ldb,
     int n, int m, int nb);
@@ -24,15 +22,12 @@ void recursive_trsm(
 
 void recursive_trsm_double(
     rocblas_handle handle,
-    StreamPool* pool,
     double* A, int lda,
     double* B, int ldb,
     int n, int m, int nb);
 
 void recursive_trsm_mixed(
     rocblas_handle handle,
-    StreamPool* pool,
-
     float* A,
     int lda,
 

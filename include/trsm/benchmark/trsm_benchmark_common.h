@@ -8,7 +8,6 @@
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_runner.h"
 #include "utils/benchmark/error_mode.h"
-#include "utils/memory/stream_pool.h"
 
 namespace trsm_benchmark {
 
@@ -25,7 +24,6 @@ struct TrsmBenchmarkOptions {
 
 struct TrsmBenchmarkContext {
     rocblas_handle handle;
-    StreamPool* pool;
     float* d_A;
     float* d_B;
     int n;

@@ -69,7 +69,7 @@ void recursive_potrf(rocblas_handle handle, StreamPool* pool,
     // ==================================================
 
     recursive_trsm(
-        handle, pool,
+        handle,
         A11, lda,
         A21, lda,
         n2, n1, nb);
@@ -146,7 +146,7 @@ void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
         info);
 
     recursive_trsm_double(
-        handle, pool,
+        handle,
         A11, lda,
         A21, lda,
         n2, n1, nb);
@@ -267,7 +267,7 @@ void recursive_potrf_mixed(rocblas_handle handle, StreamPool* pool,
     recursive_potrf_mixed(handle, pool, A11, lda, n1, nb, info, lambda, d_leaf_backup);
 
     // 2. TRSM - 通过 Tensor Cores 加速
-    recursive_trsm_mixed(handle, pool, A11, lda, A21, lda, n2, n1, nb);
+    recursive_trsm_mixed(handle, A11, lda, A21, lda, n2, n1, nb);
 
     // 3. SYRK - 通过 Tensor Cores 加速
     batched_syrk_bottom_up_mixed(handle, pool, A21, lda, A22, lda, n2, n1, nb);

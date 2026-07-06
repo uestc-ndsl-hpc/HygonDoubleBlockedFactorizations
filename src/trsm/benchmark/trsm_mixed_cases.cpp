@@ -16,7 +16,6 @@ void run_mixed_cases(TrsmBenchmarkContext& context)
             [&]() {
                 recursive_trsm_mixed(
                     context.handle,
-                    context.pool,
                     context.d_A,
                     context.lda,
                     context.d_B,

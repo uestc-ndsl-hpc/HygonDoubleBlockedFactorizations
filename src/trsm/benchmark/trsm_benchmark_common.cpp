@@ -124,8 +124,6 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
     int lda = m;
     int ldb = n;
 
-    StreamPool pool(4);
-
     std::vector<float> h_A(static_cast<size_t>(m) * m);
     std::vector<float> h_B(static_cast<size_t>(n) * m);
     std::vector<float> h_X(static_cast<size_t>(n) * m);
@@ -249,7 +247,6 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
 
     TrsmBenchmarkContext context{
         handle,
-        &pool,
         d_A,
         d_B,
         n,

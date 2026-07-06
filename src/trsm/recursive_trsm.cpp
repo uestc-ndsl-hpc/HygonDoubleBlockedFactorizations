@@ -1,13 +1,10 @@
 #include "trsm/recursive_trsm.h"
 #include "utils/common/error_check.h"
-#include "utils/memory/stream_pool.h"
 #include "kernels/fp16_convert.h"
 #include "gemm/mixed_gemm.h"
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 #include <rocblas/rocblas.h>
-#include <vector>
-#include <algorithm>
 
 extern "C" {
 
@@ -104,51 +101,11 @@ void recursive_trsm_double_internal(rocblas_handle handle,
 // ======================================================
 void recursive_trsm(
     rocblas_handle handle,
-    StreamPool* pool,
     float* A, int lda,
     float* B, int ldb,
     int n, int m, int nb)
 {
-    const int N_LIMIT = 8192;
-
-    if (n <= N_LIMIT) {
-        recursive_trsm_internal(handle, A, lda, B, ldb, n, m, nb);
-        return;
-    }
-
-    hipStream_t orig_stream;
-    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
-
-    int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
-    std::vector<hipEvent_t> events(num_chunks, nullptr);
-
-    for (int i = 0; i < num_chunks; i++) {
-        int row_start = i * N_LIMIT;
-        int current_n = std::min(N_LIMIT, n - row_start);
-
-        auto &ctx = pool->get(i);
-
-        HIP_CHECK(hipEventCreate(&events[i]));
-
-        float* B_chunk = B + (size_t)row_start;
-
-        recursive_trsm_internal(
-            ctx.handle,
-            A, lda,
-            B_chunk, ldb,
-            current_n, m, nb);
-
-        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-    }
-
-    for (int i = 0; i < num_chunks; i++) {
-        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
-    }
-
-    for (int i = 0; i < num_chunks; i++) {
-        HIP_CHECK(hipEventDestroy(events[i]));
-    }
-    
+    recursive_trsm_internal(handle, A, lda, B, ldb, n, m, nb);
     return;
 }
 
@@ -157,52 +114,11 @@ void recursive_trsm(
 // ======================================================
 void recursive_trsm_double(
     rocblas_handle handle,
-    StreamPool* pool,
     double* A, int lda,
     double* B, int ldb,
     int n, int m, int nb)
 {
-    const int N_LIMIT = 8192;
-
-    if (n <= N_LIMIT) {
-        recursive_trsm_double_internal(handle, A, lda, B, ldb, n, m, nb);
-        return;
-    }
-
-    hipStream_t orig_stream;
-    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
-
-    int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
-
-    std::vector<hipEvent_t> events(num_chunks, nullptr);
-
-    for (int i = 0; i < num_chunks; i++) {
-        int row_start = i * N_LIMIT;
-        int current_n = std::min(N_LIMIT, n - row_start);
-
-        auto &ctx = pool->get(i);
-
-        HIP_CHECK(hipEventCreate(&events[i]));
-
-        double* B_chunk = B + (size_t)row_start;
-
-        recursive_trsm_double_internal(
-            ctx.handle,
-            A, lda,
-            B_chunk, ldb,
-            current_n, m, nb);
-
-        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-    }
-
-    for (int i = 0; i < num_chunks; i++) {
-        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
-    }
-
-    for (int i = 0; i < num_chunks; i++) {
-        HIP_CHECK(hipEventDestroy(events[i]));
-    }
-    
+    recursive_trsm_double_internal(handle, A, lda, B, ldb, n, m, nb);
     return;
 }
 
@@ -292,7 +208,6 @@ void recursive_trsm_mixed_internal(
 // ======================================================
 void recursive_trsm_mixed(
     rocblas_handle handle,
-    StreamPool* pool,
     float* A,
     int lda,
     float* B,
@@ -301,60 +216,7 @@ void recursive_trsm_mixed(
     int m,
     int nb)
 {
-    const int N_LIMIT = 8192;
-
-    if (n <= N_LIMIT)
-    {
-        recursive_trsm_mixed_internal(
-            handle,
-            A, lda,
-            B, ldb,
-            n, m, nb);
-
-        return;
-    }
-
-    hipStream_t orig_stream;
-    ROCBLAS_CHECK(rocblas_get_stream(handle, &orig_stream));
-
-    int num_chunks = (n + N_LIMIT - 1) / N_LIMIT;
-
-    std::vector<hipEvent_t> events(num_chunks);
-
-    for (int i = 0; i < num_chunks; i++)
-    {
-        int row_start = i * N_LIMIT;
-        int current_n = std::min(N_LIMIT, n - row_start);
-
-        auto& ctx = pool->get(i);
-
-        HIP_CHECK(hipEventCreate(&events[i]));
-
-        float* B_chunk = B + (size_t)row_start;
-
-        recursive_trsm_mixed_internal(
-            ctx.handle,
-            A,
-            lda,
-            B_chunk,
-            ldb,
-            current_n,
-            m,
-            nb);
-
-        HIP_CHECK(hipEventRecord(events[i], ctx.stream));
-    }
-
-    for (int i = 0; i < num_chunks; i++)
-    {
-        HIP_CHECK(hipStreamWaitEvent(orig_stream, events[i], 0));
-    }
-
-    for (int i = 0; i < num_chunks; i++)
-    {
-        HIP_CHECK(hipEventDestroy(events[i]));
-    }
-    
+    recursive_trsm_mixed_internal(handle, A, lda, B, ldb, n, m, nb);
     return;
 }
 
