@@ -22,6 +22,8 @@ void call_blocked_right_looking_potrf(
     } else {
         blocked_right_looking_potrf_double(handle, A, lda, n, nb, info);
     }
+
+    return;
 }
 
 } // namespace
@@ -46,6 +48,8 @@ void run_blocked_cases(PotrfBenchmarkContext<T>& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 template void run_blocked_cases<float>(PotrfBenchmarkContext<float>& context);
