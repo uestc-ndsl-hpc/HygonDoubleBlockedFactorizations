@@ -276,6 +276,10 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         run_recursive_cases(context);
     }
 
+    if (options.test_streamed) {
+        run_streamed_cases(context);
+    }
+
     if (options.test_half) {
         run_mixed_cases(context);
     }

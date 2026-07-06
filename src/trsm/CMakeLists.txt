@@ -21,6 +21,7 @@ add_executable(benchmark_trsm
     benchmark/trsm_mixed_cases.cpp
     benchmark/trsm_recursive_cases.cpp
     benchmark/trsm_rocblas_cases.cpp
+    benchmark/trsm_streamed_cases.cpp
 )
 
 apply_benchmark_options(benchmark_trsm)

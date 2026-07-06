@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 
 #include "trsm/benchmark/trsm_benchmark_common.h"
 
@@ -28,7 +29,12 @@ int main(int argc, char** argv)
 
     if (argc >= 8) {
         options.test_half = std::atoi(argv[7]) != 0;
-        for (int i = 8; i < argc; ++i) {
+        int nb_start = 8;
+        if (argc >= 9 && (std::strcmp(argv[8], "0") == 0 || std::strcmp(argv[8], "1") == 0)) {
+            options.test_streamed = std::atoi(argv[8]) != 0;
+            nb_start = 9;
+        }
+        for (int i = nb_start; i < argc; ++i) {
             options.nbs.push_back(std::atoi(argv[i]));
         }
     } else {

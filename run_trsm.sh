@@ -31,12 +31,14 @@ TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_ITERATIVE=1
 TEST_HALF=0
+TEST_STREAMED=1
 
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 echo "TRSM Pure FP32 Benchmark Start (Direct Parameter Run)" | tee -a ${SUMMARY_LOG}
 echo "Error Mode         : ${ERROR_MODE}" | tee -a ${SUMMARY_LOG}
 echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
+echo "Test Streamed RL   : ${TEST_STREAMED}" | tee -a ${SUMMARY_LOG}
 echo "Test Iter (FP32)   : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP16)    : ${TEST_HALF}" | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
@@ -68,6 +70,7 @@ do
         ${TEST_ROCBLAS} \
         ${TEST_ITERATIVE} \
         ${TEST_HALF} \
+        ${TEST_STREAMED} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 

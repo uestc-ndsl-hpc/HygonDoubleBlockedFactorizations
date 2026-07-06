@@ -19,6 +19,7 @@ struct TrsmBenchmarkOptions {
     bool test_recursive = true;
     bool test_rocblas = true;
     bool test_iterative = true;
+    bool test_streamed = true;
     bool test_half = true;
     std::vector<int> nbs;
 };
@@ -45,6 +46,7 @@ struct TrsmBenchmarkContext {
 void run_trsm_benchmarks(const TrsmBenchmarkOptions& options);
 void run_rocblas_case(TrsmBenchmarkContext& context);
 void run_recursive_cases(TrsmBenchmarkContext& context);
+void run_streamed_cases(TrsmBenchmarkContext& context);
 void run_mixed_cases(TrsmBenchmarkContext& context);
 void run_iterative_cases(TrsmBenchmarkContext& context);
 
