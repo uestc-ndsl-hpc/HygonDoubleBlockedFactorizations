@@ -90,55 +90,47 @@ set(POTRF_SOURCES
     ${KERNEL_SOURCES}
 )
 
+function(apply_benchmark_options target_name)
+    target_compile_options(${target_name} PRIVATE -O3 -Wall)
+endfunction()
+
+function(link_rocm_runtime target_name)
+    target_link_libraries(${target_name}
+        rocblas
+        hipblas
+        amdhip64
+        hsa-runtime64
+    )
+endfunction()
+
 add_executable(benchmark_gemm
     ${GEMM_BENCHMARK_SOURCES}
 )
 
-target_compile_options(benchmark_gemm PRIVATE -O3 -Wall)
-
-target_link_libraries(benchmark_gemm
-    rocblas
-    hipblas
-    amdhip64
-    hsa-runtime64
-)
+apply_benchmark_options(benchmark_gemm)
+link_rocm_runtime(benchmark_gemm)
 
 add_executable(benchmark_trsm
     ${TRSM_SOURCES}
 )
 
-target_compile_options(benchmark_trsm PRIVATE -O3 -Wall)
-
-target_link_libraries(benchmark_trsm
-    rocblas
-    hipblas
-    amdhip64
-    hsa-runtime64
-)
+apply_benchmark_options(benchmark_trsm)
+link_rocm_runtime(benchmark_trsm)
 
 add_executable(benchmark_syrk
     ${SYRK_SOURCES}
 )
 
-target_compile_options(benchmark_syrk PRIVATE -O3 -Wall)
-
-target_link_libraries(benchmark_syrk
-    rocblas
-    hipblas
-    amdhip64
-    hsa-runtime64
-)
+apply_benchmark_options(benchmark_syrk)
+link_rocm_runtime(benchmark_syrk)
 
 add_executable(benchmark_potrf
     ${POTRF_SOURCES}
 )
 
-target_compile_options(benchmark_potrf PRIVATE -O3 -Wall)
+apply_benchmark_options(benchmark_potrf)
+link_rocm_runtime(benchmark_potrf)
 
 target_link_libraries(benchmark_potrf
-    rocblas
     rocsolver
-    hipblas
-    amdhip64
-    hsa-runtime64
 )
