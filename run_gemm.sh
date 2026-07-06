@@ -1,20 +1,17 @@
 #!/bin/bash
 
+source "$(dirname "$0")/scripts/benchmark_env.sh"
+
 # =========================================================
 # ROCm Environment Setup (适配 dtk-26.04 环境)
 # =========================================================
 
-export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
+setup_dtk_environment
 
 # 显式指定使用的 DCU 设备，工作节点虽有 8 张，测试单精度通常绑定 1 张进行精确压测
-export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
 
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
-export PATH=$ROCM_PATH/bin:$PATH
 
 # 关闭所有底层的 Debug 追踪与内核名称打印，释放极致运行性能
-export ROCBLAS_LAYER=0
-export TENSILE_DB=0
 
 # =========================================================
 # Project Paths
@@ -42,9 +39,7 @@ K_STEPS=(64 128 256 384 512 768 1024 1536 2048 3072 4096 6144 8192 12288 16384)
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 echo "GEMM Shape Benchmark Start (Interactive on Node)"   | tee -a ${SUMMARY_LOG}
 echo "Executable         : ${EXEC}"                        | tee -a ${SUMMARY_LOG}
-echo "DTK Environment    : ${ROCM_PATH}"                  | tee -a ${SUMMARY_LOG}
-echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a ${SUMMARY_LOG}
-echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a ${SUMMARY_LOG}
+log_toolchain "${SUMMARY_LOG}"
 echo "Target Device ID   : HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES}" | tee -a ${SUMMARY_LOG}
 echo "Total Matrix Size  : 32768"                          | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
@@ -53,17 +48,7 @@ echo "==================================================" | tee -a ${SUMMARY_LOG
 # Dependency Check
 # =========================================================
 
-echo "" | tee -a ${SUMMARY_LOG}
-echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
-
-if [ -f "${EXEC}" ]; then
-    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
-    echo "Resolved ROCm libraries:" | tee -a ${SUMMARY_LOG}
-    ldd ${EXEC} | grep -E "rocblas|hipblas|amdhip64|hsa-runtime64" | tee -a ${SUMMARY_LOG}
-else
-    echo "Error: Executable ${EXEC} not found! Please build first." | tee -a ${SUMMARY_LOG}
-    exit 1
-fi
+check_benchmark_binary "${EXEC}" "${SUMMARY_LOG}" "rocblas|hipblas|amdhip64|hsa-runtime64"
 
 # =========================================================
 # Run Benchmark Loops (依次传入不同的 K 尺寸进行细粒度压测)

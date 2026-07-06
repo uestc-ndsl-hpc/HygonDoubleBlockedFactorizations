@@ -1,12 +1,7 @@
 #!/bin/bash
 
-export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
-export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
-export PATH=$ROCM_PATH/bin:$PATH
-
-export ROCBLAS_LAYER=0
-export TENSILE_DB=0
+source "$(dirname "$0")/scripts/benchmark_env.sh"
+setup_dtk_environment
 
 ROOT_DIR=$(pwd)
 BUILD_DIR=${ROOT_DIR}/build
@@ -46,31 +41,11 @@ echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (FP32)  : ${TEST_BATCHED}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (Mixed) : ${TEST_MIXED}" | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
-echo "DTK Environment    : ${ROCM_PATH}" | tee -a ${SUMMARY_LOG}
-echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a ${SUMMARY_LOG}
-echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a ${SUMMARY_LOG}
+log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
-echo "" | tee -a ${SUMMARY_LOG}
-echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
-
-if [ -f "${EXEC}" ]; then
-    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
-    echo "Resolved ROCm libraries:" | tee -a ${SUMMARY_LOG}
-    ldd ${EXEC} | grep -E "rocblas|hipblas|amdhip64|hsa-runtime64" | tee -a ${SUMMARY_LOG}
-else
-    echo "Error: Executable ${EXEC} not found! Please build first." | tee -a ${SUMMARY_LOG}
-    exit 1
-fi
-
-NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
-if [ "$NUMA_NODE" != "-1" ] && [ ! -z "$NUMA_NODE" ]; then
-    LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
-    echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a ${SUMMARY_LOG}
-else
-    LAUNCH_PREFIX=""
-    echo "Warning: No direct NUMA affinity mapping found. Running without numactl." | tee -a ${SUMMARY_LOG}
-fi
+check_benchmark_binary "${EXEC}" "${SUMMARY_LOG}" "rocblas|hipblas|amdhip64|hsa-runtime64"
+configure_numa_launch_prefix "${SUMMARY_LOG}"
 
 for N in "${NS[@]}"
 do

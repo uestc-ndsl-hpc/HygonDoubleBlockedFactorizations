@@ -1,20 +1,17 @@
 #!/bin/bash
 
+source "$(dirname "$0")/scripts/benchmark_env.sh"
+
 # =========================================================
 # DTK 运行环境配置 (适配 dtk-26.04 环境)
 # =========================================================
-export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
-export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+setup_dtk_environment
 
 # 如果运行提示找不到 openmp 模块，可以直接注释掉这一行
 module load compiler/openmp/50 2>/dev/null
 
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
-export PATH=$ROCM_PATH/bin:$PATH
 
 # 关闭底层复杂的 Trace 追踪与内核调试打印，确保释放全部硬件计算吞吐
-export ROCBLAS_LAYER=0
-export TENSILE_DB=0
 
 # =========================================================
 # 项目路径与输出管理
@@ -50,42 +47,23 @@ PRECISION=0        # 0 = 纯 FP32 精度测试
 # =========================================================
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 echo "POTRF High-Performance Benchmark (Direct Run)"       | tee -a ${SUMMARY_LOG}
-echo "DTK Environment    : ${ROCM_PATH}"                  | tee -a ${SUMMARY_LOG}
 echo "Precision Mode     : ${PRECISION} (0=FP32)"         | tee -a ${SUMMARY_LOG}
 echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG}
 echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
-echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a ${SUMMARY_LOG}
-echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a ${SUMMARY_LOG}
+log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
 # =========================================================
 # 依赖完整性校验
 # =========================================================
-echo "" | tee -a ${SUMMARY_LOG}
-echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
-
-if [ -f "${EXEC}" ]; then
-    ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
-    echo "Resolved ROCm libraries:" | tee -a ${SUMMARY_LOG}
-    ldd ${EXEC} | grep -E "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64" | tee -a ${SUMMARY_LOG}
-else
-    echo "Error: Executable ${EXEC} not found! Please build the target first." | tee -a ${SUMMARY_LOG}
-    exit 1
-fi
+check_benchmark_binary "${EXEC}" "${SUMMARY_LOG}" "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64"
 
 # =========================================================
 # NUMA 硬件架构亲和性绑定
 # =========================================================
-NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
-if [ "$NUMA_NODE" != "-1" ] && [ ! -z "$NUMA_NODE" ]; then
-    LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
-    echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a ${SUMMARY_LOG}
-else
-    LAUNCH_PREFIX=""
-    echo "Warning: No direct NUMA affinity mapping found. Running without numactl constraints." | tee -a ${SUMMARY_LOG}
-fi
+configure_numa_launch_prefix "${SUMMARY_LOG}"
 
 # =========================================================
 # 循环迭代测试核心流水线
