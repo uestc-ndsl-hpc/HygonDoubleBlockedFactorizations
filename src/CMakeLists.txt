@@ -1,0 +1,6 @@
+add_subdirectory(kernels)
+add_subdirectory(utils)
+add_subdirectory(gemm)
+add_subdirectory(trsm)
+add_subdirectory(syrk)
+add_subdirectory(potrf)
