@@ -48,6 +48,7 @@ NBS=${NBS:-"256 512 1024 2048"}
 
 ERROR_MODE=${ERROR_MODE:-2}
 TEST_ROCSOLVER=${TEST_ROCSOLVER:-1}
+TEST_BLOCKED=${TEST_BLOCKED:-1}
 TEST_RECURSIVE=${TEST_RECURSIVE:-1}
 PRECISION=${PRECISION:-0}
 
@@ -66,6 +67,7 @@ log "Result directory   : ${RESULT_DIR}"
 log "Precision mode     : ${PRECISION} (0=FP32, 1=FP64, 2=mixed)"
 log "Error mode         : ${ERROR_MODE} (0=none, 1=forward, 2=backward, 3=both)"
 log "Test rocSOLVER     : ${TEST_ROCSOLVER}"
+log "Test blocked RL    : ${TEST_BLOCKED}"
 log "Test recursive     : ${TEST_RECURSIVE}"
 log "N sweep            : ${NS}"
 log "NB sweep           : ${NBS}"
@@ -110,6 +112,7 @@ run_one_case() {
         "${TEST_RECURSIVE}" \
         "${ERROR_MODE}" \
         "${PRECISION}" \
+        "${TEST_BLOCKED}" \
         ${NBS} \
         2>&1 | tee "${out_file}"; then
         log "Error: benchmark failed for N=${n}."
