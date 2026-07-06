@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export ROCM_PATH=/public/software/compiler/rocm/dtk-24.04
-export HIP_VISIBLE_DEVICES=0
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:$LD_LIBRARY_PATH
+export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
+export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
+export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
 export PATH=$ROCM_PATH/bin:$PATH
 
 export ROCBLAS_LAYER=0
@@ -46,6 +46,9 @@ echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (FP32)  : ${TEST_BATCHED}" | tee -a ${SUMMARY_LOG}
 echo "Test Batch (Mixed) : ${TEST_MIXED}" | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
+echo "DTK Environment    : ${ROCM_PATH}" | tee -a ${SUMMARY_LOG}
+echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a ${SUMMARY_LOG}
+echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
 echo "" | tee -a ${SUMMARY_LOG}
@@ -53,6 +56,8 @@ echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
 
 if [ -f "${EXEC}" ]; then
     ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+    echo "Resolved ROCm libraries:" | tee -a ${SUMMARY_LOG}
+    ldd ${EXEC} | grep -E "rocblas|hipblas|amdhip64|hsa-runtime64" | tee -a ${SUMMARY_LOG}
 else
     echo "Error: Executable ${EXEC} not found! Please build first." | tee -a ${SUMMARY_LOG}
     exit 1

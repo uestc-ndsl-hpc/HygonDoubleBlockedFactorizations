@@ -3,13 +3,13 @@
 # =========================================================
 # DTK 运行环境配置 (适配 dtk-26.04 环境)
 # =========================================================
-export ROCM_PATH=/opt/dtk-26.04
-export HIP_VISIBLE_DEVICES=0
+export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
+export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
 
 # 如果运行提示找不到 openmp 模块，可以直接注释掉这一行
 module load compiler/openmp/50 2>/dev/null
 
-export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
 export PATH=$ROCM_PATH/bin:$PATH
 
 # 关闭底层复杂的 Trace 追踪与内核调试打印，确保释放全部硬件计算吞吐
@@ -56,6 +56,8 @@ echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG
 echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
+echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a ${SUMMARY_LOG}
+echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a ${SUMMARY_LOG}
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
 # =========================================================
@@ -66,6 +68,8 @@ echo "Checking binary dependencies..." | tee -a ${SUMMARY_LOG}
 
 if [ -f "${EXEC}" ]; then
     ldd ${EXEC} | grep "not found" | tee -a ${SUMMARY_LOG}
+    echo "Resolved ROCm libraries:" | tee -a ${SUMMARY_LOG}
+    ldd ${EXEC} | grep -E "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64" | tee -a ${SUMMARY_LOG}
 else
     echo "Error: Executable ${EXEC} not found! Please build the target first." | tee -a ${SUMMARY_LOG}
     exit 1
