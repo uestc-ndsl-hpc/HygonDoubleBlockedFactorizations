@@ -28,6 +28,8 @@ void run_rocblas_case(SyrkBenchmarkContext& context)
         context.calc_gflops);
 
     context.results.back().speedup = 1.0;
+
+    return;
 }
 
 } // namespace syrk_benchmark

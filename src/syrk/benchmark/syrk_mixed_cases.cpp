@@ -28,6 +28,8 @@ void run_mixed_cases(SyrkBenchmarkContext& context)
             context.verify,
             context.calc_gflops);
     }
+
+    return;
 }
 
 } // namespace syrk_benchmark
