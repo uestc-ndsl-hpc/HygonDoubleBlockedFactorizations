@@ -65,6 +65,11 @@ set(GEMM_BENCHMARK_SOURCES
 set(TRSM_SOURCES
     src/trsm/iterative_trsm.cpp
     src/trsm/recursive_trsm.cpp
+    src/trsm/benchmark/trsm_benchmark_common.cpp
+    src/trsm/benchmark/trsm_iterative_cases.cpp
+    src/trsm/benchmark/trsm_mixed_cases.cpp
+    src/trsm/benchmark/trsm_recursive_cases.cpp
+    src/trsm/benchmark/trsm_rocblas_cases.cpp
     src/trsm/test_trsm.cpp
     ${COMMON_UTIL_SOURCES}
     ${GEMM_SOURCES}
@@ -87,6 +92,9 @@ set(SYRK_SOURCES
 
 set(POTRF_SOURCES
     src/potrf/recursive_potrf.cpp
+    src/potrf/benchmark/potrf_benchmark_common.cpp
+    src/potrf/benchmark/potrf_recursive_cases.cpp
+    src/potrf/benchmark/potrf_rocsolver_cases.cpp
     src/potrf/test_potrf.cpp
     src/trsm/recursive_trsm.cpp
     src/syrk/batched_syrk.cpp
