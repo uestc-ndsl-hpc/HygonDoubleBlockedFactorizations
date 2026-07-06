@@ -5,8 +5,9 @@
 
 #include <rocblas/rocblas.h>
 
-#include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_runner.h"
+#include "utils/benchmark/error_mode.h"
 #include "utils/memory/stream_pool.h"
 
 namespace potrf_benchmark {
