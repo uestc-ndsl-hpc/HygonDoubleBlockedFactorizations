@@ -11,6 +11,11 @@ namespace {
 
 constexpr int kTrsmUpdateTile = 8192;
 
+int tile_extent(int offset, int total)
+{
+    return std::min(kTrsmUpdateTile, total - offset);
+}
+
 void trsm_update_gemm(
     rocblas_handle handle,
     float* A,
@@ -33,6 +38,45 @@ void trsm_update_gemm(
                   A + (size_t)m1, lda,
                   &beta_gemm,
                   B + (size_t)m1 * (size_t)ldb, ldb);
+
+    return;
+}
+
+void trsm_update_gemm_tile(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    float* B,
+    int ldb,
+    int row,
+    int col,
+    int kk,
+    int rows,
+    int cols,
+    int k_tile,
+    int m1)
+{
+    float alpha_gemm = -1.0f;
+    float beta_gemm = 1.0f;
+    float* C_tile = B + (size_t)(m1 + col) * (size_t)ldb + row;
+
+    rocblas_sgemm(
+        handle,
+        rocblas_operation_none,
+        rocblas_operation_transpose,
+        rows,
+        cols,
+        k_tile,
+        &alpha_gemm,
+        B + (size_t)kk * (size_t)ldb + row,
+        ldb,
+        A + (size_t)kk * (size_t)lda + m1 + col,
+        lda,
+        &beta_gemm,
+        C_tile,
+        ldb);
+
+    return;
 }
 
 void trsm_update_gemm_tiled(
@@ -50,37 +94,32 @@ void trsm_update_gemm_tiled(
         return;
     }
 
-    float alpha_gemm = -1.0f;
-    float beta_gemm = 1.0f;
-
     for (int row = 0; row < n; row += kTrsmUpdateTile) {
-        int rows = std::min(kTrsmUpdateTile, n - row);
+        int rows = tile_extent(row, n);
 
         for (int col = 0; col < m2; col += kTrsmUpdateTile) {
-            int cols = std::min(kTrsmUpdateTile, m2 - col);
-            float* C_tile = B + (size_t)(m1 + col) * (size_t)ldb + row;
+            int cols = tile_extent(col, m2);
 
             for (int kk = 0; kk < m1; kk += kTrsmUpdateTile) {
-                int k_tile = std::min(kTrsmUpdateTile, m1 - kk);
-
-                rocblas_sgemm(
+                int k_tile = tile_extent(kk, m1);
+                trsm_update_gemm_tile(
                     handle,
-                    rocblas_operation_none,
-                    rocblas_operation_transpose,
+                    A,
+                    lda,
+                    B,
+                    ldb,
+                    row,
+                    col,
+                    kk,
                     rows,
                     cols,
                     k_tile,
-                    &alpha_gemm,
-                    B + (size_t)kk * (size_t)ldb + row,
-                    ldb,
-                    A + (size_t)kk * (size_t)lda + m1 + col,
-                    lda,
-                    &beta_gemm,
-                    C_tile,
-                    ldb);
+                    m1);
             }
         }
     }
+
+    return;
 }
 
 } // namespace

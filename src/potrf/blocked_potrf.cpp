@@ -30,6 +30,8 @@ void rocsolver_potrf(rocblas_handle handle, int n, T* A, int lda, int* info)
             lda,
             info));
     }
+
+    return;
 }
 
 template <typename T>
@@ -73,6 +75,8 @@ void rocblas_trsm_right_lower_transpose(
             B,
             ldb));
     }
+
+    return;
 }
 
 template <typename T>
@@ -115,6 +119,8 @@ void rocblas_syrk_lower_update(
             C,
             ldc));
     }
+
+    return;
 }
 
 template <typename T>
@@ -167,6 +173,8 @@ void blocked_right_looking_potrf_impl(
             A_22,
             lda);
     }
+
+    return;
 }
 
 } // namespace
@@ -181,6 +189,8 @@ void blocked_right_looking_potrf(rocblas_handle handle,
                                  int* info)
 {
     blocked_right_looking_potrf_impl(handle, A, lda, n, nb, info);
+
+    return;
 }
 
 void blocked_right_looking_potrf_double(rocblas_handle handle,
@@ -191,6 +201,8 @@ void blocked_right_looking_potrf_double(rocblas_handle handle,
                                         int* info)
 {
     blocked_right_looking_potrf_impl(handle, A, lda, n, nb, info);
+
+    return;
 }
 
 } // extern "C"
