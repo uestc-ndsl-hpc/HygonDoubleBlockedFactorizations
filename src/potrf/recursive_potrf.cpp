@@ -107,6 +107,72 @@ void recursive_potrf(rocblas_handle handle, StreamPool* pool,
 // 双精度
 // ======================================================
 
+// FP32 recursive POTRF variant with tiled recursive-TRSM updates.
+void recursive_potrf_tiled_trsm(rocblas_handle handle, StreamPool* pool,
+                                float* A,
+                                int lda,
+                                int n,
+                                int nb,
+                                int* info)
+{
+    if (n <= 0)
+        return;
+
+    if (n <= nb)
+    {
+        rocsolver_spotrf(
+            handle,
+            rocblas_fill_lower,
+            n,
+            A,
+            lda,
+            info);
+
+        return;
+    }
+
+    int n1 = n / 2;
+    int n2 = n - n1;
+
+    float* A11 = A;
+    float* A21 = A + n1;
+    float* A22 = A + (size_t)n1 * (size_t)lda + n1;
+
+    recursive_potrf_tiled_trsm(
+        handle, pool,
+        A11,
+        lda,
+        n1,
+        nb,
+        info);
+
+    recursive_trsm_tiled_update(
+        handle,
+        A11, lda,
+        A21, lda,
+        n2, n1, nb);
+
+    batched_syrk_bottom_up(
+        handle, pool,
+        A21,
+        lda,
+        A22,
+        lda,
+        n2,
+        n1,
+        nb);
+
+    recursive_potrf_tiled_trsm(
+        handle, pool,
+        A22,
+        lda,
+        n2,
+        nb,
+        info);
+
+    return;
+}
+
 void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
                             double* A,
                             int lda,

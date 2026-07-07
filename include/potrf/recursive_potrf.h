@@ -14,6 +14,13 @@ void recursive_potrf(rocblas_handle handle, StreamPool* pool,
                      int nb,
                      int* info);
 
+void recursive_potrf_tiled_trsm(rocblas_handle handle, StreamPool* pool,
+                                float* A,
+                                int lda,
+                                int n,
+                                int nb,
+                                int* info);
+
 void recursive_potrf_double(rocblas_handle handle, StreamPool* pool,
                             double* A,
                             int lda,

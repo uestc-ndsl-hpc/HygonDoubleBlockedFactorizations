@@ -32,6 +32,26 @@ void call_recursive_potrf(
     return;
 }
 
+template <typename T>
+void call_recursive_potrf_tiled_trsm(
+    rocblas_handle handle,
+    StreamPool* pool,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int* info,
+    int precision_type)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        if (precision_type != 2) {
+            recursive_potrf_tiled_trsm(handle, pool, A, lda, n, nb, info);
+        }
+    }
+
+    return;
+}
+
 } // namespace
 
 template <typename T>
@@ -58,6 +78,28 @@ void run_recursive_cases(PotrfBenchmarkContext<T>& context)
             },
             context.verify,
             context.calc_gflops);
+
+        if constexpr (std::is_same_v<T, float>) {
+            if (context.precision_type != 2) {
+                context.runner.execute(
+                    "RecTiledTRSM",
+                    std::to_string(nb),
+                    context.reset,
+                    [&]() {
+                        call_recursive_potrf_tiled_trsm<T>(
+                            context.handle,
+                            context.pool,
+                            context.d_A,
+                            context.n,
+                            context.lda,
+                            nb,
+                            context.d_info,
+                            context.precision_type);
+                    },
+                    context.verify,
+                    context.calc_gflops);
+            }
+        }
     }
 
     return;

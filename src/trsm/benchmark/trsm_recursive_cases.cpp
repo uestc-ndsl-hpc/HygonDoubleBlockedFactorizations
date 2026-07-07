@@ -26,6 +26,24 @@ void run_recursive_cases(TrsmBenchmarkContext& context)
             },
             context.verify,
             context.calc_gflops);
+
+        context.runner.execute(
+            "RecTiled8K (FP32)",
+            std::to_string(nb),
+            context.reset,
+            [&]() {
+                recursive_trsm_tiled_update(
+                    context.handle,
+                    context.d_A,
+                    context.lda,
+                    context.d_B,
+                    context.ldb,
+                    context.n,
+                    context.m,
+                    nb);
+            },
+            context.verify,
+            context.calc_gflops);
     }
 
     return;

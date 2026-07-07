@@ -16,6 +16,12 @@ void recursive_trsm(
     float* B, int ldb,
     int n, int m, int nb);
 
+void recursive_trsm_tiled_update(
+    rocblas_handle handle,
+    float* A, int lda,
+    float* B, int ldb,
+    int n, int m, int nb);
+
 // ======================================================
 // Recursive TRSM (double)
 // ======================================================
