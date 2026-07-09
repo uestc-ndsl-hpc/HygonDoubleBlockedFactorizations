@@ -1,6 +1,16 @@
 #include <cstdlib>
+#include <cstring>
 
 #include "trsm/benchmark/trsm_benchmark_common.h"
+
+namespace {
+
+bool is_bool_flag(const char* arg)
+{
+    return std::strcmp(arg, "0") == 0 || std::strcmp(arg, "1") == 0;
+}
+
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -26,13 +36,28 @@ int main(int argc, char** argv)
         options.test_iterative = std::atoi(argv[6]) != 0;
     }
 
+    int nb_start = 7;
+
     if (argc >= 8) {
         options.test_half = std::atoi(argv[7]) != 0;
-        for (int i = 8; i < argc; ++i) {
-            options.nbs.push_back(std::atoi(argv[i]));
+        nb_start = 8;
+    }
+
+    if (argc > nb_start && is_bool_flag(argv[nb_start])) {
+        options.test_double_blocked = std::atoi(argv[nb_start]) != 0;
+        ++nb_start;
+    }
+
+    bool parse_micro_blocks = false;
+    for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--b") == 0) {
+            parse_micro_blocks = true;
+            continue;
         }
-    } else {
-        for (int i = 7; i < argc; ++i) {
+
+        if (parse_micro_blocks) {
+            options.micro_blocks.push_back(std::atoi(argv[i]));
+        } else {
             options.nbs.push_back(std::atoi(argv[i]));
         }
     }

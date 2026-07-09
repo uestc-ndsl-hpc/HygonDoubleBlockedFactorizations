@@ -1,4 +1,5 @@
 add_library(hygon_trsm STATIC
+    double_blocked_trsm.cpp
     iterative_trsm.cpp
     recursive_trsm.cpp
 )
@@ -17,6 +18,7 @@ target_link_libraries(hygon_trsm
 add_executable(benchmark_trsm
     test_trsm.cpp
     benchmark/trsm_benchmark_common.cpp
+    benchmark/trsm_double_blocked_cases.cpp
     benchmark/trsm_iterative_cases.cpp
     benchmark/trsm_mixed_cases.cpp
     benchmark/trsm_recursive_cases.cpp

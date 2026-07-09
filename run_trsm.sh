@@ -31,6 +31,7 @@ TEST_RECURSIVE=1
 TEST_ROCBLAS=1
 TEST_ITERATIVE=1
 TEST_HALF=0
+TEST_DOUBLE_BLOCKED=1
 
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 echo "TRSM Pure FP32 Benchmark Start (Direct Parameter Run)" | tee -a ${SUMMARY_LOG}
@@ -39,7 +40,9 @@ echo "Test rocBLAS (FP32): ${TEST_ROCBLAS}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP32)    : ${TEST_RECURSIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Iter (FP32)   : ${TEST_ITERATIVE}" | tee -a ${SUMMARY_LOG}
 echo "Test Rec (FP16)    : ${TEST_HALF}" | tee -a ${SUMMARY_LOG}
+echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}" | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}" | tee -a ${SUMMARY_LOG}
+echo "DoubleBlock params : nb=M/2, b=M/4 (OSLA default)" | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
@@ -68,6 +71,7 @@ do
         ${TEST_ROCBLAS} \
         ${TEST_ITERATIVE} \
         ${TEST_HALF} \
+        ${TEST_DOUBLE_BLOCKED} \
         ${NBS} \
         2>&1 | tee ${OUT_FILE}
 

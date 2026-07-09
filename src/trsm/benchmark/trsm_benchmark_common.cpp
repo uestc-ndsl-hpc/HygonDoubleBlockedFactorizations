@@ -255,6 +255,7 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         ldb,
         alpha,
         options.nbs,
+        options.micro_blocks,
         runner,
         results,
         baseline_time,
@@ -271,6 +272,10 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
 
     if (options.test_recursive) {
         run_recursive_cases(context);
+    }
+
+    if (options.test_double_blocked) {
+        run_double_blocked_cases(context);
     }
 
     if (options.test_half) {
