@@ -32,6 +32,30 @@ void call_double_blocked_potrf(
 template <typename T>
 void run_double_blocked_cases(PotrfBenchmarkContext<T>& context)
 {
+    if (context.micro_blocks.empty()) {
+        const int osla_nb = context.n / 2;
+        const int osla_b = context.n / 4;
+
+        context.runner.execute(
+            "DoubleBlock",
+            std::to_string(osla_nb) + "/" + std::to_string(osla_b),
+            context.reset,
+            [&]() {
+                call_double_blocked_potrf<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    osla_nb,
+                    osla_b,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+
+        return;
+    }
+
     for (int nb : context.nbs) {
         for (int b : context.micro_blocks) {
             if (nb <= 0 || b <= 0 || b > nb) {

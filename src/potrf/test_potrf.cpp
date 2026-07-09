@@ -72,12 +72,6 @@ int main(int argc, char** argv)
         options.nbs.push_back(256);
     }
 
-    if (options.micro_blocks.empty()) {
-        options.micro_blocks.push_back(256);
-        options.micro_blocks.push_back(512);
-        options.micro_blocks.push_back(1024);
-    }
-
     options.error_mode = parse_benchmark_error_mode(error_input);
     potrf_benchmark::run_potrf_benchmarks(options);
 
