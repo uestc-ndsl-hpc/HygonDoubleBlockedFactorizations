@@ -14,6 +14,14 @@ void double_blocked_potrf(rocblas_handle handle,
                           int b,
                           int* info);
 
+void double_blocked_potrf_dbtrsm(rocblas_handle handle,
+                                 float* A,
+                                 int lda,
+                                 int n,
+                                 int nb,
+                                 int b,
+                                 int* info);
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -21,6 +29,14 @@ void double_blocked_potrf_double(rocblas_handle handle,
                                  int nb,
                                  int b,
                                  int* info);
+
+void double_blocked_potrf_double_dbtrsm(rocblas_handle handle,
+                                        double* A,
+                                        int lda,
+                                        int n,
+                                        int nb,
+                                        int b,
+                                        int* info);
 
 #ifdef __cplusplus
 }

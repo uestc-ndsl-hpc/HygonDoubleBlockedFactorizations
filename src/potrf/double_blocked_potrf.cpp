@@ -6,9 +6,12 @@
 
 #include <rocsolver/rocsolver.h>
 
+#include "trsm/double_blocked_trsm.h"
 #include "utils/common/error_check.h"
 
 namespace {
+
+constexpr int kPotrfDbTrsmMicroBlock = 1024;
 
 template <typename T>
 T* block_ptr(T* A, int lda, int row, int col)
@@ -90,6 +93,49 @@ void rocblas_trsm_right_lower_transpose(
             lda,
             B,
             ldb));
+    }
+
+    return;
+}
+
+template <typename T>
+void double_blocked_trsm_right_lower_transpose(
+    rocblas_handle handle,
+    int rows,
+    int cols,
+    const T* A,
+    int lda,
+    T* B,
+    int ldb)
+{
+    if (rows <= 0 || cols <= 0) {
+        return;
+    }
+
+    const int trsm_b = std::min(kPotrfDbTrsmMicroBlock, cols);
+
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_trsm(
+            handle,
+            const_cast<T*>(A),
+            lda,
+            B,
+            ldb,
+            rows,
+            cols,
+            cols,
+            trsm_b);
+    } else {
+        double_blocked_trsm_double(
+            handle,
+            const_cast<T*>(A),
+            lda,
+            B,
+            ldb,
+            rows,
+            cols,
+            cols,
+            trsm_b);
     }
 
     return;
@@ -283,7 +329,8 @@ void double_blocked_potrf_impl(
     int n,
     int nb,
     int b,
-    int* info)
+    int* info,
+    bool use_double_blocked_trsm)
 {
     if (n <= 0) {
         return;
@@ -312,14 +359,25 @@ void double_blocked_potrf_impl(
 
             rocsolver_potrf(handle, inner_size, A_ii, lda, info);
 
-            rocblas_trsm_right_lower_transpose(
-                handle,
-                trailing_rows,
-                inner_size,
-                A_ii,
-                lda,
-                block_ptr(A, lda, panel_start, inner),
-                lda);
+            if (use_double_blocked_trsm) {
+                double_blocked_trsm_right_lower_transpose(
+                    handle,
+                    trailing_rows,
+                    inner_size,
+                    A_ii,
+                    lda,
+                    block_ptr(A, lda, panel_start, inner),
+                    lda);
+            } else {
+                rocblas_trsm_right_lower_transpose(
+                    handle,
+                    trailing_rows,
+                    inner_size,
+                    A_ii,
+                    lda,
+                    block_ptr(A, lda, panel_start, inner),
+                    lda);
+            }
 
             update_next_inner_panel(
                 handle,
@@ -356,7 +414,20 @@ void double_blocked_potrf(rocblas_handle handle,
                           int b,
                           int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false);
+
+    return;
+}
+
+void double_blocked_potrf_dbtrsm(rocblas_handle handle,
+                                 float* A,
+                                 int lda,
+                                 int n,
+                                 int nb,
+                                 int b,
+                                 int* info)
+{
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true);
 
     return;
 }
@@ -369,7 +440,20 @@ void double_blocked_potrf_double(rocblas_handle handle,
                                  int b,
                                  int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false);
+
+    return;
+}
+
+void double_blocked_potrf_double_dbtrsm(rocblas_handle handle,
+                                        double* A,
+                                        int lda,
+                                        int n,
+                                        int nb,
+                                        int b,
+                                        int* info)
+{
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true);
 
     return;
 }

@@ -27,6 +27,67 @@ void call_double_blocked_potrf(
     return;
 }
 
+template <typename T>
+void call_double_blocked_potrf_dbtrsm(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_dbtrsm(handle, A, lda, n, nb, b, info);
+    } else {
+        double_blocked_potrf_double_dbtrsm(handle, A, lda, n, nb, b, info);
+    }
+
+    return;
+}
+
+template <typename T>
+void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
+{
+    const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
+
+    context.runner.execute(
+        "DoubleBlock",
+        nb_b,
+        context.reset,
+        [&]() {
+            call_double_blocked_potrf<T>(
+                context.handle,
+                context.d_A,
+                context.n,
+                context.lda,
+                nb,
+                b,
+                context.d_info);
+        },
+        context.verify,
+        context.calc_gflops);
+
+    context.runner.execute(
+        "DoubleBlock+DBTRSM",
+        nb_b + "/1024",
+        context.reset,
+        [&]() {
+            call_double_blocked_potrf_dbtrsm<T>(
+                context.handle,
+                context.d_A,
+                context.n,
+                context.lda,
+                nb,
+                b,
+                context.d_info);
+        },
+        context.verify,
+        context.calc_gflops);
+
+    return;
+}
+
 } // namespace
 
 template <typename T>
@@ -36,22 +97,7 @@ void run_double_blocked_cases(PotrfBenchmarkContext<T>& context)
         const int osla_nb = context.n / 2;
         const int osla_b = context.n / 4;
 
-        context.runner.execute(
-            "DoubleBlock",
-            std::to_string(osla_nb) + "/" + std::to_string(osla_b),
-            context.reset,
-            [&]() {
-                call_double_blocked_potrf<T>(
-                    context.handle,
-                    context.d_A,
-                    context.n,
-                    context.lda,
-                    osla_nb,
-                    osla_b,
-                    context.d_info);
-            },
-            context.verify,
-            context.calc_gflops);
+        run_double_blocked_pair(context, osla_nb, osla_b);
 
         return;
     }
@@ -62,22 +108,7 @@ void run_double_blocked_cases(PotrfBenchmarkContext<T>& context)
                 continue;
             }
 
-            context.runner.execute(
-                "DoubleBlock",
-                std::to_string(nb) + "/" + std::to_string(b),
-                context.reset,
-                [&]() {
-                    call_double_blocked_potrf<T>(
-                        context.handle,
-                        context.d_A,
-                        context.n,
-                        context.lda,
-                        nb,
-                        b,
-                        context.d_info);
-                },
-                context.verify,
-                context.calc_gflops);
+            run_double_blocked_pair(context, nb, b);
         }
     }
 

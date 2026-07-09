@@ -47,6 +47,7 @@ echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"        | tee -a ${SUMMARY_LOG
 echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
 echo "DoubleBlock params : nb=N/2, b=N/4 (OSLA default)"  | tee -a ${SUMMARY_LOG}
+echo "DBTRSM variant     : trsm_b=1024 when DoubleBlock is enabled" | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
