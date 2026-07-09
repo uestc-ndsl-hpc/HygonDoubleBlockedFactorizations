@@ -37,3 +37,17 @@ target_link_libraries(benchmark_potrf
     hygon_gemm
     hygon_kernels
 )
+
+add_executable(profile_double_blocked_potrf
+    profile_double_blocked_potrf.cpp
+)
+
+apply_benchmark_options(profile_double_blocked_potrf)
+link_rocm_runtime(profile_double_blocked_potrf)
+target_link_libraries(profile_double_blocked_potrf
+    rocsolver
+    rocblas
+    amdhip64
+    hygon_utils
+    hygon_kernels
+)
