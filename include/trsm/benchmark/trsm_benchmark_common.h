@@ -19,7 +19,9 @@ struct TrsmBenchmarkOptions {
     bool test_rocblas = true;
     bool test_iterative = true;
     bool test_half = true;
+    bool test_double_blocked = true;
     std::vector<int> nbs;
+    std::vector<int> micro_blocks;
 };
 
 struct TrsmBenchmarkContext {
@@ -32,6 +34,7 @@ struct TrsmBenchmarkContext {
     int ldb;
     float alpha;
     const std::vector<int>& nbs;
+    const std::vector<int>& micro_blocks;
     BenchmarkRunner& runner;
     std::vector<BenchmarkResult>& results;
     double& baseline_time;
@@ -43,6 +46,7 @@ struct TrsmBenchmarkContext {
 void run_trsm_benchmarks(const TrsmBenchmarkOptions& options);
 void run_rocblas_case(TrsmBenchmarkContext& context);
 void run_recursive_cases(TrsmBenchmarkContext& context);
+void run_double_blocked_cases(TrsmBenchmarkContext& context);
 void run_mixed_cases(TrsmBenchmarkContext& context);
 void run_iterative_cases(TrsmBenchmarkContext& context);
 
