@@ -27,10 +27,12 @@ NS=(
     40960
 )
 NBS="256 512 1024 2048"
+MICRO_BLOCKS="256 512 1024"
 
 ERROR_MODE=2       # 2 = sampled backward error
 TEST_ROCSOLVER=1   # 1 = use rocSOLVER as baseline
 TEST_BLOCKED=1     # 1 = test blocked right-looking POTRF
+TEST_DOUBLE_BLOCKED=1 # 1 = test double-block POTRF
 TEST_RECURSIVE=1   # 1 = test recursive POTRF
 PRECISION=0        # 0 = FP32
 
@@ -42,8 +44,10 @@ echo "Precision Mode     : ${PRECISION} (0=FP32)"         | tee -a ${SUMMARY_LOG
 echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"    | tee -a ${SUMMARY_LOG}
 echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"             | tee -a ${SUMMARY_LOG}
 echo "Test Blocked RL    : ${TEST_BLOCKED}"               | tee -a ${SUMMARY_LOG}
+echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"        | tee -a ${SUMMARY_LOG}
 echo "Test Recursive     : ${TEST_RECURSIVE}"             | tee -a ${SUMMARY_LOG}
 echo "NBs Sweep Sequence : ${NBS}"                        | tee -a ${SUMMARY_LOG}
+echo "b Sweep Sequence   : ${MICRO_BLOCKS}"               | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
 
@@ -65,7 +69,9 @@ do
         ${ERROR_MODE} \
         ${PRECISION} \
         ${TEST_BLOCKED} \
+        ${TEST_DOUBLE_BLOCKED} \
         ${NBS} \
+        --b ${MICRO_BLOCKS} \
         2>&1 | tee ${OUT_FILE}
 
     cat ${OUT_FILE} >> ${SUMMARY_LOG}

@@ -16,10 +16,12 @@ struct PotrfBenchmarkOptions {
     int n = 4096;
     bool test_rocsolver = true;
     bool test_blocked = true;
+    bool test_double_blocked = true;
     bool test_recursive = true;
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
     std::vector<int> nbs;
+    std::vector<int> micro_blocks;
 };
 
 template <typename T>
@@ -31,6 +33,7 @@ struct PotrfBenchmarkContext {
     int n;
     int lda;
     const std::vector<int>& nbs;
+    const std::vector<int>& micro_blocks;
     int precision_type;
     BenchmarkRunner& runner;
     std::vector<BenchmarkResult>& results;
@@ -50,5 +53,8 @@ void run_recursive_cases(PotrfBenchmarkContext<T>& context);
 
 template <typename T>
 void run_blocked_cases(PotrfBenchmarkContext<T>& context);
+
+template <typename T>
+void run_double_blocked_cases(PotrfBenchmarkContext<T>& context);
 
 } // namespace potrf_benchmark

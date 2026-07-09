@@ -4,6 +4,15 @@
 
 #include "potrf/benchmark/potrf_benchmark_common.h"
 
+namespace {
+
+bool is_bool_flag(const char* arg)
+{
+    return std::strcmp(arg, "0") == 0 || std::strcmp(arg, "1") == 0;
+}
+
+} // namespace
+
 int main(int argc, char** argv)
 {
     potrf_benchmark::PotrfBenchmarkOptions options;
@@ -26,18 +35,47 @@ int main(int argc, char** argv)
     }
 
     int nb_start = 6;
-    if (argc >= 7 &&
-        (std::strcmp(argv[6], "0") == 0 || std::strcmp(argv[6], "1") == 0)) {
-        options.test_blocked = std::atoi(argv[6]) != 0;
-        nb_start = 7;
+    bool has_blocked_flag = false;
+    bool has_double_blocked_flag = false;
+
+    if (argc > nb_start && is_bool_flag(argv[nb_start])) {
+        options.test_blocked = std::atoi(argv[nb_start]) != 0;
+        has_blocked_flag = true;
+        ++nb_start;
     }
 
+    if (argc > nb_start && is_bool_flag(argv[nb_start])) {
+        options.test_double_blocked = std::atoi(argv[nb_start]) != 0;
+        has_double_blocked_flag = true;
+        ++nb_start;
+    }
+
+    if (has_blocked_flag && !has_double_blocked_flag) {
+        options.test_double_blocked = options.test_blocked;
+    }
+
+    bool parse_micro_blocks = false;
     for (int i = nb_start; i < argc; ++i) {
-        options.nbs.push_back(std::atoi(argv[i]));
+        if (std::strcmp(argv[i], "--b") == 0) {
+            parse_micro_blocks = true;
+            continue;
+        }
+
+        if (parse_micro_blocks) {
+            options.micro_blocks.push_back(std::atoi(argv[i]));
+        } else {
+            options.nbs.push_back(std::atoi(argv[i]));
+        }
     }
 
     if (options.nbs.empty()) {
         options.nbs.push_back(256);
+    }
+
+    if (options.micro_blocks.empty()) {
+        options.micro_blocks.push_back(256);
+        options.micro_blocks.push_back(512);
+        options.micro_blocks.push_back(1024);
     }
 
     options.error_mode = parse_benchmark_error_mode(error_input);

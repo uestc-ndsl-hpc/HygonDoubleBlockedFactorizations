@@ -17,7 +17,7 @@ void print_benchmark_results(
 
     cout << left
          << setw(15) << "Method"
-         << " | " << setw(6) << "NB"
+         << " | " << setw(10) << "NB/B"
          << " | " << setw(12) << "Time(ms)"
          << " | " << setw(12) << "GFLOPS"
          << " | " << setw(10) << "Speedup"
@@ -30,7 +30,7 @@ void print_benchmark_results(
     for (const auto& res : results) {
         cout << left
              << setw(15) << res.method
-             << " | " << setw(6) << res.nb_str
+             << " | " << setw(10) << res.nb_str
              << " | " << right << setw(10) << fixed << setprecision(3) << res.time_ms << "  "
              << " | " << right << setw(10) << fixed << setprecision(2) << res.gflops << "  "
              << " | ";
