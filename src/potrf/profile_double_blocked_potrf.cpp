@@ -2,9 +2,11 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -41,6 +43,122 @@ double gemm_work(int rows, int cols, int k)
 double syrk_work(int n, int k)
 {
     return static_cast<double>(n) * n * k;
+}
+
+struct GemmShapeEntry {
+    std::string stage;
+    int rows = 0;
+    int cols = 0;
+    int k = 0;
+    double total_time_ms = 0.0;
+    double total_work = 0.0;
+    int call_count = 0;
+};
+
+class GemmShapeProfiler {
+public:
+    void add_sample(const std::string& stage,
+                    int rows,
+                    int cols,
+                    int k,
+                    double elapsed_ms,
+                    double work)
+    {
+        auto it = std::find_if(entries_.begin(), entries_.end(),
+                               [&](const GemmShapeEntry& entry) {
+                                   return entry.stage == stage &&
+                                          entry.rows == rows &&
+                                          entry.cols == cols &&
+                                          entry.k == k;
+                               });
+
+        if (it == entries_.end()) {
+            entries_.push_back({stage, rows, cols, k, elapsed_ms, work, 1});
+            return;
+        }
+
+        it->total_time_ms += elapsed_ms;
+        it->total_work += work;
+        it->call_count += 1;
+    }
+
+    void print(const std::string& title, int line_width = 126) const
+    {
+        using namespace std;
+
+        cout << "\n" << string(line_width, '=') << "\n";
+        cout << title << "\n";
+        cout << string(line_width, '=') << "\n";
+        cout << left << setw(16) << "Stage"
+             << " | " << right << setw(8) << "M"
+             << " | " << setw(8) << "N"
+             << " | " << setw(8) << "K"
+             << " | " << setw(10) << "Calls"
+             << " | " << setw(12) << "Total(ms)"
+             << " | " << setw(12) << "Avg(ms)"
+             << " | " << setw(12) << "GFLOPS"
+             << "\n";
+        cout << string(line_width, '-') << "\n";
+
+        for (const auto& entry : entries_) {
+            const double avg_ms = entry.call_count > 0
+                ? entry.total_time_ms / static_cast<double>(entry.call_count)
+                : 0.0;
+            const double gflops = entry.total_time_ms > 0.0
+                ? (entry.total_work / (entry.total_time_ms / 1000.0)) / 1e9
+                : 0.0;
+
+            cout << left << setw(16) << entry.stage
+                 << " | " << right << setw(8) << entry.rows
+                 << " | " << setw(8) << entry.cols
+                 << " | " << setw(8) << entry.k
+                 << " | " << setw(10) << entry.call_count
+                 << " | " << setw(12) << fixed << setprecision(3) << entry.total_time_ms
+                 << " | " << setw(12) << fixed << setprecision(3) << avg_ms
+                 << " | " << setw(12) << fixed << setprecision(2) << gflops
+                 << "\n";
+        }
+
+        cout << string(line_width, '=') << "\n";
+    }
+
+private:
+    std::vector<GemmShapeEntry> entries_;
+};
+
+template <typename Func>
+void measure_gemm_shape(hipStream_t stream,
+                        StageBreakdownProfiler& stage_profiler,
+                        GemmShapeProfiler& shape_profiler,
+                        const std::string& stage,
+                        int rows,
+                        int cols,
+                        int k,
+                        Func&& func)
+{
+    if (rows <= 0 || cols <= 0 || k <= 0) {
+        return;
+    }
+
+    hipEvent_t start;
+    hipEvent_t stop;
+    HIP_CHECK(hipEventCreate(&start));
+    HIP_CHECK(hipEventCreate(&stop));
+
+    HIP_CHECK(hipEventRecord(start, stream));
+    func();
+    HIP_CHECK(hipEventRecord(stop, stream));
+    HIP_CHECK(hipEventSynchronize(stop));
+
+    float elapsed_ms = 0.0f;
+    HIP_CHECK(hipEventElapsedTime(&elapsed_ms, start, stop));
+    HIP_CHECK(hipEventDestroy(start));
+    HIP_CHECK(hipEventDestroy(stop));
+
+    const double elapsed = static_cast<double>(elapsed_ms);
+    const double work = gemm_work(rows, cols, k);
+    stage_profiler.add_sample(stage, elapsed, work);
+    shape_profiler.add_sample(stage, rows, cols, k, elapsed, work);
 }
 
 template <typename T>
@@ -210,6 +328,7 @@ template <typename T>
 void update_next_inner_panel_profiled(rocblas_handle handle,
                                       hipStream_t stream,
                                       StageBreakdownProfiler& profiler,
+                                      GemmShapeProfiler& shape_profiler,
                                       T* A,
                                       int lda,
                                       int n,
@@ -226,10 +345,14 @@ void update_next_inner_panel_profiled(rocblas_handle handle,
     const int rows = n - panel_start;
     const int k = panel_start - outer;
 
-    profiler.measure(
+    measure_gemm_shape(
         stream,
+        profiler,
+        shape_profiler,
         "Inner GEMM",
-        gemm_work(rows, panel_cols, k),
+        rows,
+        panel_cols,
+        k,
         [&]() {
             rocblas_gemm_nt_update(
                 handle,
@@ -251,6 +374,7 @@ template <typename T>
 void prepare_next_outer_panel_profiled(rocblas_handle handle,
                                        hipStream_t stream,
                                        StageBreakdownProfiler& profiler,
+                                       GemmShapeProfiler& shape_profiler,
                                        T* A,
                                        int lda,
                                        int n,
@@ -280,10 +404,14 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
                 lda);
         });
 
-    profiler.measure(
+    measure_gemm_shape(
         stream,
+        profiler,
+        shape_profiler,
         "Outer GEMM",
-        gemm_work(below_rows, next_size, next_outer),
+        below_rows,
+        next_size,
+        next_outer,
         [&]() {
             rocblas_gemm_nt_update(
                 handle,
@@ -305,6 +433,7 @@ template <typename T>
 void double_blocked_potrf_profiled(rocblas_handle handle,
                                    hipStream_t stream,
                                    StageBreakdownProfiler& profiler,
+                                   GemmShapeProfiler& shape_profiler,
                                    T* A,
                                    int lda,
                                    int n,
@@ -350,6 +479,7 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                 handle,
                 stream,
                 profiler,
+                shape_profiler,
                 A,
                 lda,
                 n,
@@ -363,6 +493,7 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
             handle,
             stream,
             profiler,
+            shape_profiler,
             A,
             lda,
             n,
@@ -425,11 +556,13 @@ int main(int argc, char** argv)
 
     for (int i = 0; i < warmup; ++i) {
         StageBreakdownProfiler warmup_profiler;
+        GemmShapeProfiler warmup_shape_profiler;
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
         double_blocked_potrf_profiled(
             handle,
             stream,
             warmup_profiler,
+            warmup_shape_profiler,
             d_A.get(),
             n,
             n,
@@ -440,12 +573,14 @@ int main(int argc, char** argv)
     HIP_CHECK(hipDeviceSynchronize());
 
     StageBreakdownProfiler profiler("GFLOPS");
+    GemmShapeProfiler shape_profiler;
     for (int i = 0; i < iters; ++i) {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
         double_blocked_potrf_profiled(
             handle,
             stream,
             profiler,
+            shape_profiler,
             d_A.get(),
             n,
             n,
@@ -460,6 +595,11 @@ int main(int argc, char** argv)
         ", nb=" + std::to_string(nb) +
         ", b=" + std::to_string(b) + ")",
         110);
+
+    shape_profiler.print(
+        "DoubleBlock POTRF GEMM Shape Breakdown (N=" + std::to_string(n) +
+        ", nb=" + std::to_string(nb) +
+        ", b=" + std::to_string(b) + ")");
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 
