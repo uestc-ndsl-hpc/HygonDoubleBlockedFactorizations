@@ -176,18 +176,20 @@ void run_hierarchical_case(
     PotrfBenchmarkContext<T>& context,
     int nb,
     int panel_block_size,
-    int potrf_leaf_size)
+    int potrf_leaf_size,
+    int syrk_k_tile)
 {
     if constexpr (std::is_same_v<T, float>) {
         if (panel_block_size <= 0 || panel_block_size > nb ||
-            potrf_leaf_size <= 0 || potrf_leaf_size > panel_block_size) {
+            potrf_leaf_size <= 0 || potrf_leaf_size > panel_block_size ||
+            syrk_k_tile <= 0) {
             return;
         }
 
         const std::string parameters =
             std::to_string(nb) + "/" + std::to_string(panel_block_size) +
             "/" + std::to_string(potrf_leaf_size) + "/" +
-            std::to_string(nb) + "/" +
+            std::to_string(syrk_k_tile) + "/" +
             std::to_string(kHierarchicalGemmMTile);
 
         context.runner.execute(
@@ -203,7 +205,7 @@ void run_hierarchical_case(
                     nb,
                     panel_block_size,
                     potrf_leaf_size,
-                    nb,
+                    syrk_k_tile,
                     kHierarchicalGemmMTile,
                     context.d_info);
             },
@@ -214,6 +216,7 @@ void run_hierarchical_case(
         (void)nb;
         (void)panel_block_size;
         (void)potrf_leaf_size;
+        (void)syrk_k_tile;
     }
 
     return;
@@ -294,12 +297,21 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         context.verify,
         context.calc_gflops);
 
-    if (context.panel_blocks.empty()) {
-        run_hierarchical_case(
-            context, nb, kDefaultHierarchicalPanelSize, b);
-    } else {
-        for (int panel_block_size : context.panel_blocks) {
-            run_hierarchical_case(context, nb, panel_block_size, b);
+    const std::vector<int> default_panel_blocks = {
+        kDefaultHierarchicalPanelSize};
+    const std::vector<int> default_syrk_k_tiles = {nb};
+    const std::vector<int>& panel_blocks = context.panel_blocks.empty()
+        ? default_panel_blocks
+        : context.panel_blocks;
+    const std::vector<int>& syrk_k_tiles =
+        context.hierarchical_syrk_k_tiles.empty()
+        ? default_syrk_k_tiles
+        : context.hierarchical_syrk_k_tiles;
+
+    for (int panel_block_size : panel_blocks) {
+        for (int syrk_k_tile : syrk_k_tiles) {
+            run_hierarchical_case(
+                context, nb, panel_block_size, b, syrk_k_tile);
         }
     }
 

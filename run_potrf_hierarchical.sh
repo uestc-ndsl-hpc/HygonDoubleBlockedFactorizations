@@ -20,6 +20,7 @@ read -r -a BLOCKED_NBS <<< "${POTRF_BASELINE_NBS:-2048}"
 read -r -a DOUBLE_NBS <<< "${POTRF_DOUBLE_NBS:-8192}"
 read -r -a PANEL_BLOCKS <<< "${POTRF_PANEL_BLOCKS:-2048 4096}"
 read -r -a POTRF_LEAVES <<< "${POTRF_LEAF_BLOCKS:-512}"
+read -r -a SYRK_K_TILES <<< "${POTRF_HIER_SYRK_K_TILES:-8192}"
 
 ERROR_MODE=${POTRF_ERROR_MODE:-2}
 PRECISION=${POTRF_PRECISION:-0}
@@ -37,7 +38,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Outer NBs          : ${DOUBLE_NBS[*]}"
     echo "Panel blocks       : ${PANEL_BLOCKS[*]}"
     echo "POTRF leaves       : ${POTRF_LEAVES[*]}"
-    echo "SYRK K tile        : Outer NB"
+    echo "SYRK K tiles       : ${SYRK_K_TILES[*]}"
     echo "GEMM M tile        : 8192 when M>32768"
     echo "Error verify mode  : ${ERROR_MODE}"
 } | tee -a "${SUMMARY_LOG}"
@@ -69,6 +70,7 @@ for N in "${NS[@]}"; do
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${POTRF_LEAVES[@]}" \
         --panel-b "${PANEL_BLOCKS[@]}" \
+        --hier-syrk-k-tile "${SYRK_K_TILES[@]}" \
         --tail-nb 0 \
         2>&1 | tee "${OUT_FILE}"
 

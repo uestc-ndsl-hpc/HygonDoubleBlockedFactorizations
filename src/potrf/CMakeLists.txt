@@ -67,3 +67,17 @@ target_link_libraries(profile_blocked_potrf
     hygon_utils
     hygon_kernels
 )
+
+add_executable(profile_hierarchical_potrf
+    profile_hierarchical_potrf.cpp
+)
+
+apply_benchmark_options(profile_hierarchical_potrf)
+link_rocm_runtime(profile_hierarchical_potrf)
+target_link_libraries(profile_hierarchical_potrf
+    rocsolver
+    rocblas
+    amdhip64
+    hygon_utils
+    hygon_kernels
+)
