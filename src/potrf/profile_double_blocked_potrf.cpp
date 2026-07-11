@@ -51,16 +51,21 @@ double syrk_work(int n, int k)
     return static_cast<double>(n) * n * k;
 }
 
-size_t tiled_syrk_operation_count(int n, int tile)
+size_t tiled_syrk_operation_count(int n, int k, int tile, int k_tile)
 {
-    if (tile <= 0) {
-        return 1;
+    if (tile > 0) {
+        const size_t block_count =
+            (static_cast<size_t>(n) + static_cast<size_t>(tile) - 1) /
+            static_cast<size_t>(tile);
+        return block_count * (block_count + 1) / 2;
     }
 
-    const size_t block_count =
-        (static_cast<size_t>(n) + static_cast<size_t>(tile) - 1) /
-        static_cast<size_t>(tile);
-    return block_count * (block_count + 1) / 2;
+    if (k_tile > 0) {
+        return (static_cast<size_t>(k) + static_cast<size_t>(k_tile) - 1) /
+               static_cast<size_t>(k_tile);
+    }
+
+    return 1;
 }
 
 struct OperationShapeEntry {
@@ -448,13 +453,14 @@ void rocblas_tiled_syrk_lower_update_profiled(rocblas_handle handle,
                                               int lda,
                                               T* C,
                                               int ldc,
-                                              int tile)
+                                              int tile,
+                                              int k_tile)
 {
     if (n <= 0 || k <= 0) {
         return;
     }
 
-    if (tile <= 0) {
+    if (tile <= 0 && k_tile <= 0) {
         shape_profiler.enqueue(
             stream,
             "Outer SYRK API",
@@ -465,6 +471,29 @@ void rocblas_tiled_syrk_lower_update_profiled(rocblas_handle handle,
             [&]() {
                 rocblas_syrk_lower_update(handle, n, k, A, lda, C, ldc);
             });
+        return;
+    }
+
+    if (k_tile > 0) {
+        const std::string operation =
+            "Outer K-SYRK/" + std::to_string(k);
+
+        for (int k_offset = 0; k_offset < k; k_offset += k_tile) {
+            const int chunk = std::min(k_tile, k - k_offset);
+            const T* A_chunk = block_ptr(A, lda, 0, k_offset);
+
+            shape_profiler.enqueue(
+                stream,
+                operation,
+                n,
+                n,
+                chunk,
+                syrk_work(n, chunk),
+                [&]() {
+                    rocblas_syrk_lower_update(
+                        handle, n, chunk, A_chunk, lda, C, ldc);
+                });
+        }
         return;
     }
 
@@ -570,7 +599,8 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
                                        int n,
                                        int next_outer,
                                        int nb,
-                                       int syrk_tile)
+                                       int syrk_tile,
+                                       int syrk_k_tile)
 {
     if (next_outer >= n) {
         return;
@@ -581,7 +611,8 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
     const int below_rows = n - below_start;
 
     shape_profiler.reserve_events(
-        tiled_syrk_operation_count(next_size, syrk_tile));
+        tiled_syrk_operation_count(
+            next_size, next_outer, syrk_tile, syrk_k_tile));
 
     profiler.measure(
         stream,
@@ -598,7 +629,8 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
                 lda,
                 block_ptr(A, lda, next_outer, next_outer),
                 lda,
-                syrk_tile);
+                syrk_tile,
+                syrk_k_tile);
         });
     shape_profiler.resolve_pending();
 
@@ -638,6 +670,7 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                                    int nb,
                                    int b,
                                    int syrk_tile,
+                                   int syrk_k_tile,
                                    int* info)
 {
     for (int outer = 0; outer < n; outer += nb) {
@@ -698,7 +731,8 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
             n,
             outer_end,
             nb,
-            syrk_tile);
+            syrk_tile,
+            syrk_k_tile);
     }
 
     return;
@@ -723,13 +757,16 @@ int main(int argc, char** argv)
     const int nb = read_int_arg(argc, argv, "--nb", 8192);
     const int b = read_int_arg(argc, argv, "--b", 512);
     const int syrk_tile = read_int_arg(argc, argv, "--syrk-tile", 0);
+    const int syrk_k_tile = read_int_arg(argc, argv, "--syrk-k-tile", 0);
     const int warmup = read_int_arg(argc, argv, "--warmup", 1);
     const int iters = read_int_arg(argc, argv, "--iters", 3);
 
     if (n <= 0 || nb <= 0 || b <= 0 || b > nb ||
-        syrk_tile < 0 || syrk_tile > nb) {
+        syrk_tile < 0 || syrk_tile > nb || syrk_k_tile < 0 ||
+        (syrk_tile > 0 && syrk_k_tile > 0)) {
         std::cerr << "Usage: profile_double_blocked_potrf "
                   << "--n N --nb NB --b B [--syrk-tile T] "
+                  << "[--syrk-k-tile KT] "
                   << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
@@ -755,6 +792,7 @@ int main(int argc, char** argv)
               << ", nb=" << nb
               << ", b=" << b
               << ", syrk_tile=" << syrk_tile
+              << ", syrk_k_tile=" << syrk_k_tile
               << ", warmup=" << warmup
               << ", iters=" << iters << "\n";
 
@@ -773,6 +811,7 @@ int main(int argc, char** argv)
             nb,
             b,
             syrk_tile,
+            syrk_k_tile,
             d_info.get());
         warmup_shape_profiler.resolve_pending();
     }
@@ -793,6 +832,7 @@ int main(int argc, char** argv)
             nb,
             b,
             syrk_tile,
+            syrk_k_tile,
             d_info.get());
     }
     HIP_CHECK(hipDeviceSynchronize());
@@ -802,14 +842,16 @@ int main(int argc, char** argv)
         "DoubleBlock POTRF Stage Breakdown (N=" + std::to_string(n) +
         ", nb=" + std::to_string(nb) +
         ", b=" + std::to_string(b) +
-        ", syrk_tile=" + std::to_string(syrk_tile) + ")",
+        ", syrk_tile=" + std::to_string(syrk_tile) +
+        ", syrk_k_tile=" + std::to_string(syrk_k_tile) + ")",
         110);
 
     shape_profiler.print(
         "DoubleBlock POTRF Operation Shape Breakdown (N=" + std::to_string(n) +
         ", nb=" + std::to_string(nb) +
         ", b=" + std::to_string(b) +
-        ", syrk_tile=" + std::to_string(syrk_tile) + ")");
+        ", syrk_tile=" + std::to_string(syrk_tile) +
+        ", syrk_k_tile=" + std::to_string(syrk_k_tile) + ")");
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 
