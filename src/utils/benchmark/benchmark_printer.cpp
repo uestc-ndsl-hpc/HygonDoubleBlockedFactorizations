@@ -1,6 +1,8 @@
 #include "utils/benchmark/benchmark_printer.h"
-#include <iostream>
+
+#include <algorithm>
 #include <iomanip>
+#include <iostream>
 
 void print_benchmark_results(
     const std::string& title,
@@ -10,14 +12,26 @@ void print_benchmark_results(
 {
     using namespace std;
 
+    int method_width = 15;
+    int parameter_width = 10;
+    for (const auto& result : results) {
+        method_width = max(method_width, static_cast<int>(result.method.size()));
+        parameter_width = max(
+            parameter_width,
+            static_cast<int>(result.nb_str.size()));
+    }
+    const int table_width = max(
+        line_width,
+        method_width + parameter_width + 80);
+
     cout << "\n";
-    cout << string(line_width, '=') << "\n";
+    cout << string(table_width, '=') << "\n";
     cout << title << "\n";
-    cout << string(line_width, '=') << "\n";
+    cout << string(table_width, '=') << "\n";
 
     cout << left
-         << setw(15) << "Method"
-         << " | " << setw(10) << "NB/B"
+         << setw(method_width) << "Method"
+         << " | " << setw(parameter_width) << "Parameters"
          << " | " << setw(12) << "Time(ms)"
          << " | " << setw(12) << "GFLOPS"
          << " | " << setw(10) << "Speedup"
@@ -25,12 +39,12 @@ void print_benchmark_results(
          << " | " << setw(14) << "Backward Error"
          << "\n";
 
-    cout << string(line_width, '-') << "\n";
+    cout << string(table_width, '-') << "\n";
 
     for (const auto& res : results) {
         cout << left
-             << setw(15) << res.method
-             << " | " << setw(10) << res.nb_str
+             << setw(method_width) << res.method
+             << " | " << setw(parameter_width) << res.nb_str
              << " | " << right << setw(10) << fixed << setprecision(3) << res.time_ms << "  "
              << " | " << right << setw(10) << fixed << setprecision(2) << res.gflops << "  "
              << " | ";
@@ -57,7 +71,7 @@ void print_benchmark_results(
         cout << "\n";
     }
 
-    cout << string(line_width, '=') << "\n";
+    cout << string(table_width, '=') << "\n";
 
     return;
 }

@@ -21,6 +21,7 @@ struct PotrfBenchmarkOptions {
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
     std::vector<int> nbs;
+    std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
 };
 
@@ -33,6 +34,7 @@ struct PotrfBenchmarkContext {
     int n;
     int lda;
     const std::vector<int>& nbs;
+    const std::vector<int>& double_nbs;
     const std::vector<int>& micro_blocks;
     int precision_type;
     BenchmarkRunner& runner;

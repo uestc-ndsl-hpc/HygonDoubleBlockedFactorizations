@@ -278,6 +278,7 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         alpha_f,
         beta_f,
         options.nbs,
+        options.k_tiles,
         runner,
         results,
         baseline_time,
@@ -290,6 +291,10 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
 
     if (options.test_rocblas) {
         run_rocblas_case(context);
+    }
+
+    if (options.test_kblocked) {
+        run_kblocked_cases(context);
     }
 
     if (options.test_recursive) {
@@ -311,6 +316,8 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         120);
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
+
+    return;
 }
 
 } // namespace syrk_benchmark

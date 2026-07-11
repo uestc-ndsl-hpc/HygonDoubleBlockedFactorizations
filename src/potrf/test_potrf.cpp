@@ -54,14 +54,26 @@ int main(int argc, char** argv)
         options.test_double_blocked = options.test_blocked;
     }
 
-    bool parse_micro_blocks = false;
+    enum class BlockParameter {
+        Nb,
+        DoubleNb,
+        MicroBlock
+    };
+
+    BlockParameter block_parameter = BlockParameter::Nb;
     for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--double-nb") == 0) {
+            block_parameter = BlockParameter::DoubleNb;
+            continue;
+        }
         if (std::strcmp(argv[i], "--b") == 0) {
-            parse_micro_blocks = true;
+            block_parameter = BlockParameter::MicroBlock;
             continue;
         }
 
-        if (parse_micro_blocks) {
+        if (block_parameter == BlockParameter::DoubleNb) {
+            options.double_nbs.push_back(std::atoi(argv[i]));
+        } else if (block_parameter == BlockParameter::MicroBlock) {
             options.micro_blocks.push_back(std::atoi(argv[i]));
         } else {
             options.nbs.push_back(std::atoi(argv[i]));

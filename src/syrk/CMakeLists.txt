@@ -18,6 +18,7 @@ add_executable(benchmark_syrk
     test_syrk.cpp
     benchmark/syrk_batched_cases.cpp
     benchmark/syrk_benchmark_common.cpp
+    benchmark/syrk_kblocked_cases.cpp
     benchmark/syrk_mixed_cases.cpp
     benchmark/syrk_recursive_cases.cpp
     benchmark/syrk_rocblas_cases.cpp

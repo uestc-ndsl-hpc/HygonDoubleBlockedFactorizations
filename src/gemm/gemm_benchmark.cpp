@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdlib>
 #include <vector>
 #include <iomanip>
 #include <cmath>
@@ -15,6 +16,26 @@
 #include "utils/matrix/matrix_generator.h"
 
 using namespace std;
+
+namespace {
+
+int read_iteration_count(const char* variable, int fallback, int minimum)
+{
+    const char* value = std::getenv(variable);
+    if (value == nullptr || *value == '\0') {
+        return fallback;
+    }
+
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed < minimum || parsed > 100000) {
+        return fallback;
+    }
+
+    return static_cast<int>(parsed);
+}
+
+} // namespace
 
 double calculate_gemm_gflops(int m, int n, int k, double time_ms)
 {
@@ -125,8 +146,8 @@ void run_right_looking_gemm_benchmark(const vector<int>& k_steps, int num_warmup
 
 int main(int argc, char** argv)
 {
-    int num_warmup = 2;
-    int num_iters  = 5;
+    int num_warmup = read_iteration_count("BENCHMARK_WARMUP_ITERS", 2, 0);
+    int num_iters = read_iteration_count("BENCHMARK_PROFILE_ITERS", 5, 1);
 
     vector<int> k_steps = {
         64, 128, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384

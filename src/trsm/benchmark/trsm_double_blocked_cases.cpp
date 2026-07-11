@@ -35,7 +35,11 @@ void run_double_blocked_cases(TrsmBenchmarkContext& context)
         return;
     }
 
-    for (int nb : context.nbs) {
+    const std::vector<int>& double_nbs = context.double_nbs.empty()
+        ? context.nbs
+        : context.double_nbs;
+
+    for (int nb : double_nbs) {
         for (int b : context.micro_blocks) {
             if (nb <= 0 || b <= 0 || b > nb) {
                 continue;

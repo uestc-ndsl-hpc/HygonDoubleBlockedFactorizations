@@ -2,20 +2,29 @@
 
 setup_dtk_environment() {
     export ROCM_PATH=${ROCM_PATH:-/opt/dtk}
-    export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0}
-    export LD_LIBRARY_PATH=$ROCM_PATH/lib:$ROCM_PATH/llvm/lib:${LD_LIBRARY_PATH:-}
-    export PATH=$ROCM_PATH/bin:$PATH
+    export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-7}
+    export LD_LIBRARY_PATH=${ROCM_PATH}/lib:${ROCM_PATH}/llvm/lib:${LD_LIBRARY_PATH:-}
+    export PATH=${ROCM_PATH}/bin:${PATH:-}
 
     export ROCBLAS_LAYER=${ROCBLAS_LAYER:-0}
     export TENSILE_DB=${TENSILE_DB:-0}
+    export BENCHMARK_WARMUP_ITERS=${BENCHMARK_WARMUP_ITERS:-1}
+    export BENCHMARK_PROFILE_ITERS=${BENCHMARK_PROFILE_ITERS:-3}
+
+    return 0
 }
 
 log_toolchain() {
     local summary_log=$1
 
     echo "DTK Environment    : ${ROCM_PATH}" | tee -a "${summary_log}"
+    echo "HIP device         : ${HIP_VISIBLE_DEVICES}" | tee -a "${summary_log}"
+    echo "Warmup iterations  : ${BENCHMARK_WARMUP_ITERS}" | tee -a "${summary_log}"
+    echo "Profile iterations : ${BENCHMARK_PROFILE_ITERS}" | tee -a "${summary_log}"
     echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
     echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a "${summary_log}"
+
+    return 0
 }
 
 check_benchmark_binary() {
@@ -27,24 +36,45 @@ check_benchmark_binary() {
     echo "Checking binary dependencies..." | tee -a "${summary_log}"
 
     if [ -f "${exec_path}" ]; then
-        ldd "${exec_path}" | grep "not found" | tee -a "${summary_log}"
+        ldd "${exec_path}" | grep "not found" | tee -a "${summary_log}" || true
         echo "Resolved ROCm libraries:" | tee -a "${summary_log}"
-        ldd "${exec_path}" | grep -E "${lib_pattern}" | tee -a "${summary_log}"
+        ldd "${exec_path}" | grep -E "${lib_pattern}" | tee -a "${summary_log}" || true
     else
         echo "Error: Executable ${exec_path} not found! Please build first." | tee -a "${summary_log}"
         exit 1
     fi
+
+    return 0
 }
 
 configure_numa_launch_prefix() {
     local summary_log=$1
+    local visible_device=${HIP_VISIBLE_DEVICES%%,*}
+    local drm_card=${BENCHMARK_DRM_CARD:-${visible_device}}
+    local numa_path=/sys/class/drm/card${drm_card}/device/numa_node
+    local numa_node=""
 
-    NUMA_NODE=$(cat /sys/class/drm/card0/device/numa_node 2>/dev/null)
-    if [ "${NUMA_NODE}" != "-1" ] && [ ! -z "${NUMA_NODE}" ]; then
-        LAUNCH_PREFIX="numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE}"
-        echo "NUMA Binding detected and enabled: ${LAUNCH_PREFIX}" | tee -a "${summary_log}"
-    else
-        LAUNCH_PREFIX=""
-        echo "Warning: No direct NUMA affinity mapping found. Running without numactl." | tee -a "${summary_log}"
+    LAUNCH_PREFIX=()
+
+    if [ "${BENCHMARK_NUMA_BIND:-1}" = "0" ]; then
+        echo "NUMA binding       : disabled" | tee -a "${summary_log}"
+        return 0
     fi
+
+    if [ -r "${numa_path}" ]; then
+        numa_node=$(cat "${numa_path}")
+    fi
+
+    if [[ "${numa_node}" =~ ^[0-9]+$ ]] && command -v numactl >/dev/null 2>&1; then
+        LAUNCH_PREFIX=(
+            numactl
+            "--cpunodebind=${numa_node}"
+            "--membind=${numa_node}"
+        )
+        echo "NUMA binding       : card${drm_card} -> node ${numa_node}" | tee -a "${summary_log}"
+    else
+        echo "NUMA binding       : unavailable for card${drm_card}" | tee -a "${summary_log}"
+    fi
+
+    return 0
 }

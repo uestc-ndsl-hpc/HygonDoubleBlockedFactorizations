@@ -18,9 +18,11 @@ struct SyrkBenchmarkOptions {
     ErrorMode error_mode = ErrorMode::None;
     bool test_recursive = true;
     bool test_rocblas = true;
+    bool test_kblocked = true;
     bool test_batched = true;
     bool test_mixed = true;
     std::vector<int> nbs;
+    std::vector<int> k_tiles;
 };
 
 struct SyrkBenchmarkContext {
@@ -35,6 +37,7 @@ struct SyrkBenchmarkContext {
     float alpha;
     float beta;
     const std::vector<int>& nbs;
+    const std::vector<int>& k_tiles;
     BenchmarkRunner& runner;
     std::vector<BenchmarkResult>& results;
     double& baseline_time;
@@ -45,6 +48,7 @@ struct SyrkBenchmarkContext {
 
 void run_syrk_benchmarks(const SyrkBenchmarkOptions& options);
 void run_rocblas_case(SyrkBenchmarkContext& context);
+void run_kblocked_cases(SyrkBenchmarkContext& context);
 void run_recursive_cases(SyrkBenchmarkContext& context);
 void run_batched_cases(SyrkBenchmarkContext& context);
 void run_mixed_cases(SyrkBenchmarkContext& context);

@@ -255,6 +255,7 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         ldb,
         alpha,
         options.nbs,
+        options.double_nbs,
         options.micro_blocks,
         runner,
         results,
