@@ -18,6 +18,7 @@ SUMMARY_LOG=${RESULT_DIR}/summary.log
 read -r -a NS <<< "${POTRF_NS:-8192 16384 24576 32768 40960}"
 read -r -a DOUBLE_NBS <<< "${POTRF_DOUBLE_NBS:-4096 8192 12288}"
 read -r -a MICRO_BLOCKS <<< "${POTRF_MICRO_BLOCKS:-512 1024 2048}"
+read -r -a TAIL_NBS <<< "${POTRF_TAIL_NBS:-2048}"
 
 ERROR_MODE=${POTRF_ERROR_MODE:-2}
 PRECISION=${POTRF_PRECISION:-0}
@@ -33,7 +34,8 @@ rm -f "${SUMMARY_LOG}"
     echo "Matrix sizes       : ${NS[*]}"
     echo "DoubleBlock NBs    : ${DOUBLE_NBS[*]}"
     echo "Micro blocks       : ${MICRO_BLOCKS[*]}"
-    echo "Methods            : base, DBTRSM, KBSYRK, KBSYRK+MGEMM"
+    echo "Tail Blocked-RL NBs: ${TAIL_NBS[*]}"
+    echo "Methods            : base, DBTRSM, KBSYRK, KBSYRK+MGEMM, TailRL"
     echo "Precision mode     : ${PRECISION}"
     echo "Error verify mode  : ${ERROR_MODE}"
 } | tee -a "${SUMMARY_LOG}"
@@ -64,6 +66,7 @@ for N in "${NS[@]}"; do
         256 \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        --tail-nb "${TAIL_NBS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

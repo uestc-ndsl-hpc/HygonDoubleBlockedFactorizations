@@ -8,6 +8,8 @@
 namespace potrf_benchmark {
 namespace {
 
+constexpr int kDefaultTailBlockSize = 2048;
+
 template <typename T>
 void call_double_blocked_potrf(
     rocblas_handle handle,
@@ -91,6 +93,82 @@ void call_double_blocked_potrf_kblocked_syrk_adaptive_gemm(
 }
 
 template <typename T>
+void call_double_blocked_potrf_tail_blocked(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int tail_block_size,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_tail_blocked(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            tail_block_size,
+            info);
+    } else {
+        double_blocked_potrf_double_tail_blocked(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            tail_block_size,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
+void run_tail_blocked_case(
+    PotrfBenchmarkContext<T>& context,
+    int nb,
+    int b,
+    int tail_block_size)
+{
+    if (tail_block_size <= 0) {
+        return;
+    }
+
+    const std::string parameters =
+        std::to_string(nb) + "/" + std::to_string(b) + "/" +
+        std::to_string(nb) + "/8192/" + std::to_string(tail_block_size);
+
+    context.runner.execute(
+        "DoubleBlock+TailRL",
+        parameters,
+        context.reset,
+        [&]() {
+            call_double_blocked_potrf_tail_blocked<T>(
+                context.handle,
+                context.d_A,
+                context.n,
+                context.lda,
+                nb,
+                b,
+                nb,
+                tail_block_size,
+                context.d_info);
+        },
+        context.verify,
+        context.calc_gflops);
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
@@ -164,6 +242,15 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    if (context.tail_nbs.empty()) {
+        run_tail_blocked_case(
+            context, nb, b, kDefaultTailBlockSize);
+    } else {
+        for (int tail_nb : context.tail_nbs) {
+            run_tail_blocked_case(context, nb, b, tail_nb);
+        }
+    }
 
     return;
 }

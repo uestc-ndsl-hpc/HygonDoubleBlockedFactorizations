@@ -57,7 +57,8 @@ int main(int argc, char** argv)
     enum class BlockParameter {
         Nb,
         DoubleNb,
-        MicroBlock
+        MicroBlock,
+        TailNb
     };
 
     BlockParameter block_parameter = BlockParameter::Nb;
@@ -70,11 +71,17 @@ int main(int argc, char** argv)
             block_parameter = BlockParameter::MicroBlock;
             continue;
         }
+        if (std::strcmp(argv[i], "--tail-nb") == 0) {
+            block_parameter = BlockParameter::TailNb;
+            continue;
+        }
 
         if (block_parameter == BlockParameter::DoubleNb) {
             options.double_nbs.push_back(std::atoi(argv[i]));
         } else if (block_parameter == BlockParameter::MicroBlock) {
             options.micro_blocks.push_back(std::atoi(argv[i]));
+        } else if (block_parameter == BlockParameter::TailNb) {
+            options.tail_nbs.push_back(std::atoi(argv[i]));
         } else {
             options.nbs.push_back(std::atoi(argv[i]));
         }

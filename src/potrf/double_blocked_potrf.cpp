@@ -7,6 +7,7 @@
 #include <rocsolver/rocsolver.h>
 
 #include "gemm/update_gemm.h"
+#include "potrf/blocked_potrf.h"
 #include "syrk/kblocked_syrk.h"
 #include "trsm/double_blocked_trsm.h"
 #include "trsm/right_lower_trsm.h"
@@ -208,6 +209,24 @@ void dispatch_syrk_lower_update_kblocked(
 }
 
 template <typename T>
+void dispatch_blocked_right_looking_potrf(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int nb,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        blocked_right_looking_potrf(handle, A, lda, n, nb, info);
+    } else {
+        blocked_right_looking_potrf_double(handle, A, lda, n, nb, info);
+    }
+
+    return;
+}
+
+template <typename T>
 void update_next_inner_panel(
     rocblas_handle handle,
     T* A,
@@ -304,7 +323,8 @@ void double_blocked_potrf_impl(
     int syrk_k_tile,
     int inner_gemm_m_tile,
     int inner_gemm_m_threshold,
-    int inner_gemm_k_threshold)
+    int inner_gemm_k_threshold,
+    int tail_block_size = 0)
 {
     if (n <= 0) {
         return;
@@ -321,6 +341,21 @@ void double_blocked_potrf_impl(
     b = std::min(b, nb);
 
     for (int outer = 0; outer < n; outer += nb) {
+        const int remaining = n - outer;
+
+        // The preceding outer update has made this final diagonal block current.
+        if (tail_block_size > 0 && remaining <= nb) {
+            dispatch_blocked_right_looking_potrf(
+                handle,
+                block_ptr(A, lda, outer, outer),
+                lda,
+                remaining,
+                tail_block_size,
+                info);
+
+            return;
+        }
+
         const int outer_size = std::min(nb, n - outer);
         const int outer_end = outer + outer_size;
 
@@ -454,6 +489,35 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
     return;
 }
 
+void double_blocked_potrf_tail_blocked(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int tail_block_size,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        tail_block_size);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -520,6 +584,35 @@ void double_blocked_potrf_double_kblocked_syrk_adaptive_gemm(
         kInnerGemmMTile,
         kInnerGemmMThreshold,
         kInnerGemmKThreshold);
+
+    return;
+}
+
+void double_blocked_potrf_double_tail_blocked(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int tail_block_size,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        tail_block_size);
 
     return;
 }
