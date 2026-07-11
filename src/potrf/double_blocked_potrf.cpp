@@ -625,9 +625,9 @@ void double_blocked_potrf_lookahead_impl(
     ROCBLAS_CHECK(
         rocblas_set_pointer_mode(update_handle, rocblas_pointer_mode_host));
 
-    hipEvent_t panel_solved;
+    hipEvent_t diagonal_ready;
     hipEvent_t panel_ready;
-    HIP_CHECK(hipEventCreateWithFlags(&panel_solved, hipEventDisableTiming));
+    HIP_CHECK(hipEventCreateWithFlags(&diagonal_ready, hipEventDisableTiming));
     HIP_CHECK(hipEventCreateWithFlags(&panel_ready, hipEventDisableTiming));
 
     bool panel_update_pending = false;
@@ -660,22 +660,23 @@ void double_blocked_potrf_lookahead_impl(
             continue;
         }
 
-        HIP_CHECK(hipEventRecord(panel_solved, factor_stream));
-        HIP_CHECK(hipStreamWaitEvent(update_stream, panel_solved, 0));
+        update_next_outer_diagonal(
+            factor_handle, A, lda, n, outer_end, nb, syrk_k_tile);
 
-        // These updates have disjoint outputs: the next diagonal block and
-        // the panel immediately below it.
+        HIP_CHECK(hipEventRecord(diagonal_ready, factor_stream));
+        HIP_CHECK(hipStreamWaitEvent(update_stream, diagonal_ready, 0));
+
+        // The next iteration factors the ready diagonal block on the main
+        // stream while this update prepares the panel immediately below it.
         update_next_outer_panel_below(
             update_handle, A, lda, n, outer_end, nb);
         HIP_CHECK(hipEventRecord(panel_ready, update_stream));
 
-        update_next_outer_diagonal(
-            factor_handle, A, lda, n, outer_end, nb, syrk_k_tile);
         panel_update_pending = true;
     }
 
     HIP_CHECK(hipStreamSynchronize(factor_stream));
-    HIP_CHECK(hipEventDestroy(panel_solved));
+    HIP_CHECK(hipEventDestroy(diagonal_ready));
     HIP_CHECK(hipEventDestroy(panel_ready));
 
     return;
