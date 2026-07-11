@@ -109,13 +109,17 @@ void double_blocked_trsm_right_lower_transpose(
     const T* A,
     int lda,
     T* B,
-    int ldb)
+    int ldb,
+    int trsm_b)
 {
     if (rows <= 0 || cols <= 0) {
         return;
     }
 
-    const int trsm_b = std::min(kPotrfDbTrsmMicroBlock, cols);
+    if (trsm_b <= 0) {
+        trsm_b = cols;
+    }
+    trsm_b = std::min(trsm_b, cols);
 
     if constexpr (std::is_same_v<T, float>) {
         double_blocked_trsm(
@@ -323,7 +327,7 @@ void update_next_inner_panel(
     rocblas_handle handle,
     T* A,
     int lda,
-    int n,
+    int row_end,
     int outer,
     int panel_start,
     int outer_end,
@@ -332,12 +336,12 @@ void update_next_inner_panel(
     int gemm_m_threshold,
     int gemm_k_threshold)
 {
-    if (panel_start >= outer_end) {
+    if (panel_start >= outer_end || panel_start >= row_end) {
         return;
     }
 
     const int panel_cols = std::min(b, outer_end - panel_start);
-    const int rows = n - panel_start;
+    const int rows = row_end - panel_start;
     const int k = panel_start - outer;
 
     const bool use_m_tiling =
@@ -415,7 +419,9 @@ void double_blocked_potrf_impl(
     int syrk_k_tile,
     int inner_gemm_m_tile,
     int inner_gemm_m_threshold,
-    int inner_gemm_k_threshold)
+    int inner_gemm_k_threshold,
+    bool defer_trailing_trsm,
+    int deferred_trsm_b)
 {
     if (n <= 0) {
         return;
@@ -438,7 +444,8 @@ void double_blocked_potrf_impl(
         for (int inner = outer; inner < outer_end; inner += b) {
             const int inner_size = std::min(b, outer_end - inner);
             const int panel_start = inner + inner_size;
-            const int trailing_rows = n - panel_start;
+            const int inner_row_end = defer_trailing_trsm ? outer_end : n;
+            const int trailing_rows = inner_row_end - panel_start;
 
             T* A_ii = block_ptr(A, lda, inner, inner);
 
@@ -452,7 +459,8 @@ void double_blocked_potrf_impl(
                     A_ii,
                     lda,
                     block_ptr(A, lda, panel_start, inner),
-                    lda);
+                    lda,
+                    kPotrfDbTrsmMicroBlock);
             } else {
                 rocblas_trsm_right_lower_transpose(
                     handle,
@@ -468,7 +476,7 @@ void double_blocked_potrf_impl(
                 handle,
                 A,
                 lda,
-                n,
+                inner_row_end,
                 outer,
                 panel_start,
                 outer_end,
@@ -476,6 +484,20 @@ void double_blocked_potrf_impl(
                 inner_gemm_m_tile,
                 inner_gemm_m_threshold,
                 inner_gemm_k_threshold);
+        }
+
+        // The inner loop factors only L_oo; solve the untouched panel below it
+        // once the complete outer diagonal block is available.
+        if (defer_trailing_trsm) {
+            double_blocked_trsm_right_lower_transpose(
+                handle,
+                n - outer_end,
+                outer_size,
+                block_ptr(A, lda, outer, outer),
+                lda,
+                block_ptr(A, lda, outer_end, outer),
+                lda,
+                deferred_trsm_b);
         }
 
         prepare_next_outer_panel(
@@ -504,7 +526,7 @@ void double_blocked_potrf(rocblas_handle handle,
                           int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, false, 0, 0, 0, 0);
+        handle, A, lda, n, nb, b, info, false, 0, 0, 0, 0, false, 0);
 
     return;
 }
@@ -518,7 +540,7 @@ void double_blocked_potrf_dbtrsm(rocblas_handle handle,
                                  int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, true, 0, 0, 0, 0);
+        handle, A, lda, n, nb, b, info, true, 0, 0, 0, 0, false, 0);
 
     return;
 }
@@ -533,7 +555,20 @@ void double_blocked_potrf_kblocked_syrk(rocblas_handle handle,
                                         int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, false, syrk_k_tile, 0, 0, 0);
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        0,
+        0,
+        0,
+        false,
+        0);
 
     return;
 }
@@ -560,7 +595,39 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
         syrk_k_tile,
         kInnerGemmMTile,
         kInnerGemmMThreshold,
-        kInnerGemmKThreshold);
+        kInnerGemmKThreshold,
+        false,
+        0);
+
+    return;
+}
+
+void double_blocked_potrf_deferred_trsm(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        0,
+        0,
+        0,
+        true,
+        trsm_b);
 
     return;
 }
@@ -574,7 +641,7 @@ void double_blocked_potrf_double(rocblas_handle handle,
                                  int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, false, 0, 0, 0, 0);
+        handle, A, lda, n, nb, b, info, false, 0, 0, 0, 0, false, 0);
 
     return;
 }
@@ -588,7 +655,7 @@ void double_blocked_potrf_double_dbtrsm(rocblas_handle handle,
                                         int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, true, 0, 0, 0, 0);
+        handle, A, lda, n, nb, b, info, true, 0, 0, 0, 0, false, 0);
 
     return;
 }
@@ -603,7 +670,20 @@ void double_blocked_potrf_double_kblocked_syrk(rocblas_handle handle,
                                                int* info)
 {
     double_blocked_potrf_impl(
-        handle, A, lda, n, nb, b, info, false, syrk_k_tile, 0, 0, 0);
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        0,
+        0,
+        0,
+        false,
+        0);
 
     return;
 }
@@ -630,7 +710,39 @@ void double_blocked_potrf_double_kblocked_syrk_adaptive_gemm(
         syrk_k_tile,
         kInnerGemmMTile,
         kInnerGemmMThreshold,
-        kInnerGemmKThreshold);
+        kInnerGemmKThreshold,
+        false,
+        0);
+
+    return;
+}
+
+void double_blocked_potrf_double_deferred_trsm(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        0,
+        0,
+        0,
+        true,
+        trsm_b);
 
     return;
 }
