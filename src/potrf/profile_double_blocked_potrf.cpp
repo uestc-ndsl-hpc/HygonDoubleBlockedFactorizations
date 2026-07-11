@@ -25,6 +25,12 @@ T* block_ptr(T* A, int lda, int row, int col)
     return A + static_cast<size_t>(col) * static_cast<size_t>(lda) + row;
 }
 
+template <typename T>
+const T* block_ptr(const T* A, int lda, int row, int col)
+{
+    return A + static_cast<size_t>(col) * static_cast<size_t>(lda) + row;
+}
+
 double potrf_work(int n)
 {
     return static_cast<double>(n) * n * n / 3.0;
@@ -45,8 +51,20 @@ double syrk_work(int n, int k)
     return static_cast<double>(n) * n * k;
 }
 
-struct GemmShapeEntry {
-    std::string stage;
+size_t tiled_syrk_operation_count(int n, int tile)
+{
+    if (tile <= 0) {
+        return 1;
+    }
+
+    const size_t block_count =
+        (static_cast<size_t>(n) + static_cast<size_t>(tile) - 1) /
+        static_cast<size_t>(tile);
+    return block_count * (block_count + 1) / 2;
+}
+
+struct OperationShapeEntry {
+    std::string operation;
     int rows = 0;
     int cols = 0;
     int k = 0;
@@ -55,9 +73,50 @@ struct GemmShapeEntry {
     int call_count = 0;
 };
 
-class GemmShapeProfiler {
+struct PendingOperationSample {
+    std::string operation;
+    int rows = 0;
+    int cols = 0;
+    int k = 0;
+    double work = 0.0;
+    hipEvent_t start = nullptr;
+    hipEvent_t stop = nullptr;
+};
+
+struct ProfilingEventPair {
+    hipEvent_t start = nullptr;
+    hipEvent_t stop = nullptr;
+};
+
+class OperationShapeProfiler {
 public:
-    void add_sample(const std::string& stage,
+    OperationShapeProfiler() = default;
+    OperationShapeProfiler(const OperationShapeProfiler&) = delete;
+    OperationShapeProfiler& operator=(const OperationShapeProfiler&) = delete;
+
+    ~OperationShapeProfiler()
+    {
+        for (const auto& sample : pending_) {
+            hipEventDestroy(sample.start);
+            hipEventDestroy(sample.stop);
+        }
+        for (const auto& events : available_events_) {
+            hipEventDestroy(events.start);
+            hipEventDestroy(events.stop);
+        }
+    }
+
+    void reserve_events(size_t count)
+    {
+        while (available_events_.size() < count) {
+            ProfilingEventPair events;
+            HIP_CHECK(hipEventCreate(&events.start));
+            HIP_CHECK(hipEventCreate(&events.stop));
+            available_events_.push_back(events);
+        }
+    }
+
+    void add_sample(const std::string& operation,
                     int rows,
                     int cols,
                     int k,
@@ -65,21 +124,74 @@ public:
                     double work)
     {
         auto it = std::find_if(entries_.begin(), entries_.end(),
-                               [&](const GemmShapeEntry& entry) {
-                                   return entry.stage == stage &&
+                               [&](const OperationShapeEntry& entry) {
+                                   return entry.operation == operation &&
                                           entry.rows == rows &&
                                           entry.cols == cols &&
                                           entry.k == k;
                                });
 
         if (it == entries_.end()) {
-            entries_.push_back({stage, rows, cols, k, elapsed_ms, work, 1});
+            entries_.push_back({operation, rows, cols, k, elapsed_ms, work, 1});
             return;
         }
 
         it->total_time_ms += elapsed_ms;
         it->total_work += work;
         it->call_count += 1;
+    }
+
+    template <typename Func>
+    void enqueue(hipStream_t stream,
+                 const std::string& operation,
+                 int rows,
+                 int cols,
+                 int k,
+                 double work,
+                 Func&& func)
+    {
+        if (rows <= 0 || cols <= 0 || k <= 0) {
+            return;
+        }
+
+        PendingOperationSample sample;
+        sample.operation = operation;
+        sample.rows = rows;
+        sample.cols = cols;
+        sample.k = k;
+        sample.work = work;
+
+        if (available_events_.empty()) {
+            reserve_events(1);
+        }
+        sample.start = available_events_.back().start;
+        sample.stop = available_events_.back().stop;
+        available_events_.pop_back();
+
+        HIP_CHECK(hipEventRecord(sample.start, stream));
+        func();
+        HIP_CHECK(hipEventRecord(sample.stop, stream));
+        pending_.push_back(sample);
+    }
+
+    void resolve_pending()
+    {
+        for (const auto& sample : pending_) {
+            HIP_CHECK(hipEventSynchronize(sample.stop));
+
+            float elapsed_ms = 0.0f;
+            HIP_CHECK(hipEventElapsedTime(&elapsed_ms, sample.start, sample.stop));
+            add_sample(sample.operation,
+                       sample.rows,
+                       sample.cols,
+                       sample.k,
+                       static_cast<double>(elapsed_ms),
+                       sample.work);
+
+            available_events_.push_back({sample.start, sample.stop});
+        }
+
+        pending_.clear();
     }
 
     void print(const std::string& title, int line_width = 126) const
@@ -89,7 +201,7 @@ public:
         cout << "\n" << string(line_width, '=') << "\n";
         cout << title << "\n";
         cout << string(line_width, '=') << "\n";
-        cout << left << setw(16) << "Stage"
+        cout << left << setw(22) << "Operation"
              << " | " << right << setw(8) << "M"
              << " | " << setw(8) << "N"
              << " | " << setw(8) << "K"
@@ -108,7 +220,7 @@ public:
                 ? (entry.total_work / (entry.total_time_ms / 1000.0)) / 1e9
                 : 0.0;
 
-            cout << left << setw(16) << entry.stage
+            cout << left << setw(22) << entry.operation
                  << " | " << right << setw(8) << entry.rows
                  << " | " << setw(8) << entry.cols
                  << " | " << setw(8) << entry.k
@@ -123,13 +235,15 @@ public:
     }
 
 private:
-    std::vector<GemmShapeEntry> entries_;
+    std::vector<OperationShapeEntry> entries_;
+    std::vector<PendingOperationSample> pending_;
+    std::vector<ProfilingEventPair> available_events_;
 };
 
 template <typename Func>
 void measure_gemm_shape(hipStream_t stream,
                         StageBreakdownProfiler& stage_profiler,
-                        GemmShapeProfiler& shape_profiler,
+                        OperationShapeProfiler& shape_profiler,
                         const std::string& stage,
                         int rows,
                         int cols,
@@ -325,10 +439,86 @@ void rocblas_syrk_lower_update(rocblas_handle handle,
 }
 
 template <typename T>
+void rocblas_tiled_syrk_lower_update_profiled(rocblas_handle handle,
+                                              hipStream_t stream,
+                                              OperationShapeProfiler& shape_profiler,
+                                              int n,
+                                              int k,
+                                              const T* A,
+                                              int lda,
+                                              T* C,
+                                              int ldc,
+                                              int tile)
+{
+    if (n <= 0 || k <= 0) {
+        return;
+    }
+
+    if (tile <= 0) {
+        shape_profiler.enqueue(
+            stream,
+            "Outer SYRK API",
+            n,
+            n,
+            k,
+            syrk_work(n, k),
+            [&]() {
+                rocblas_syrk_lower_update(handle, n, k, A, lda, C, ldc);
+            });
+        return;
+    }
+
+    for (int col = 0; col < n; col += tile) {
+        const int col_size = std::min(tile, n - col);
+        const T* A_col = block_ptr(A, lda, col, 0);
+        T* C_diag = block_ptr(C, ldc, col, col);
+
+        shape_profiler.enqueue(
+            stream,
+            "Outer Diag SYRK",
+            col_size,
+            col_size,
+            k,
+            syrk_work(col_size, k),
+            [&]() {
+                rocblas_syrk_lower_update(
+                    handle, col_size, k, A_col, lda, C_diag, ldc);
+            });
+
+        for (int row = col + col_size; row < n; row += tile) {
+            const int row_size = std::min(tile, n - row);
+            const T* A_row = block_ptr(A, lda, row, 0);
+            T* C_block = block_ptr(C, ldc, row, col);
+
+            shape_profiler.enqueue(
+                stream,
+                "Outer Offdiag GEMM",
+                row_size,
+                col_size,
+                k,
+                gemm_work(row_size, col_size, k),
+                [&]() {
+                    rocblas_gemm_nt_update(
+                        handle,
+                        row_size,
+                        col_size,
+                        k,
+                        A_row,
+                        lda,
+                        A_col,
+                        lda,
+                        C_block,
+                        ldc);
+                });
+        }
+    }
+}
+
+template <typename T>
 void update_next_inner_panel_profiled(rocblas_handle handle,
                                       hipStream_t stream,
                                       StageBreakdownProfiler& profiler,
-                                      GemmShapeProfiler& shape_profiler,
+                                      OperationShapeProfiler& shape_profiler,
                                       T* A,
                                       int lda,
                                       int n,
@@ -374,12 +564,13 @@ template <typename T>
 void prepare_next_outer_panel_profiled(rocblas_handle handle,
                                        hipStream_t stream,
                                        StageBreakdownProfiler& profiler,
-                                       GemmShapeProfiler& shape_profiler,
+                                       OperationShapeProfiler& shape_profiler,
                                        T* A,
                                        int lda,
                                        int n,
                                        int next_outer,
-                                       int nb)
+                                       int nb,
+                                       int syrk_tile)
 {
     if (next_outer >= n) {
         return;
@@ -389,20 +580,27 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
     const int below_start = next_outer + next_size;
     const int below_rows = n - below_start;
 
+    shape_profiler.reserve_events(
+        tiled_syrk_operation_count(next_size, syrk_tile));
+
     profiler.measure(
         stream,
         "Outer SYRK",
         syrk_work(next_size, next_outer),
         [&]() {
-            rocblas_syrk_lower_update(
+            rocblas_tiled_syrk_lower_update_profiled(
                 handle,
+                stream,
+                shape_profiler,
                 next_size,
                 next_outer,
                 block_ptr(A, lda, next_outer, 0),
                 lda,
                 block_ptr(A, lda, next_outer, next_outer),
-                lda);
+                lda,
+                syrk_tile);
         });
+    shape_profiler.resolve_pending();
 
     measure_gemm_shape(
         stream,
@@ -433,12 +631,13 @@ template <typename T>
 void double_blocked_potrf_profiled(rocblas_handle handle,
                                    hipStream_t stream,
                                    StageBreakdownProfiler& profiler,
-                                   GemmShapeProfiler& shape_profiler,
+                                   OperationShapeProfiler& shape_profiler,
                                    T* A,
                                    int lda,
                                    int n,
                                    int nb,
                                    int b,
+                                   int syrk_tile,
                                    int* info)
 {
     for (int outer = 0; outer < n; outer += nb) {
@@ -498,7 +697,8 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
             lda,
             n,
             outer_end,
-            nb);
+            nb,
+            syrk_tile);
     }
 
     return;
@@ -522,12 +722,15 @@ int main(int argc, char** argv)
     const int n = read_int_arg(argc, argv, "--n", 32768);
     const int nb = read_int_arg(argc, argv, "--nb", 8192);
     const int b = read_int_arg(argc, argv, "--b", 512);
+    const int syrk_tile = read_int_arg(argc, argv, "--syrk-tile", 0);
     const int warmup = read_int_arg(argc, argv, "--warmup", 1);
     const int iters = read_int_arg(argc, argv, "--iters", 3);
 
-    if (n <= 0 || nb <= 0 || b <= 0 || b > nb) {
+    if (n <= 0 || nb <= 0 || b <= 0 || b > nb ||
+        syrk_tile < 0 || syrk_tile > nb) {
         std::cerr << "Usage: profile_double_blocked_potrf "
-                  << "--n N --nb NB --b B [--warmup W] [--iters I]\n";
+                  << "--n N --nb NB --b B [--syrk-tile T] "
+                  << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
 
@@ -551,12 +754,13 @@ int main(int argc, char** argv)
     std::cout << "Profiling DoubleBlock POTRF: N=" << n
               << ", nb=" << nb
               << ", b=" << b
+              << ", syrk_tile=" << syrk_tile
               << ", warmup=" << warmup
               << ", iters=" << iters << "\n";
 
     for (int i = 0; i < warmup; ++i) {
         StageBreakdownProfiler warmup_profiler;
-        GemmShapeProfiler warmup_shape_profiler;
+        OperationShapeProfiler warmup_shape_profiler;
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
         double_blocked_potrf_profiled(
             handle,
@@ -568,12 +772,14 @@ int main(int argc, char** argv)
             n,
             nb,
             b,
+            syrk_tile,
             d_info.get());
+        warmup_shape_profiler.resolve_pending();
     }
     HIP_CHECK(hipDeviceSynchronize());
 
     StageBreakdownProfiler profiler("GFLOPS");
-    GemmShapeProfiler shape_profiler;
+    OperationShapeProfiler shape_profiler;
     for (int i = 0; i < iters; ++i) {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
         double_blocked_potrf_profiled(
@@ -586,20 +792,24 @@ int main(int argc, char** argv)
             n,
             nb,
             b,
+            syrk_tile,
             d_info.get());
     }
     HIP_CHECK(hipDeviceSynchronize());
+    shape_profiler.resolve_pending();
 
     profiler.print(
         "DoubleBlock POTRF Stage Breakdown (N=" + std::to_string(n) +
         ", nb=" + std::to_string(nb) +
-        ", b=" + std::to_string(b) + ")",
+        ", b=" + std::to_string(b) +
+        ", syrk_tile=" + std::to_string(syrk_tile) + ")",
         110);
 
     shape_profiler.print(
-        "DoubleBlock POTRF GEMM Shape Breakdown (N=" + std::to_string(n) +
+        "DoubleBlock POTRF Operation Shape Breakdown (N=" + std::to_string(n) +
         ", nb=" + std::to_string(nb) +
-        ", b=" + std::to_string(b) + ")");
+        ", b=" + std::to_string(b) +
+        ", syrk_tile=" + std::to_string(syrk_tile) + ")");
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 
