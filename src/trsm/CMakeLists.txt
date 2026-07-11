@@ -2,6 +2,7 @@ add_library(hygon_trsm STATIC
     double_blocked_trsm.cpp
     iterative_trsm.cpp
     recursive_trsm.cpp
+    right_lower_trsm.cpp
 )
 
 apply_benchmark_options(hygon_trsm)

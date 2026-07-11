@@ -1,5 +1,6 @@
 add_library(hygon_gemm STATIC
     mixed_gemm.cpp
+    update_gemm.cpp
 )
 
 apply_benchmark_options(hygon_gemm)

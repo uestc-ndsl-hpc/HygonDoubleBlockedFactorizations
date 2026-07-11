@@ -1,5 +1,6 @@
 add_library(hygon_syrk STATIC
     batched_syrk.cpp
+    kblocked_syrk.cpp
     recursive_syrk.cpp
 )
 

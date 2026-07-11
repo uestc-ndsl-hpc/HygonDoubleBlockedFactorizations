@@ -4,7 +4,8 @@
 #include <cstddef>
 #include <type_traits>
 
-#include "utils/common/error_check.h"
+#include "gemm/update_gemm.h"
+#include "trsm/right_lower_trsm.h"
 
 namespace {
 
@@ -21,104 +22,41 @@ const T* matrix_ptr(const T* A, int lda, int row, int col)
 }
 
 template <typename T>
-void rocblas_trsm_right_lower_transpose(rocblas_handle handle,
-                                        int rows,
-                                        int cols,
-                                        const T* A,
-                                        int lda,
-                                        T* B,
-                                        int ldb)
+void dispatch_trsm_right_lower_transpose(rocblas_handle handle,
+                                         int rows,
+                                         int cols,
+                                         const T* A,
+                                         int lda,
+                                         T* B,
+                                         int ldb)
 {
-    if (rows <= 0 || cols <= 0) {
-        return;
-    }
-
-    const T one = static_cast<T>(1);
-
     if constexpr (std::is_same_v<T, float>) {
-        ROCBLAS_CHECK(rocblas_strsm(
-            handle,
-            rocblas_side_right,
-            rocblas_fill_lower,
-            rocblas_operation_transpose,
-            rocblas_diagonal_non_unit,
-            rows,
-            cols,
-            &one,
-            A,
-            lda,
-            B,
-            ldb));
+        trsm_right_lower_transpose(handle, rows, cols, A, lda, B, ldb);
     } else {
-        ROCBLAS_CHECK(rocblas_dtrsm(
-            handle,
-            rocblas_side_right,
-            rocblas_fill_lower,
-            rocblas_operation_transpose,
-            rocblas_diagonal_non_unit,
-            rows,
-            cols,
-            &one,
-            A,
-            lda,
-            B,
-            ldb));
+        trsm_right_lower_transpose_double(
+            handle, rows, cols, A, lda, B, ldb);
     }
 
     return;
 }
 
 template <typename T>
-void rocblas_gemm_nt_update(rocblas_handle handle,
-                            int rows,
-                            int cols,
-                            int k,
-                            const T* A,
-                            int lda,
-                            const T* B,
-                            int ldb,
-                            T* C,
-                            int ldc)
+void dispatch_gemm_nt_update(rocblas_handle handle,
+                             int rows,
+                             int cols,
+                             int k,
+                             const T* A,
+                             int lda,
+                             const T* B,
+                             int ldb,
+                             T* C,
+                             int ldc)
 {
-    if (rows <= 0 || cols <= 0 || k <= 0) {
-        return;
-    }
-
-    const T neg_one = static_cast<T>(-1);
-    const T one = static_cast<T>(1);
-
     if constexpr (std::is_same_v<T, float>) {
-        ROCBLAS_CHECK(rocblas_sgemm(
-            handle,
-            rocblas_operation_none,
-            rocblas_operation_transpose,
-            rows,
-            cols,
-            k,
-            &neg_one,
-            A,
-            lda,
-            B,
-            ldb,
-            &one,
-            C,
-            ldc));
+        gemm_nt_update(handle, rows, cols, k, A, lda, B, ldb, C, ldc);
     } else {
-        ROCBLAS_CHECK(rocblas_dgemm(
-            handle,
-            rocblas_operation_none,
-            rocblas_operation_transpose,
-            rows,
-            cols,
-            k,
-            &neg_one,
-            A,
-            lda,
-            B,
-            ldb,
-            &one,
-            C,
-            ldc));
+        gemm_nt_update_double(
+            handle, rows, cols, k, A, lda, B, ldb, C, ldc);
     }
 
     return;
@@ -143,7 +81,7 @@ void update_next_inner_panel(rocblas_handle handle,
     const int panel_cols = std::min(b, outer_end - panel_start);
     const int solved_cols = panel_start - outer;
 
-    rocblas_gemm_nt_update(
+    dispatch_gemm_nt_update(
         handle,
         n,
         panel_cols,
@@ -191,7 +129,7 @@ void double_blocked_trsm_impl(rocblas_handle handle,
             const int inner_size = std::min(b, outer_end - inner);
             const int panel_start = inner + inner_size;
 
-            rocblas_trsm_right_lower_transpose(
+            dispatch_trsm_right_lower_transpose(
                 handle,
                 n,
                 inner_size,
@@ -215,7 +153,7 @@ void double_blocked_trsm_impl(rocblas_handle handle,
 
         const int trailing_cols = m - outer_end;
         if (trailing_cols > 0) {
-            rocblas_gemm_nt_update(
+            dispatch_gemm_nt_update(
                 handle,
                 n,
                 trailing_cols,

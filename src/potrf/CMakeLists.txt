@@ -11,6 +11,7 @@ target_link_libraries(hygon_potrf
         rocsolver
         amdhip64
     PRIVATE
+        hygon_gemm
         hygon_trsm
         hygon_syrk
         hygon_kernels

@@ -6,7 +6,10 @@
 
 #include <rocsolver/rocsolver.h>
 
+#include "gemm/update_gemm.h"
+#include "syrk/kblocked_syrk.h"
 #include "trsm/double_blocked_trsm.h"
+#include "trsm/right_lower_trsm.h"
 #include "utils/common/error_check.h"
 
 namespace {
@@ -53,7 +56,7 @@ void rocsolver_potrf(rocblas_handle handle, int n, T* A, int lda, int* info)
 }
 
 template <typename T>
-void rocblas_trsm_right_lower_transpose(
+void dispatch_trsm_right_lower_transpose(
     rocblas_handle handle,
     int rows,
     int cols,
@@ -62,47 +65,18 @@ void rocblas_trsm_right_lower_transpose(
     T* B,
     int ldb)
 {
-    if (rows <= 0 || cols <= 0) {
-        return;
-    }
-
-    const T one = static_cast<T>(1);
-
     if constexpr (std::is_same_v<T, float>) {
-        ROCBLAS_CHECK(rocblas_strsm(
-            handle,
-            rocblas_side_right,
-            rocblas_fill_lower,
-            rocblas_operation_transpose,
-            rocblas_diagonal_non_unit,
-            rows,
-            cols,
-            &one,
-            A,
-            lda,
-            B,
-            ldb));
+        trsm_right_lower_transpose(handle, rows, cols, A, lda, B, ldb);
     } else {
-        ROCBLAS_CHECK(rocblas_dtrsm(
-            handle,
-            rocblas_side_right,
-            rocblas_fill_lower,
-            rocblas_operation_transpose,
-            rocblas_diagonal_non_unit,
-            rows,
-            cols,
-            &one,
-            A,
-            lda,
-            B,
-            ldb));
+        trsm_right_lower_transpose_double(
+            handle, rows, cols, A, lda, B, ldb);
     }
 
     return;
 }
 
 template <typename T>
-void double_blocked_trsm_right_lower_transpose(
+void dispatch_double_blocked_trsm_right_lower_transpose(
     rocblas_handle handle,
     int rows,
     int cols,
@@ -145,7 +119,7 @@ void double_blocked_trsm_right_lower_transpose(
 }
 
 template <typename T>
-void rocblas_gemm_nt_update(
+void dispatch_gemm_nt_update(
     rocblas_handle handle,
     int rows,
     int cols,
@@ -157,52 +131,18 @@ void rocblas_gemm_nt_update(
     T* C,
     int ldc)
 {
-    if (rows <= 0 || cols <= 0 || k <= 0) {
-        return;
-    }
-
-    const T neg_one = static_cast<T>(-1);
-    const T one = static_cast<T>(1);
-
     if constexpr (std::is_same_v<T, float>) {
-        ROCBLAS_CHECK(rocblas_sgemm(
-            handle,
-            rocblas_operation_none,
-            rocblas_operation_transpose,
-            rows,
-            cols,
-            k,
-            &neg_one,
-            A,
-            lda,
-            B,
-            ldb,
-            &one,
-            C,
-            ldc));
+        gemm_nt_update(handle, rows, cols, k, A, lda, B, ldb, C, ldc);
     } else {
-        ROCBLAS_CHECK(rocblas_dgemm(
-            handle,
-            rocblas_operation_none,
-            rocblas_operation_transpose,
-            rows,
-            cols,
-            k,
-            &neg_one,
-            A,
-            lda,
-            B,
-            ldb,
-            &one,
-            C,
-            ldc));
+        gemm_nt_update_double(
+            handle, rows, cols, k, A, lda, B, ldb, C, ldc);
     }
 
     return;
 }
 
 template <typename T>
-void rocblas_gemm_nt_update_m_tiled(
+void dispatch_gemm_nt_update_m_tiled(
     rocblas_handle handle,
     int rows,
     int cols,
@@ -215,78 +155,39 @@ void rocblas_gemm_nt_update_m_tiled(
     int ldc,
     int m_tile)
 {
-    if (m_tile <= 0 || m_tile >= rows) {
-        rocblas_gemm_nt_update(
-            handle, rows, cols, k, A, lda, B, ldb, C, ldc);
-        return;
-    }
-
-    for (int row = 0; row < rows; row += m_tile) {
-        const int tile_rows = std::min(m_tile, rows - row);
-        rocblas_gemm_nt_update(
+    if constexpr (std::is_same_v<T, float>) {
+        gemm_nt_update_m_tiled(
             handle,
-            tile_rows,
+            rows,
             cols,
             k,
-            A + row,
+            A,
             lda,
             B,
             ldb,
-            C + row,
-            ldc);
-    }
-}
-
-template <typename T>
-void rocblas_syrk_lower_update(
-    rocblas_handle handle,
-    int n,
-    int k,
-    const T* A,
-    int lda,
-    T* C,
-    int ldc)
-{
-    if (n <= 0 || k <= 0) {
-        return;
-    }
-
-    const T neg_one = static_cast<T>(-1);
-    const T one = static_cast<T>(1);
-
-    if constexpr (std::is_same_v<T, float>) {
-        ROCBLAS_CHECK(rocblas_ssyrk(
-            handle,
-            rocblas_fill_lower,
-            rocblas_operation_none,
-            n,
-            k,
-            &neg_one,
-            A,
-            lda,
-            &one,
             C,
-            ldc));
+            ldc,
+            m_tile);
     } else {
-        ROCBLAS_CHECK(rocblas_dsyrk(
+        gemm_nt_update_m_tiled_double(
             handle,
-            rocblas_fill_lower,
-            rocblas_operation_none,
-            n,
+            rows,
+            cols,
             k,
-            &neg_one,
             A,
             lda,
-            &one,
+            B,
+            ldb,
             C,
-            ldc));
+            ldc,
+            m_tile);
     }
 
     return;
 }
 
 template <typename T>
-void rocblas_syrk_lower_update_kblocked(
+void dispatch_syrk_lower_update_kblocked(
     rocblas_handle handle,
     int n,
     int k,
@@ -296,26 +197,14 @@ void rocblas_syrk_lower_update_kblocked(
     int ldc,
     int k_tile)
 {
-    if (n <= 0 || k <= 0) {
-        return;
+    if constexpr (std::is_same_v<T, float>) {
+        syrk_lower_update_kblocked(handle, n, k, A, lda, C, ldc, k_tile);
+    } else {
+        syrk_lower_update_kblocked_double(
+            handle, n, k, A, lda, C, ldc, k_tile);
     }
 
-    if (k_tile <= 0 || k_tile >= k) {
-        rocblas_syrk_lower_update(handle, n, k, A, lda, C, ldc);
-        return;
-    }
-
-    for (int k_offset = 0; k_offset < k; k_offset += k_tile) {
-        const int chunk = std::min(k_tile, k - k_offset);
-        rocblas_syrk_lower_update(
-            handle,
-            n,
-            chunk,
-            block_ptr(A, lda, 0, k_offset),
-            lda,
-            C,
-            ldc);
-    }
+    return;
 }
 
 template <typename T>
@@ -343,7 +232,7 @@ void update_next_inner_panel(
     const bool use_m_tiling =
         gemm_m_tile > 0 && rows > gemm_m_threshold && k >= gemm_k_threshold;
 
-    rocblas_gemm_nt_update_m_tiled(
+    dispatch_gemm_nt_update_m_tiled(
         handle,
         rows,
         panel_cols,
@@ -377,7 +266,7 @@ void prepare_next_outer_panel(
     const int below_start = next_outer + next_size;
     const int below_rows = n - below_start;
 
-    rocblas_syrk_lower_update_kblocked(
+    dispatch_syrk_lower_update_kblocked(
         handle,
         next_size,
         next_outer,
@@ -387,7 +276,7 @@ void prepare_next_outer_panel(
         lda,
         syrk_k_tile);
 
-    rocblas_gemm_nt_update(
+    dispatch_gemm_nt_update(
         handle,
         below_rows,
         next_size,
@@ -445,7 +334,7 @@ void double_blocked_potrf_impl(
             rocsolver_potrf(handle, inner_size, A_ii, lda, info);
 
             if (use_double_blocked_trsm) {
-                double_blocked_trsm_right_lower_transpose(
+                dispatch_double_blocked_trsm_right_lower_transpose(
                     handle,
                     trailing_rows,
                     inner_size,
@@ -454,7 +343,7 @@ void double_blocked_potrf_impl(
                     block_ptr(A, lda, panel_start, inner),
                     lda);
             } else {
-                rocblas_trsm_right_lower_transpose(
+                dispatch_trsm_right_lower_transpose(
                     handle,
                     trailing_rows,
                     inner_size,
