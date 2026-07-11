@@ -67,6 +67,7 @@ for N in "${NS[@]}"; do
         "${BLOCKED_NBS[@]}" \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        --panel-b 0 \
         --tail-nb "${TAIL_NBS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 

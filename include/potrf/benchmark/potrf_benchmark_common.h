@@ -23,6 +23,7 @@ struct PotrfBenchmarkOptions {
     std::vector<int> nbs;
     std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
+    std::vector<int> panel_blocks;
     std::vector<int> tail_nbs;
 };
 
@@ -37,6 +38,7 @@ struct PotrfBenchmarkContext {
     const std::vector<int>& nbs;
     const std::vector<int>& double_nbs;
     const std::vector<int>& micro_blocks;
+    const std::vector<int>& panel_blocks;
     const std::vector<int>& tail_nbs;
     int precision_type;
     BenchmarkRunner& runner;

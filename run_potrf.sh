@@ -20,6 +20,7 @@ read -r -a NS <<< "${POTRF_NS:-8192 16384 24576 32768 40960}"
 read -r -a BASELINE_NBS <<< "${POTRF_BASELINE_NBS:-256 512 1024 2048}"
 read -r -a DOUBLE_NBS <<< "${POTRF_DOUBLE_NBS:-8192}"
 read -r -a MICRO_BLOCKS <<< "${POTRF_MICRO_BLOCKS:-512}"
+read -r -a PANEL_BLOCKS <<< "${POTRF_PANEL_BLOCKS:-2048}"
 read -r -a TAIL_NBS <<< "${POTRF_TAIL_NBS:-2048}"
 
 ERROR_MODE=${POTRF_ERROR_MODE:-2}
@@ -42,8 +43,9 @@ rm -f "${SUMMARY_LOG}"
     echo "Error verify mode  : ${ERROR_MODE}"
     echo "Baseline NBs       : ${BASELINE_NBS[*]}"
     echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]} / ${MICRO_BLOCKS[*]}"
+    echo "Hierarchical PB/IB : ${PANEL_BLOCKS[*]} / ${MICRO_BLOCKS[*]}"
     echo "Tail Blocked-RL NBs: ${TAIL_NBS[*]}"
-    echo "DoubleBlock methods: base, DBTRSM, KBSYRK, KBSYRK+MGEMM, TailRL"
+    echo "DoubleBlock methods: base, DBTRSM, KBSYRK, KBSYRK+MGEMM, Hier, TailRL"
     echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"
     echo "Test Blocked-RL    : ${TEST_BLOCKED}"
     echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"
@@ -76,6 +78,7 @@ for N in "${NS[@]}"; do
         "${BASELINE_NBS[@]}" \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        --panel-b "${PANEL_BLOCKS[@]}" \
         --tail-nb "${TAIL_NBS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 

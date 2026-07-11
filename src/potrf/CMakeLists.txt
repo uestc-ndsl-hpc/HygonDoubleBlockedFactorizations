@@ -1,6 +1,7 @@
 add_library(hygon_potrf STATIC
     blocked_potrf.cpp
     double_blocked_potrf.cpp
+    hierarchical_double_blocked_potrf.cpp
     recursive_potrf.cpp
 )
 

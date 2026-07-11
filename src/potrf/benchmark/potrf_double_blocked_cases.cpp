@@ -4,11 +4,14 @@
 #include <type_traits>
 
 #include "potrf/double_blocked_potrf.h"
+#include "potrf/hierarchical_double_blocked_potrf.h"
 
 namespace potrf_benchmark {
 namespace {
 
 constexpr int kDefaultTailBlockSize = 2048;
+constexpr int kDefaultHierarchicalPanelSize = 2048;
+constexpr int kHierarchicalGemmMTile = 8192;
 
 template <typename T>
 void call_double_blocked_potrf(
@@ -169,6 +172,54 @@ void run_tail_blocked_case(
 }
 
 template <typename T>
+void run_hierarchical_case(
+    PotrfBenchmarkContext<T>& context,
+    int nb,
+    int panel_block_size,
+    int potrf_leaf_size)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        if (panel_block_size <= 0 || panel_block_size > nb ||
+            potrf_leaf_size <= 0 || potrf_leaf_size > panel_block_size) {
+            return;
+        }
+
+        const std::string parameters =
+            std::to_string(nb) + "/" + std::to_string(panel_block_size) +
+            "/" + std::to_string(potrf_leaf_size) + "/" +
+            std::to_string(nb) + "/" +
+            std::to_string(kHierarchicalGemmMTile);
+
+        context.runner.execute(
+            "DoubleBlock+Hier",
+            parameters,
+            context.reset,
+            [&]() {
+                hierarchical_double_blocked_potrf(
+                    context.handle,
+                    context.d_A,
+                    context.lda,
+                    context.n,
+                    nb,
+                    panel_block_size,
+                    potrf_leaf_size,
+                    nb,
+                    kHierarchicalGemmMTile,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    } else {
+        (void)context;
+        (void)nb;
+        (void)panel_block_size;
+        (void)potrf_leaf_size;
+    }
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
@@ -242,6 +293,15 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    if (context.panel_blocks.empty()) {
+        run_hierarchical_case(
+            context, nb, kDefaultHierarchicalPanelSize, b);
+    } else {
+        for (int panel_block_size : context.panel_blocks) {
+            run_hierarchical_case(context, nb, panel_block_size, b);
+        }
+    }
 
     if (context.tail_nbs.empty()) {
         run_tail_blocked_case(
