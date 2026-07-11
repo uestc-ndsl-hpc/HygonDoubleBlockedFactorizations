@@ -215,6 +215,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         n,
         options.nbs,
         options.micro_blocks,
+        options.group_blocks,
         options.precision_type,
         runner,
         results,

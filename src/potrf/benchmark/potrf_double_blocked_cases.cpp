@@ -1,5 +1,6 @@
 #include "potrf/benchmark/potrf_benchmark_common.h"
 
+#include <algorithm>
 #include <string>
 #include <type_traits>
 
@@ -91,6 +92,29 @@ void call_double_blocked_potrf_kblocked_syrk_adaptive_gemm(
 }
 
 template <typename T>
+void call_double_blocked_potrf_grouped_gemm(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int group_size,
+    int b,
+    int syrk_k_tile,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_grouped_gemm(
+            handle, A, lda, n, nb, group_size, b, syrk_k_tile, info);
+    } else {
+        double_blocked_potrf_double_grouped_gemm(
+            handle, A, lda, n, nb, group_size, b, syrk_k_tile, info);
+    }
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
@@ -164,6 +188,37 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    std::vector<int> group_sizes = context.group_blocks;
+    if (group_sizes.empty()) {
+        group_sizes.push_back(std::min(nb, std::max(2048, b)));
+    }
+
+    for (int group_size : group_sizes) {
+        if (group_size < b || group_size > nb) {
+            continue;
+        }
+
+        context.runner.execute(
+            "DoubleBlock+GroupedGEMM",
+            std::to_string(nb) + "/" + std::to_string(group_size) + "/" +
+                std::to_string(b) + "/" + std::to_string(nb),
+            context.reset,
+            [&]() {
+                call_double_blocked_potrf_grouped_gemm<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    nb,
+                    group_size,
+                    b,
+                    nb,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    }
 
     return;
 }

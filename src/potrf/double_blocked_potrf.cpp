@@ -403,6 +403,32 @@ void prepare_next_outer_panel(
 }
 
 template <typename T>
+void update_inner_group(rocblas_handle handle,
+                        T* A,
+                        int lda,
+                        int n,
+                        int outer,
+                        int group_start,
+                        int group_end)
+{
+    const int rows = n - group_start;
+    const int cols = group_end - group_start;
+    const int k = group_start - outer;
+
+    rocblas_gemm_nt_update(
+        handle,
+        rows,
+        cols,
+        k,
+        block_ptr(A, lda, group_start, outer),
+        lda,
+        block_ptr(A, lda, group_start, outer),
+        lda,
+        block_ptr(A, lda, group_start, group_start),
+        lda);
+}
+
+template <typename T>
 void double_blocked_potrf_impl(
     rocblas_handle handle,
     T* A,
@@ -491,6 +517,90 @@ void double_blocked_potrf_impl(
     return;
 }
 
+template <typename T>
+void double_blocked_potrf_grouped_gemm_impl(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int nb,
+    int group_size,
+    int b,
+    int syrk_k_tile,
+    int* info)
+{
+    if (n <= 0) {
+        return;
+    }
+
+    if (nb <= 0) {
+        nb = n;
+    }
+
+    if (group_size <= 0) {
+        group_size = nb;
+    }
+    group_size = std::min(group_size, nb);
+
+    if (b <= 0) {
+        b = group_size;
+    }
+    b = std::min(b, group_size);
+
+    for (int outer = 0; outer < n; outer += nb) {
+        const int outer_size = std::min(nb, n - outer);
+        const int outer_end = outer + outer_size;
+
+        for (int group = outer; group < outer_end; group += group_size) {
+            const int group_end = std::min(group + group_size, outer_end);
+
+            // Apply preceding groups in one wide GEMM before factoring this group.
+            update_inner_group(
+                handle, A, lda, n, outer, group, group_end);
+
+            for (int inner = group; inner < group_end; inner += b) {
+                const int inner_size = std::min(b, group_end - inner);
+                const int panel_start = inner + inner_size;
+                const int trailing_rows = n - panel_start;
+                T* A_ii = block_ptr(A, lda, inner, inner);
+
+                rocsolver_potrf(handle, inner_size, A_ii, lda, info);
+
+                rocblas_trsm_right_lower_transpose(
+                    handle,
+                    trailing_rows,
+                    inner_size,
+                    A_ii,
+                    lda,
+                    block_ptr(A, lda, panel_start, inner),
+                    lda);
+
+                update_next_inner_panel(
+                    handle,
+                    A,
+                    lda,
+                    n,
+                    group,
+                    panel_start,
+                    group_end,
+                    b,
+                    0,
+                    0,
+                    0);
+            }
+        }
+
+        prepare_next_outer_panel(
+            handle,
+            A,
+            lda,
+            n,
+            outer_end,
+            nb,
+            syrk_k_tile);
+    }
+}
+
 } // namespace
 
 extern "C" {
@@ -565,6 +675,30 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
     return;
 }
 
+void double_blocked_potrf_grouped_gemm(rocblas_handle handle,
+                                       float* A,
+                                       int lda,
+                                       int n,
+                                       int nb,
+                                       int group_size,
+                                       int b,
+                                       int syrk_k_tile,
+                                       int* info)
+{
+    double_blocked_potrf_grouped_gemm_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        group_size,
+        b,
+        syrk_k_tile,
+        info);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -631,6 +765,30 @@ void double_blocked_potrf_double_kblocked_syrk_adaptive_gemm(
         kInnerGemmMTile,
         kInnerGemmMThreshold,
         kInnerGemmKThreshold);
+
+    return;
+}
+
+void double_blocked_potrf_double_grouped_gemm(rocblas_handle handle,
+                                              double* A,
+                                              int lda,
+                                              int n,
+                                              int nb,
+                                              int group_size,
+                                              int b,
+                                              int syrk_k_tile,
+                                              int* info)
+{
+    double_blocked_potrf_grouped_gemm_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        group_size,
+        b,
+        syrk_k_tile,
+        info);
 
     return;
 }

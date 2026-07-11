@@ -22,6 +22,7 @@ struct PotrfBenchmarkOptions {
     int precision_type = 0;
     std::vector<int> nbs;
     std::vector<int> micro_blocks;
+    std::vector<int> group_blocks;
 };
 
 template <typename T>
@@ -34,6 +35,7 @@ struct PotrfBenchmarkContext {
     int lda;
     const std::vector<int>& nbs;
     const std::vector<int>& micro_blocks;
+    const std::vector<int>& group_blocks;
     int precision_type;
     BenchmarkRunner& runner;
     std::vector<BenchmarkResult>& results;
