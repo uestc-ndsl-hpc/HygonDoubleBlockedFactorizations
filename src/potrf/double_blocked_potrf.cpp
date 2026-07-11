@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <type_traits>
 
+#include <hip/hip_runtime.h>
 #include <rocsolver/rocsolver.h>
 
 #include "trsm/double_blocked_trsm.h"
@@ -364,7 +365,7 @@ void update_next_inner_panel(
 }
 
 template <typename T>
-void prepare_next_outer_panel(
+void update_next_outer_diagonal(
     rocblas_handle handle,
     T* A,
     int lda,
@@ -378,8 +379,6 @@ void prepare_next_outer_panel(
     }
 
     const int next_size = std::min(nb, n - next_outer);
-    const int below_start = next_outer + next_size;
-    const int below_rows = n - below_start;
 
     rocblas_syrk_lower_update_kblocked(
         handle,
@@ -390,6 +389,26 @@ void prepare_next_outer_panel(
         block_ptr(A, lda, next_outer, next_outer),
         lda,
         syrk_k_tile);
+
+    return;
+}
+
+template <typename T>
+void update_next_outer_panel_below(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int next_outer,
+    int nb)
+{
+    if (next_outer >= n) {
+        return;
+    }
+
+    const int next_size = std::min(nb, n - next_outer);
+    const int below_start = next_outer + next_size;
+    const int below_rows = n - below_start;
 
     rocblas_gemm_nt_update(
         handle,
@@ -402,6 +421,67 @@ void prepare_next_outer_panel(
         lda,
         block_ptr(A, lda, below_start, next_outer),
         lda);
+
+    return;
+}
+
+template <typename T>
+void prepare_next_outer_panel(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int next_outer,
+    int nb,
+    int syrk_k_tile)
+{
+    update_next_outer_diagonal(
+        handle, A, lda, n, next_outer, nb, syrk_k_tile);
+    update_next_outer_panel_below(
+        handle, A, lda, n, next_outer, nb);
+
+    return;
+}
+
+template <typename T>
+void factor_outer_diagonal_block(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int outer,
+    int outer_end,
+    int b,
+    int* info)
+{
+    for (int inner = outer; inner < outer_end; inner += b) {
+        const int inner_size = std::min(b, outer_end - inner);
+        const int panel_start = inner + inner_size;
+
+        T* A_ii = block_ptr(A, lda, inner, inner);
+        rocsolver_potrf(handle, inner_size, A_ii, lda, info);
+
+        rocblas_trsm_right_lower_transpose(
+            handle,
+            outer_end - panel_start,
+            inner_size,
+            A_ii,
+            lda,
+            block_ptr(A, lda, panel_start, inner),
+            lda);
+
+        update_next_inner_panel(
+            handle,
+            A,
+            lda,
+            outer_end,
+            outer,
+            panel_start,
+            outer_end,
+            b,
+            0,
+            0,
+            0);
+    }
 
     return;
 }
@@ -509,6 +589,94 @@ void double_blocked_potrf_impl(
             nb,
             syrk_k_tile);
     }
+
+    return;
+}
+
+template <typename T>
+void double_blocked_potrf_lookahead_impl(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
+    T* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    if (n <= 0) {
+        return;
+    }
+
+    if (nb <= 0) {
+        nb = n;
+    }
+    if (b <= 0) {
+        b = nb;
+    }
+    b = std::min(b, nb);
+
+    hipStream_t factor_stream = nullptr;
+    hipStream_t update_stream = nullptr;
+    ROCBLAS_CHECK(rocblas_get_stream(factor_handle, &factor_stream));
+    ROCBLAS_CHECK(rocblas_get_stream(update_handle, &update_stream));
+    ROCBLAS_CHECK(
+        rocblas_set_pointer_mode(update_handle, rocblas_pointer_mode_host));
+
+    hipEvent_t panel_solved;
+    hipEvent_t panel_ready;
+    HIP_CHECK(hipEventCreateWithFlags(&panel_solved, hipEventDisableTiming));
+    HIP_CHECK(hipEventCreateWithFlags(&panel_ready, hipEventDisableTiming));
+
+    bool panel_update_pending = false;
+
+    for (int outer = 0; outer < n; outer += nb) {
+        const int outer_size = std::min(nb, n - outer);
+        const int outer_end = outer + outer_size;
+
+        factor_outer_diagonal_block(
+            factor_handle, A, lda, outer, outer_end, b, info);
+
+        // The local diagonal factorization can overlap the previous outer
+        // GEMM. The panel below is consumed only by the deferred TRSM.
+        if (panel_update_pending) {
+            HIP_CHECK(hipStreamWaitEvent(factor_stream, panel_ready, 0));
+            panel_update_pending = false;
+        }
+
+        double_blocked_trsm_right_lower_transpose(
+            factor_handle,
+            n - outer_end,
+            outer_size,
+            block_ptr(A, lda, outer, outer),
+            lda,
+            block_ptr(A, lda, outer_end, outer),
+            lda,
+            trsm_b);
+
+        if (outer_end >= n) {
+            continue;
+        }
+
+        HIP_CHECK(hipEventRecord(panel_solved, factor_stream));
+        HIP_CHECK(hipStreamWaitEvent(update_stream, panel_solved, 0));
+
+        // These updates have disjoint outputs: the next diagonal block and
+        // the panel immediately below it.
+        update_next_outer_panel_below(
+            update_handle, A, lda, n, outer_end, nb);
+        HIP_CHECK(hipEventRecord(panel_ready, update_stream));
+
+        update_next_outer_diagonal(
+            factor_handle, A, lda, n, outer_end, nb, syrk_k_tile);
+        panel_update_pending = true;
+    }
+
+    HIP_CHECK(hipStreamSynchronize(factor_stream));
+    HIP_CHECK(hipEventDestroy(panel_solved));
+    HIP_CHECK(hipEventDestroy(panel_ready));
 
     return;
 }
@@ -632,6 +800,33 @@ void double_blocked_potrf_deferred_trsm(
     return;
 }
 
+void double_blocked_potrf_lookahead(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    double_blocked_potrf_lookahead_impl(
+        factor_handle,
+        update_handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        syrk_k_tile,
+        trsm_b,
+        info);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -743,6 +938,33 @@ void double_blocked_potrf_double_deferred_trsm(
         0,
         true,
         trsm_b);
+
+    return;
+}
+
+void double_blocked_potrf_double_lookahead(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    double_blocked_potrf_lookahead_impl(
+        factor_handle,
+        update_handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        syrk_k_tile,
+        trsm_b,
+        info);
 
     return;
 }

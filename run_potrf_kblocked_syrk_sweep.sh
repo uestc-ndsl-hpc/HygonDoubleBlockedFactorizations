@@ -38,6 +38,7 @@ echo "DoubleBlock NB/B   : ${DOUBLE_NB}/${MICRO_BLOCK}" | tee -a "${SUMMARY_LOG}
 echo "KBSYRK K tile      : ${DOUBLE_NB}"               | tee -a "${SUMMARY_LOG}"
 echo "Adaptive M-GEMM    : tile 8192 for M>32768 and K>=5632" | tee -a "${SUMMARY_LOG}"
 echo "Deferred TRSM      : outer panel, micro block 1024" | tee -a "${SUMMARY_LOG}"
+echo "Lookahead          : diagonal factor / outer GEMM on two streams" | tee -a "${SUMMARY_LOG}"
 echo "Error verify mode  : backward"                   | tee -a "${SUMMARY_LOG}"
 echo "NUMA binding       : disabled"                   | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}"

@@ -114,9 +114,52 @@ void call_double_blocked_potrf_deferred_trsm(
 }
 
 template <typename T>
+void call_double_blocked_potrf_lookahead(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_lookahead(
+            factor_handle,
+            update_handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            trsm_b,
+            info);
+    } else {
+        double_blocked_potrf_double_lookahead(
+            factor_handle,
+            update_handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            trsm_b,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
+    auto& update_context = context.pool->get(0);
 
     context.runner.execute(
         "DoubleBlock",
@@ -195,6 +238,26 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         [&]() {
             call_double_blocked_potrf_deferred_trsm<T>(
                 context.handle,
+                context.d_A,
+                context.n,
+                context.lda,
+                nb,
+                b,
+                nb,
+                1024,
+                context.d_info);
+        },
+        context.verify,
+        context.calc_gflops);
+
+    context.runner.execute(
+        "DoubleBlock+Lookahead",
+        nb_b + "/" + std::to_string(nb) + "/1024",
+        context.reset,
+        [&]() {
+            call_double_blocked_potrf_lookahead<T>(
+                context.handle,
+                update_context.handle,
                 context.d_A,
                 context.n,
                 context.lda,

@@ -52,6 +52,18 @@ void double_blocked_potrf_deferred_trsm(
     int trsm_b,
     int* info);
 
+void double_blocked_potrf_lookahead(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info);
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -89,6 +101,18 @@ void double_blocked_potrf_double_kblocked_syrk_adaptive_gemm(
 
 void double_blocked_potrf_double_deferred_trsm(
     rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int trsm_b,
+    int* info);
+
+void double_blocked_potrf_double_lookahead(
+    rocblas_handle factor_handle,
+    rocblas_handle update_handle,
     double* A,
     int lda,
     int n,
