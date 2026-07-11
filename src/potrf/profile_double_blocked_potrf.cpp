@@ -68,6 +68,16 @@ size_t tiled_syrk_operation_count(int n, int k, int tile, int k_tile)
     return 1;
 }
 
+size_t k_block_operation_count(int k, int k_tile)
+{
+    if (k_tile <= 0 || k_tile >= k) {
+        return 1;
+    }
+
+    return (static_cast<size_t>(k) + static_cast<size_t>(k_tile) - 1) /
+           static_cast<size_t>(k_tile);
+}
+
 struct OperationShapeEntry {
     std::string operation;
     int rows = 0;
@@ -554,7 +564,8 @@ void update_next_inner_panel_profiled(rocblas_handle handle,
                                       int outer,
                                       int panel_start,
                                       int outer_end,
-                                      int b)
+                                      int b,
+                                      int gemm_k_tile)
 {
     if (panel_start >= outer_end) {
         return;
@@ -563,6 +574,49 @@ void update_next_inner_panel_profiled(rocblas_handle handle,
     const int panel_cols = std::min(b, outer_end - panel_start);
     const int rows = n - panel_start;
     const int k = panel_start - outer;
+
+    if (gemm_k_tile > 0 && gemm_k_tile < k) {
+        shape_profiler.reserve_events(
+            k_block_operation_count(k, gemm_k_tile));
+
+        profiler.measure(
+            stream,
+            "Inner GEMM",
+            gemm_work(rows, panel_cols, k),
+            [&]() {
+                const std::string operation =
+                    "Inner K-GEMM/" + std::to_string(k);
+
+                for (int k_offset = 0; k_offset < k; k_offset += gemm_k_tile) {
+                    const int chunk = std::min(gemm_k_tile, k - k_offset);
+                    const T* A_chunk =
+                        block_ptr(A, lda, panel_start, outer + k_offset);
+
+                    shape_profiler.enqueue(
+                        stream,
+                        operation,
+                        rows,
+                        panel_cols,
+                        chunk,
+                        gemm_work(rows, panel_cols, chunk),
+                        [&]() {
+                            rocblas_gemm_nt_update(
+                                handle,
+                                rows,
+                                panel_cols,
+                                chunk,
+                                A_chunk,
+                                lda,
+                                A_chunk,
+                                lda,
+                                block_ptr(A, lda, panel_start, panel_start),
+                                lda);
+                        });
+                }
+            });
+        shape_profiler.resolve_pending();
+        return;
+    }
 
     measure_gemm_shape(
         stream,
@@ -671,6 +725,7 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                                    int b,
                                    int syrk_tile,
                                    int syrk_k_tile,
+                                   int inner_gemm_k_tile,
                                    int* info)
 {
     for (int outer = 0; outer < n; outer += nb) {
@@ -718,7 +773,8 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                 outer,
                 panel_start,
                 outer_end,
-                b);
+                b,
+                inner_gemm_k_tile);
         }
 
         prepare_next_outer_panel_profiled(
@@ -758,15 +814,19 @@ int main(int argc, char** argv)
     const int b = read_int_arg(argc, argv, "--b", 512);
     const int syrk_tile = read_int_arg(argc, argv, "--syrk-tile", 0);
     const int syrk_k_tile = read_int_arg(argc, argv, "--syrk-k-tile", 0);
+    const int inner_gemm_k_tile =
+        read_int_arg(argc, argv, "--inner-gemm-k-tile", 0);
     const int warmup = read_int_arg(argc, argv, "--warmup", 1);
     const int iters = read_int_arg(argc, argv, "--iters", 3);
 
     if (n <= 0 || nb <= 0 || b <= 0 || b > nb ||
         syrk_tile < 0 || syrk_tile > nb || syrk_k_tile < 0 ||
+        inner_gemm_k_tile < 0 ||
         (syrk_tile > 0 && syrk_k_tile > 0)) {
         std::cerr << "Usage: profile_double_blocked_potrf "
                   << "--n N --nb NB --b B [--syrk-tile T] "
                   << "[--syrk-k-tile KT] "
+                  << "[--inner-gemm-k-tile GKT] "
                   << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
@@ -793,6 +853,7 @@ int main(int argc, char** argv)
               << ", b=" << b
               << ", syrk_tile=" << syrk_tile
               << ", syrk_k_tile=" << syrk_k_tile
+              << ", inner_gemm_k_tile=" << inner_gemm_k_tile
               << ", warmup=" << warmup
               << ", iters=" << iters << "\n";
 
@@ -812,6 +873,7 @@ int main(int argc, char** argv)
             b,
             syrk_tile,
             syrk_k_tile,
+            inner_gemm_k_tile,
             d_info.get());
         warmup_shape_profiler.resolve_pending();
     }
@@ -833,6 +895,7 @@ int main(int argc, char** argv)
             b,
             syrk_tile,
             syrk_k_tile,
+            inner_gemm_k_tile,
             d_info.get());
     }
     HIP_CHECK(hipDeviceSynchronize());
@@ -843,7 +906,8 @@ int main(int argc, char** argv)
         ", nb=" + std::to_string(nb) +
         ", b=" + std::to_string(b) +
         ", syrk_tile=" + std::to_string(syrk_tile) +
-        ", syrk_k_tile=" + std::to_string(syrk_k_tile) + ")",
+        ", syrk_k_tile=" + std::to_string(syrk_k_tile) +
+        ", inner_gemm_k_tile=" + std::to_string(inner_gemm_k_tile) + ")",
         110);
 
     shape_profiler.print(
@@ -851,7 +915,8 @@ int main(int argc, char** argv)
         ", nb=" + std::to_string(nb) +
         ", b=" + std::to_string(b) +
         ", syrk_tile=" + std::to_string(syrk_tile) +
-        ", syrk_k_tile=" + std::to_string(syrk_k_tile) + ")");
+        ", syrk_k_tile=" + std::to_string(syrk_k_tile) +
+        ", inner_gemm_k_tile=" + std::to_string(inner_gemm_k_tile) + ")");
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 
