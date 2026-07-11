@@ -247,6 +247,39 @@ void rocblas_syrk_lower_update(
 }
 
 template <typename T>
+void rocblas_syrk_lower_update_kblocked(
+    rocblas_handle handle,
+    int n,
+    int k,
+    const T* A,
+    int lda,
+    T* C,
+    int ldc,
+    int k_tile)
+{
+    if (n <= 0 || k <= 0) {
+        return;
+    }
+
+    if (k_tile <= 0 || k_tile >= k) {
+        rocblas_syrk_lower_update(handle, n, k, A, lda, C, ldc);
+        return;
+    }
+
+    for (int k_offset = 0; k_offset < k; k_offset += k_tile) {
+        const int chunk = std::min(k_tile, k - k_offset);
+        rocblas_syrk_lower_update(
+            handle,
+            n,
+            chunk,
+            block_ptr(A, lda, 0, k_offset),
+            lda,
+            C,
+            ldc);
+    }
+}
+
+template <typename T>
 void update_next_inner_panel(
     rocblas_handle handle,
     T* A,
@@ -287,7 +320,8 @@ void prepare_next_outer_panel(
     int lda,
     int n,
     int next_outer,
-    int nb)
+    int nb,
+    int syrk_k_tile)
 {
     if (next_outer >= n) {
         return;
@@ -297,14 +331,15 @@ void prepare_next_outer_panel(
     const int below_start = next_outer + next_size;
     const int below_rows = n - below_start;
 
-    rocblas_syrk_lower_update(
+    rocblas_syrk_lower_update_kblocked(
         handle,
         next_size,
         next_outer,
         block_ptr(A, lda, next_outer, 0),
         lda,
         block_ptr(A, lda, next_outer, next_outer),
-        lda);
+        lda,
+        syrk_k_tile);
 
     rocblas_gemm_nt_update(
         handle,
@@ -330,7 +365,8 @@ void double_blocked_potrf_impl(
     int nb,
     int b,
     int* info,
-    bool use_double_blocked_trsm)
+    bool use_double_blocked_trsm,
+    int syrk_k_tile)
 {
     if (n <= 0) {
         return;
@@ -396,7 +432,8 @@ void double_blocked_potrf_impl(
             lda,
             n,
             outer_end,
-            nb);
+            nb,
+            syrk_k_tile);
     }
 
     return;
@@ -414,7 +451,7 @@ void double_blocked_potrf(rocblas_handle handle,
                           int b,
                           int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false, 0);
 
     return;
 }
@@ -427,7 +464,22 @@ void double_blocked_potrf_dbtrsm(rocblas_handle handle,
                                  int b,
                                  int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true, 0);
+
+    return;
+}
+
+void double_blocked_potrf_kblocked_syrk(rocblas_handle handle,
+                                        float* A,
+                                        int lda,
+                                        int n,
+                                        int nb,
+                                        int b,
+                                        int syrk_k_tile,
+                                        int* info)
+{
+    double_blocked_potrf_impl(
+        handle, A, lda, n, nb, b, info, false, syrk_k_tile);
 
     return;
 }
@@ -440,7 +492,7 @@ void double_blocked_potrf_double(rocblas_handle handle,
                                  int b,
                                  int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, false, 0);
 
     return;
 }
@@ -453,7 +505,22 @@ void double_blocked_potrf_double_dbtrsm(rocblas_handle handle,
                                         int b,
                                         int* info)
 {
-    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true);
+    double_blocked_potrf_impl(handle, A, lda, n, nb, b, info, true, 0);
+
+    return;
+}
+
+void double_blocked_potrf_double_kblocked_syrk(rocblas_handle handle,
+                                               double* A,
+                                               int lda,
+                                               int n,
+                                               int nb,
+                                               int b,
+                                               int syrk_k_tile,
+                                               int* info)
+{
+    double_blocked_potrf_impl(
+        handle, A, lda, n, nb, b, info, false, syrk_k_tile);
 
     return;
 }

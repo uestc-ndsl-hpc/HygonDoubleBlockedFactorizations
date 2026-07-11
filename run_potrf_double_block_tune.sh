@@ -41,7 +41,7 @@ echo "Precision Mode     : ${PRECISION} (0=FP32)"       | tee -a ${SUMMARY_LOG}
 echo "Error Verify Mode  : ${ERROR_MODE} (2=Backward)"  | tee -a ${SUMMARY_LOG}
 echo "NB Sweep           : ${NBS}"                      | tee -a ${SUMMARY_LOG}
 echo "b Sweep            : ${MICRO_BLOCKS}"             | tee -a ${SUMMARY_LOG}
-echo "Methods            : DoubleBlock, DoubleBlock+DBTRSM" | tee -a ${SUMMARY_LOG}
+echo "Methods            : DoubleBlock, DoubleBlock+DBTRSM, DoubleBlock+KBSYRK" | tee -a ${SUMMARY_LOG}
 echo "DBTRSM trsm_b      : 1024"                        | tee -a ${SUMMARY_LOG}
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a ${SUMMARY_LOG}
