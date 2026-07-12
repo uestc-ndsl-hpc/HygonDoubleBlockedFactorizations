@@ -1,11 +1,13 @@
 #include "potrf/benchmark/potrf_benchmark_common.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <type_traits>
 
 #include "potrf/double_blocked_potrf.h"
 #include "potrf/tiled_right_looking_potrf.h"
+#include "utils/memory/device_buffer.h"
 
 namespace potrf_benchmark {
 namespace {
@@ -138,6 +140,57 @@ void call_double_blocked_potrf_outer_panel_2d(
 }
 
 template <typename T>
+void call_double_blocked_potrf_inverse_panel(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    T* inverse_workspace,
+    int inverse_ld,
+    T* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_inverse_panel(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            inverse_workspace,
+            inverse_ld,
+            panel_workspace,
+            panel_workspace_rows,
+            local_info,
+            info);
+    } else {
+        double_blocked_potrf_double_inverse_panel(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            inverse_workspace,
+            inverse_ld,
+            panel_workspace,
+            panel_workspace_rows,
+            local_info,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
 void call_tiled_right_looking_double_blocked_potrf(
     rocblas_handle handle,
     T* A,
@@ -253,6 +306,42 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    {
+        constexpr int inverse_panel_row_tile = 8192;
+        const int panel_workspace_rows =
+            std::min(inverse_panel_row_tile, context.n);
+        DeviceBuffer<T> inverse_workspace(
+            static_cast<size_t>(b) * static_cast<size_t>(b));
+        DeviceBuffer<T> panel_workspace(
+            static_cast<size_t>(panel_workspace_rows) *
+            static_cast<size_t>(b));
+        DeviceBuffer<int> inverse_local_info(1);
+
+        context.runner.execute(
+            "DoubleBlock+InvPanel",
+            nb_b + "/" + std::to_string(nb) + "/" +
+                std::to_string(panel_workspace_rows),
+            context.reset,
+            [&]() {
+                call_double_blocked_potrf_inverse_panel<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    nb,
+                    b,
+                    nb,
+                    inverse_workspace.get(),
+                    b,
+                    panel_workspace.get(),
+                    panel_workspace_rows,
+                    inverse_local_info.get(),
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    }
 
     constexpr int outer_gemm_m_tile = 8192;
     constexpr int outer_gemm_k_tile = 8192;

@@ -54,6 +54,21 @@ void double_blocked_potrf_outer_panel_2d(
     int gemm_k_tile,
     int* info);
 
+void double_blocked_potrf_inverse_panel(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    float* inverse_workspace,
+    int inverse_ld,
+    float* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
+    int* info);
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -100,6 +115,21 @@ void double_blocked_potrf_double_outer_panel_2d(
     int column_tile,
     int gemm_m_tile,
     int gemm_k_tile,
+    int* info);
+
+void double_blocked_potrf_double_inverse_panel(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    double* inverse_workspace,
+    int inverse_ld,
+    double* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
     int* info);
 
 #ifdef __cplusplus

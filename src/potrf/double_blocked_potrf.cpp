@@ -3,13 +3,17 @@
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
+#include <utility>
 
 #include <rocsolver/rocsolver.h>
 
 #include "gemm/update_gemm.h"
+#include "potrf/inverse_panel_kernels.h"
+#include "potrf/profile_inverse_panel_potrf.h"
 #include "syrk/kblocked_syrk.h"
 #include "trsm/double_blocked_trsm.h"
 #include "trsm/right_lower_trsm.h"
+#include "utils/benchmark/stage_breakdown_profiler.h"
 #include "utils/common/error_check.h"
 
 namespace {
@@ -18,6 +22,42 @@ constexpr int kPotrfDbTrsmMicroBlock = 1024;
 constexpr int kInnerGemmMTile = 8192;
 constexpr int kInnerGemmMThreshold = 32768;
 constexpr int kInnerGemmKThreshold = 5632;
+
+double potrf_work(int n)
+{
+    return static_cast<double>(n) * n * n / 3.0;
+}
+
+double panel_gemm_work(int rows, int cols)
+{
+    return 2.0 * static_cast<double>(rows) * cols * cols;
+}
+
+double inner_update_work(int rows, int cols, int k)
+{
+    return 2.0 * static_cast<double>(rows) * cols * k;
+}
+
+double outer_update_work(int diagonal_size, int below_rows, int k)
+{
+    return static_cast<double>(diagonal_size) * diagonal_size * k +
+        2.0 * static_cast<double>(below_rows) * diagonal_size * k;
+}
+
+template <typename Func>
+void run_stage(StageBreakdownProfiler* profiler,
+               hipStream_t stream,
+               const char* name,
+               double work,
+               Func&& function)
+{
+    if (profiler == nullptr) {
+        function();
+        return;
+    }
+
+    profiler->measure(stream, name, work, std::forward<Func>(function));
+}
 
 template <typename T>
 T* block_ptr(T* A, int lda, int row, int col)
@@ -208,6 +248,202 @@ void dispatch_syrk_lower_update_kblocked(
 }
 
 template <typename T>
+void dispatch_pack_lower_triangular(const T* source,
+                                    int source_ld,
+                                    T* destination,
+                                    int destination_ld,
+                                    int n,
+                                    hipStream_t stream)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        pack_lower_triangular_for_inverse(
+            source, source_ld, destination, destination_ld, n, stream);
+    } else {
+        pack_lower_triangular_for_inverse_double(
+            source, source_ld, destination, destination_ld, n, stream);
+    }
+}
+
+template <typename T>
+void dispatch_zero_strict_upper(T* matrix,
+                                int lda,
+                                int n,
+                                hipStream_t stream)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        zero_strict_upper_triangle(matrix, lda, n, stream);
+    } else {
+        zero_strict_upper_triangle_double(matrix, lda, n, stream);
+    }
+}
+
+template <typename T>
+void dispatch_trtri(rocblas_handle handle,
+                    int n,
+                    T* matrix,
+                    int lda,
+                    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        ROCBLAS_CHECK(rocsolver_strtri(
+            handle,
+            rocblas_fill_lower,
+            rocblas_diagonal_non_unit,
+            n,
+            matrix,
+            lda,
+            info));
+    } else {
+        ROCBLAS_CHECK(rocsolver_dtrtri(
+            handle,
+            rocblas_fill_lower,
+            rocblas_diagonal_non_unit,
+            n,
+            matrix,
+            lda,
+            info));
+    }
+}
+
+template <typename T>
+void dispatch_inverse_panel_gemm(rocblas_handle handle,
+                                 int rows,
+                                 int cols,
+                                 const T* panel,
+                                 int panel_ld,
+                                 const T* inverse,
+                                 int inverse_ld,
+                                 T* workspace,
+                                 int workspace_ld)
+{
+    const T one = T(1);
+    const T zero = T(0);
+
+    if constexpr (std::is_same_v<T, float>) {
+        ROCBLAS_CHECK(rocblas_sgemm(
+            handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            rows,
+            cols,
+            cols,
+            &one,
+            panel,
+            panel_ld,
+            inverse,
+            inverse_ld,
+            &zero,
+            workspace,
+            workspace_ld));
+    } else {
+        ROCBLAS_CHECK(rocblas_dgemm(
+            handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            rows,
+            cols,
+            cols,
+            &one,
+            panel,
+            panel_ld,
+            inverse,
+            inverse_ld,
+            &zero,
+            workspace,
+            workspace_ld));
+    }
+}
+
+template <typename T>
+void solve_panel_with_inverse(rocblas_handle handle,
+                              hipStream_t stream,
+                              const T* diagonal,
+                              int diagonal_ld,
+                              T* panel,
+                              int panel_ld,
+                              int rows,
+                              int cols,
+                              T* inverse_workspace,
+                              int inverse_ld,
+                              T* panel_workspace,
+                              int panel_workspace_rows,
+                              int* local_info,
+                              int* global_info,
+                              int global_offset,
+                              StageBreakdownProfiler* profiler)
+{
+    if (rows <= 0 || cols <= 0) {
+        return;
+    }
+
+    run_stage(
+        profiler,
+        stream,
+        "Pack+TRTRI",
+        potrf_work(cols),
+        [&]() {
+            dispatch_pack_lower_triangular(
+                diagonal,
+                diagonal_ld,
+                inverse_workspace,
+                inverse_ld,
+                cols,
+                stream);
+            dispatch_trtri(
+                handle, cols, inverse_workspace, inverse_ld, local_info);
+            record_first_factorization_error(
+                local_info, global_info, global_offset, stream);
+
+            // TRTRI only defines the selected triangle. Dense GEMM requires
+            // the unstored half to be explicitly zero.
+            dispatch_zero_strict_upper(
+                inverse_workspace, inverse_ld, cols, stream);
+        });
+
+    for (int row_offset = 0; row_offset < rows;
+         row_offset += panel_workspace_rows) {
+        const int tile_rows =
+            std::min(panel_workspace_rows, rows - row_offset);
+        T* panel_tile = panel + row_offset;
+
+        run_stage(
+            profiler,
+            stream,
+            "Panel GEMM",
+            panel_gemm_work(tile_rows, cols),
+            [&]() {
+                dispatch_inverse_panel_gemm(
+                    handle,
+                    tile_rows,
+                    cols,
+                    panel_tile,
+                    panel_ld,
+                    inverse_workspace,
+                    inverse_ld,
+                    panel_workspace,
+                    panel_workspace_rows);
+            });
+
+        run_stage(
+            profiler,
+            stream,
+            "Copyback",
+            0.0,
+            [&]() {
+                HIP_CHECK(hipMemcpy2DAsync(
+                    panel_tile,
+                    static_cast<size_t>(panel_ld) * sizeof(T),
+                    panel_workspace,
+                    static_cast<size_t>(panel_workspace_rows) * sizeof(T),
+                    static_cast<size_t>(tile_rows) * sizeof(T),
+                    cols,
+                    hipMemcpyDeviceToDevice,
+                    stream));
+            });
+    }
+}
+
+template <typename T>
 void update_next_inner_panel(
     rocblas_handle handle,
     T* A,
@@ -387,7 +623,14 @@ void double_blocked_potrf_impl(
     int inner_gemm_k_threshold,
     int outer_column_tile = 0,
     int outer_gemm_m_tile = 0,
-    int outer_gemm_k_tile = 0)
+    int outer_gemm_k_tile = 0,
+    T* inverse_workspace = nullptr,
+    int inverse_ld = 0,
+    T* panel_workspace = nullptr,
+    int panel_workspace_rows = 0,
+    int* local_info = nullptr,
+    bool require_inverse_panel = false,
+    StageBreakdownProfiler* profiler = nullptr)
 {
     if (n <= 0) {
         return;
@@ -403,6 +646,23 @@ void double_blocked_potrf_impl(
 
     b = std::min(b, nb);
 
+    const bool use_inverse_panel =
+        inverse_workspace != nullptr && inverse_ld >= b &&
+        panel_workspace != nullptr && panel_workspace_rows > 0 &&
+        local_info != nullptr && local_info != info;
+
+    hipStream_t stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+
+    if (require_inverse_panel && !use_inverse_panel) {
+        HIP_CHECK(hipMemsetAsync(info, 0xff, sizeof(int), stream));
+        return;
+    }
+
+    if (use_inverse_panel) {
+        HIP_CHECK(hipMemsetAsync(info, 0, sizeof(int), stream));
+    }
+
     for (int outer = 0; outer < n; outer += nb) {
         const int outer_size = std::min(nb, n - outer);
         const int outer_end = outer + outer_size;
@@ -414,9 +674,41 @@ void double_blocked_potrf_impl(
 
             T* A_ii = block_ptr(A, lda, inner, inner);
 
-            rocsolver_potrf(handle, inner_size, A_ii, lda, info);
+            int* factor_info = use_inverse_panel ? local_info : info;
+            run_stage(
+                profiler,
+                stream,
+                "POTRF",
+                potrf_work(inner_size),
+                [&]() {
+                    rocsolver_potrf(
+                        handle, inner_size, A_ii, lda, factor_info);
 
-            if (use_double_blocked_trsm) {
+                    if (use_inverse_panel) {
+                        record_first_factorization_error(
+                            factor_info, info, inner, stream);
+                    }
+                });
+
+            if (use_inverse_panel) {
+                solve_panel_with_inverse(
+                    handle,
+                    stream,
+                    A_ii,
+                    lda,
+                    block_ptr(A, lda, panel_start, inner),
+                    lda,
+                    trailing_rows,
+                    inner_size,
+                    inverse_workspace,
+                    inverse_ld,
+                    panel_workspace,
+                    panel_workspace_rows,
+                    local_info,
+                    info,
+                    inner,
+                    profiler);
+            } else if (use_double_blocked_trsm) {
                 dispatch_double_blocked_trsm_right_lower_transpose(
                     handle,
                     trailing_rows,
@@ -436,41 +728,65 @@ void double_blocked_potrf_impl(
                     lda);
             }
 
-            update_next_inner_panel(
-                handle,
-                A,
-                lda,
-                n,
-                outer,
-                panel_start,
-                outer_end,
-                b,
-                inner_gemm_m_tile,
-                inner_gemm_m_threshold,
-                inner_gemm_k_threshold);
+            if (panel_start < outer_end) {
+                const int panel_cols =
+                    std::min(b, outer_end - panel_start);
+                const int inner_k = panel_start - outer;
+                run_stage(
+                    profiler,
+                    stream,
+                    "Inner Update",
+                    inner_update_work(
+                        n - panel_start, panel_cols, inner_k),
+                    [&]() {
+                        update_next_inner_panel(
+                            handle,
+                            A,
+                            lda,
+                            n,
+                            outer,
+                            panel_start,
+                            outer_end,
+                            b,
+                            inner_gemm_m_tile,
+                            inner_gemm_m_threshold,
+                            inner_gemm_k_threshold);
+                    });
+            }
         }
 
-        if (outer_column_tile > 0) {
-            prepare_next_outer_panel_2d(
-                handle,
-                A,
-                lda,
-                n,
-                outer_end,
-                nb,
-                syrk_k_tile,
-                outer_column_tile,
-                outer_gemm_m_tile,
-                outer_gemm_k_tile);
-        } else {
-            prepare_next_outer_panel(
-                handle,
-                A,
-                lda,
-                n,
-                outer_end,
-                nb,
-                syrk_k_tile);
+        if (outer_end < n) {
+            const int next_size = std::min(nb, n - outer_end);
+            const int below_rows = n - outer_end - next_size;
+            run_stage(
+                profiler,
+                stream,
+                "Outer Update",
+                outer_update_work(next_size, below_rows, outer_end),
+                [&]() {
+                    if (outer_column_tile > 0) {
+                        prepare_next_outer_panel_2d(
+                            handle,
+                            A,
+                            lda,
+                            n,
+                            outer_end,
+                            nb,
+                            syrk_k_tile,
+                            outer_column_tile,
+                            outer_gemm_m_tile,
+                            outer_gemm_k_tile);
+                    } else {
+                        prepare_next_outer_panel(
+                            handle,
+                            A,
+                            lda,
+                            n,
+                            outer_end,
+                            nb,
+                            syrk_k_tile);
+                    }
+                });
         }
     }
 
@@ -584,6 +900,47 @@ void double_blocked_potrf_outer_panel_2d(
     return;
 }
 
+void double_blocked_potrf_inverse_panel(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    float* inverse_workspace,
+    int inverse_ld,
+    float* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        0,
+        0,
+        0,
+        inverse_workspace,
+        inverse_ld,
+        panel_workspace,
+        panel_workspace_rows,
+        local_info,
+        true);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -687,4 +1044,86 @@ void double_blocked_potrf_double_outer_panel_2d(
     return;
 }
 
+void double_blocked_potrf_double_inverse_panel(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    double* inverse_workspace,
+    int inverse_ld,
+    double* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        0,
+        0,
+        0,
+        inverse_workspace,
+        inverse_ld,
+        panel_workspace,
+        panel_workspace_rows,
+        local_info,
+        true);
+
+    return;
+}
+
 } // extern "C"
+
+void double_blocked_potrf_inverse_panel_profiled(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    float* inverse_workspace,
+    int inverse_ld,
+    float* panel_workspace,
+    int panel_workspace_rows,
+    int* local_info,
+    int* info,
+    StageBreakdownProfiler& profiler)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        0,
+        0,
+        0,
+        inverse_workspace,
+        inverse_ld,
+        panel_workspace,
+        panel_workspace_rows,
+        local_info,
+        true,
+        &profiler);
+}

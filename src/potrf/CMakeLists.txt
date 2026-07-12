@@ -1,8 +1,15 @@
-add_library(hygon_potrf STATIC
+set(POTRF_SOURCES
     blocked_potrf.cpp
     double_blocked_potrf.cpp
+    inverse_panel_kernels.hip
     recursive_potrf.cpp
     tiled_right_looking_potrf.cpp
+)
+
+set_source_files_properties(inverse_panel_kernels.hip PROPERTIES LANGUAGE CXX)
+
+add_library(hygon_potrf STATIC
+    ${POTRF_SOURCES}
 )
 
 apply_benchmark_options(hygon_potrf)
@@ -51,6 +58,22 @@ target_link_libraries(profile_double_blocked_potrf
     rocblas
     amdhip64
     hygon_utils
+    hygon_kernels
+)
+
+add_executable(profile_inverse_panel_potrf
+    profile_inverse_panel_potrf.cpp
+)
+
+apply_benchmark_options(profile_inverse_panel_potrf)
+link_rocm_runtime(profile_inverse_panel_potrf)
+target_link_libraries(profile_inverse_panel_potrf
+    rocsolver
+    hygon_potrf
+    hygon_trsm
+    hygon_syrk
+    hygon_utils
+    hygon_gemm
     hygon_kernels
 )
 
