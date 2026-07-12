@@ -6,6 +6,7 @@
 
 #include <rocsolver/rocsolver.h>
 
+#include "gemm/shape_aware_gemm.h"
 #include "gemm/update_gemm.h"
 #include "syrk/kblocked_syrk.h"
 #include "trsm/double_blocked_trsm.h"
@@ -219,7 +220,8 @@ void update_next_inner_panel(
     int b,
     int gemm_m_tile,
     int gemm_m_threshold,
-    int gemm_k_threshold)
+    int gemm_k_threshold,
+    bool use_shape_aware_m_tiling)
 {
     if (panel_start >= outer_end) {
         return;
@@ -229,8 +231,11 @@ void update_next_inner_panel(
     const int rows = n - panel_start;
     const int k = panel_start - outer;
 
-    const bool use_m_tiling =
+    const bool use_adaptive_m_tiling =
         gemm_m_tile > 0 && rows > gemm_m_threshold && k >= gemm_k_threshold;
+    const int selected_m_tile = use_shape_aware_m_tiling
+        ? hygon::gemm::select_k100_inner_gemm_m_tile(rows, panel_cols, k)
+        : (use_adaptive_m_tiling ? gemm_m_tile : 0);
 
     dispatch_gemm_nt_update_m_tiled(
         handle,
@@ -243,7 +248,7 @@ void update_next_inner_panel(
         lda,
         block_ptr(A, lda, panel_start, panel_start),
         lda,
-        use_m_tiling ? gemm_m_tile : 0);
+        selected_m_tile);
 
     return;
 }
@@ -304,7 +309,8 @@ void double_blocked_potrf_impl(
     int syrk_k_tile,
     int inner_gemm_m_tile,
     int inner_gemm_m_threshold,
-    int inner_gemm_k_threshold)
+    int inner_gemm_k_threshold,
+    bool use_shape_aware_m_tiling = false)
 {
     if (n <= 0) {
         return;
@@ -364,7 +370,8 @@ void double_blocked_potrf_impl(
                 b,
                 inner_gemm_m_tile,
                 inner_gemm_m_threshold,
-                inner_gemm_k_threshold);
+                inner_gemm_k_threshold,
+                use_shape_aware_m_tiling);
         }
 
         prepare_next_outer_panel(
@@ -450,6 +457,34 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
         kInnerGemmMTile,
         kInnerGemmMThreshold,
         kInnerGemmKThreshold);
+
+    return;
+}
+
+void double_blocked_potrf_kblocked_syrk_shape_aware_gemm(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        true);
 
     return;
 }

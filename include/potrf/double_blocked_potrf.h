@@ -41,6 +41,16 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
     int syrk_k_tile,
     int* info);
 
+void double_blocked_potrf_kblocked_syrk_shape_aware_gemm(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int* info);
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,

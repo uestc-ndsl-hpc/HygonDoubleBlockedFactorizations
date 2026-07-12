@@ -165,6 +165,26 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         context.verify,
         context.calc_gflops);
 
+    if constexpr (std::is_same_v<T, float>) {
+        context.runner.execute(
+            "DoubleBlock+KBSYRK+ShapeMGEMM",
+            nb_b + "/" + std::to_string(nb) + "/8192",
+            context.reset,
+            [&]() {
+                double_blocked_potrf_kblocked_syrk_shape_aware_gemm(
+                    context.handle,
+                    context.d_A,
+                    context.lda,
+                    context.n,
+                    nb,
+                    b,
+                    nb,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    }
+
     return;
 }
 

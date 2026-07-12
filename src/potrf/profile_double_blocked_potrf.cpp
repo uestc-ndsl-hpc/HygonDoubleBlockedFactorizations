@@ -12,6 +12,7 @@
 #include <rocblas/rocblas.h>
 #include <rocsolver/rocsolver.h>
 
+#include "gemm/shape_aware_gemm.h"
 #include "utils/benchmark/stage_breakdown_profiler.h"
 #include "utils/common/error_check.h"
 #include "utils/matrix/matrix_generator.h"
@@ -568,7 +569,8 @@ void update_next_inner_panel_profiled(rocblas_handle handle,
                                       int gemm_k_tile,
                                       int gemm_m_tile,
                                       int gemm_m_threshold,
-                                      int gemm_k_threshold)
+                                      int gemm_k_threshold,
+                                      bool use_shape_aware_m_tiling)
 {
     if (panel_start >= outer_end) {
         return;
@@ -578,25 +580,32 @@ void update_next_inner_panel_profiled(rocblas_handle handle,
     const int rows = n - panel_start;
     const int k = panel_start - outer;
 
-    if (gemm_m_tile > 0 && gemm_m_tile < rows &&
-        rows > gemm_m_threshold && k >= gemm_k_threshold) {
+    const bool use_adaptive_m_tiling =
+        gemm_m_tile > 0 && gemm_m_tile < rows &&
+        rows > gemm_m_threshold && k >= gemm_k_threshold;
+    const int selected_m_tile = use_shape_aware_m_tiling
+        ? hygon::gemm::select_k100_inner_gemm_m_tile(rows, panel_cols, k)
+        : (use_adaptive_m_tiling ? gemm_m_tile : 0);
+
+    if (selected_m_tile > 0 && selected_m_tile < rows) {
         shape_profiler.reserve_events(
-            tile_operation_count(rows, gemm_m_tile));
+            tile_operation_count(rows, selected_m_tile));
 
         profiler.measure(
             stream,
             "Inner GEMM",
             gemm_work(rows, panel_cols, k),
             [&]() {
-                const std::string operation =
-                    "Inner M-GEMM/" + std::to_string(rows);
+                const std::string operation = use_shape_aware_m_tiling
+                    ? "Inner Shape-MGEMM/" + std::to_string(rows)
+                    : "Inner M-GEMM/" + std::to_string(rows);
                 const T* B_panel =
                     block_ptr(A, lda, panel_start, outer);
 
                 for (int row_offset = 0; row_offset < rows;
-                     row_offset += gemm_m_tile) {
+                     row_offset += selected_m_tile) {
                     const int tile_rows =
-                        std::min(gemm_m_tile, rows - row_offset);
+                        std::min(selected_m_tile, rows - row_offset);
 
                     shape_profiler.enqueue(
                         stream,
@@ -783,6 +792,7 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                                    int inner_gemm_m_tile,
                                    int inner_gemm_m_threshold,
                                    int inner_gemm_k_threshold,
+                                   bool use_shape_aware_m_tiling,
                                    int* info)
 {
     for (int outer = 0; outer < n; outer += nb) {
@@ -834,7 +844,8 @@ void double_blocked_potrf_profiled(rocblas_handle handle,
                 inner_gemm_k_tile,
                 inner_gemm_m_tile,
                 inner_gemm_m_threshold,
-                inner_gemm_k_threshold);
+                inner_gemm_k_threshold,
+                use_shape_aware_m_tiling);
         }
 
         prepare_next_outer_panel_profiled(
@@ -882,6 +893,8 @@ int main(int argc, char** argv)
         read_int_arg(argc, argv, "--inner-gemm-m-threshold", 0);
     const int inner_gemm_k_threshold =
         read_int_arg(argc, argv, "--inner-gemm-k-threshold", 0);
+    const int shape_aware_mgemm =
+        read_int_arg(argc, argv, "--shape-aware-mgemm", 0);
     const int warmup = read_int_arg(argc, argv, "--warmup", 1);
     const int iters = read_int_arg(argc, argv, "--iters", 3);
 
@@ -889,7 +902,11 @@ int main(int argc, char** argv)
         syrk_tile < 0 || syrk_tile > nb || syrk_k_tile < 0 ||
         inner_gemm_k_tile < 0 || inner_gemm_m_tile < 0 ||
         inner_gemm_m_threshold < 0 || inner_gemm_k_threshold < 0 ||
+        shape_aware_mgemm < 0 || shape_aware_mgemm > 1 ||
         (inner_gemm_k_tile > 0 && inner_gemm_m_tile > 0) ||
+        (shape_aware_mgemm != 0 &&
+         (inner_gemm_k_tile > 0 || inner_gemm_m_tile > 0 ||
+          inner_gemm_m_threshold > 0 || inner_gemm_k_threshold > 0)) ||
         (syrk_tile > 0 && syrk_k_tile > 0)) {
         std::cerr << "Usage: profile_double_blocked_potrf "
                   << "--n N --nb NB --b B [--syrk-tile T] "
@@ -898,6 +915,7 @@ int main(int argc, char** argv)
                   << "[--inner-gemm-m-tile GMT] "
                   << "[--inner-gemm-m-threshold GMTM] "
                   << "[--inner-gemm-k-threshold GMTK] "
+                  << "[--shape-aware-mgemm 0|1] "
                   << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
@@ -928,6 +946,7 @@ int main(int argc, char** argv)
               << ", inner_gemm_m_tile=" << inner_gemm_m_tile
               << ", inner_gemm_m_threshold=" << inner_gemm_m_threshold
               << ", inner_gemm_k_threshold=" << inner_gemm_k_threshold
+              << ", shape_aware_mgemm=" << shape_aware_mgemm
               << ", warmup=" << warmup
               << ", iters=" << iters << "\n";
 
@@ -951,6 +970,7 @@ int main(int argc, char** argv)
             inner_gemm_m_tile,
             inner_gemm_m_threshold,
             inner_gemm_k_threshold,
+            shape_aware_mgemm != 0,
             d_info.get());
         warmup_shape_profiler.resolve_pending();
     }
@@ -976,6 +996,7 @@ int main(int argc, char** argv)
             inner_gemm_m_tile,
             inner_gemm_m_threshold,
             inner_gemm_k_threshold,
+            shape_aware_mgemm != 0,
             d_info.get());
     }
     HIP_CHECK(hipDeviceSynchronize());
@@ -992,7 +1013,8 @@ int main(int argc, char** argv)
         ", inner_gemm_m_threshold=" +
         std::to_string(inner_gemm_m_threshold) +
         ", inner_gemm_k_threshold=" +
-        std::to_string(inner_gemm_k_threshold) + ")",
+        std::to_string(inner_gemm_k_threshold) +
+        ", shape_aware_mgemm=" + std::to_string(shape_aware_mgemm) + ")",
         110);
 
     shape_profiler.print(
@@ -1006,7 +1028,8 @@ int main(int argc, char** argv)
         ", inner_gemm_m_threshold=" +
         std::to_string(inner_gemm_m_threshold) +
         ", inner_gemm_k_threshold=" +
-        std::to_string(inner_gemm_k_threshold) + ")");
+        std::to_string(inner_gemm_k_threshold) +
+        ", shape_aware_mgemm=" + std::to_string(shape_aware_mgemm) + ")");
 
     ROCBLAS_CHECK(rocblas_destroy_handle(handle));
 
