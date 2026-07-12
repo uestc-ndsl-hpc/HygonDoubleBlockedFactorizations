@@ -2,6 +2,7 @@ add_library(hygon_potrf STATIC
     blocked_potrf.cpp
     double_blocked_potrf.cpp
     recursive_potrf.cpp
+    tiled_right_looking_potrf.cpp
 )
 
 apply_benchmark_options(hygon_potrf)
@@ -63,6 +64,22 @@ target_link_libraries(profile_blocked_potrf
     rocsolver
     rocblas
     amdhip64
+    hygon_utils
+    hygon_kernels
+)
+
+add_executable(profile_tiled_right_looking_potrf
+    profile_tiled_right_looking_potrf.cpp
+)
+
+apply_benchmark_options(profile_tiled_right_looking_potrf)
+link_rocm_runtime(profile_tiled_right_looking_potrf)
+target_link_libraries(profile_tiled_right_looking_potrf
+    rocsolver
+    hygon_potrf
+    hygon_trsm
+    hygon_syrk
+    hygon_gemm
     hygon_utils
     hygon_kernels
 )

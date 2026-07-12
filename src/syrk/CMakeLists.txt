@@ -2,6 +2,7 @@ add_library(hygon_syrk STATIC
     batched_syrk.cpp
     kblocked_syrk.cpp
     recursive_syrk.cpp
+    tiled_lower_update.cpp
 )
 
 apply_benchmark_options(hygon_syrk)

@@ -57,7 +57,8 @@ int main(int argc, char** argv)
     enum class BlockParameter {
         Nb,
         DoubleNb,
-        MicroBlock
+        MicroBlock,
+        TiledRlUpdateTile
     };
 
     BlockParameter block_parameter = BlockParameter::Nb;
@@ -70,11 +71,17 @@ int main(int argc, char** argv)
             block_parameter = BlockParameter::MicroBlock;
             continue;
         }
+        if (std::strcmp(argv[i], "--rl-tile") == 0) {
+            block_parameter = BlockParameter::TiledRlUpdateTile;
+            continue;
+        }
 
         if (block_parameter == BlockParameter::DoubleNb) {
             options.double_nbs.push_back(std::atoi(argv[i]));
         } else if (block_parameter == BlockParameter::MicroBlock) {
             options.micro_blocks.push_back(std::atoi(argv[i]));
+        } else if (block_parameter == BlockParameter::TiledRlUpdateTile) {
+            options.tiled_rl_update_tiles.push_back(std::atoi(argv[i]));
         } else {
             options.nbs.push_back(std::atoi(argv[i]));
         }

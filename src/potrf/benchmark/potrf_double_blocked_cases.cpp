@@ -1,9 +1,11 @@
 #include "potrf/benchmark/potrf_benchmark_common.h"
 
+#include <algorithm>
 #include <string>
 #include <type_traits>
 
 #include "potrf/double_blocked_potrf.h"
+#include "potrf/tiled_right_looking_potrf.h"
 
 namespace potrf_benchmark {
 namespace {
@@ -91,6 +93,48 @@ void call_double_blocked_potrf_kblocked_syrk_adaptive_gemm(
 }
 
 template <typename T>
+void call_tiled_right_looking_double_blocked_potrf(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int outer_block_size,
+    int update_tile_size,
+    int potrf_leaf_size,
+    int trsm_leaf_size,
+    int update_k_tile,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        tiled_right_looking_double_blocked_potrf(
+            handle,
+            A,
+            lda,
+            n,
+            outer_block_size,
+            update_tile_size,
+            potrf_leaf_size,
+            trsm_leaf_size,
+            update_k_tile,
+            info);
+    } else {
+        tiled_right_looking_double_blocked_potrf_double(
+            handle,
+            A,
+            lda,
+            n,
+            outer_block_size,
+            update_tile_size,
+            potrf_leaf_size,
+            trsm_leaf_size,
+            update_k_tile,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
@@ -164,6 +208,47 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    const std::vector<int> default_update_tiles = {
+        std::min(4096, nb)};
+    const std::vector<int>& update_tiles =
+        context.tiled_rl_update_tiles.empty()
+        ? default_update_tiles
+        : context.tiled_rl_update_tiles;
+
+    constexpr int trsm_leaf_size = 1024;
+    const int update_k_tile = std::min(8192, nb);
+
+    for (int update_tile_size : update_tiles) {
+        if (update_tile_size <= 0) {
+            continue;
+        }
+
+        const std::string parameters =
+            nb_b + "/" + std::to_string(update_tile_size) + "/" +
+            std::to_string(trsm_leaf_size) + "/" +
+            std::to_string(update_k_tile);
+
+        context.runner.execute(
+            "DoubleBlock+TiledRL",
+            parameters,
+            context.reset,
+            [&]() {
+                call_tiled_right_looking_double_blocked_potrf<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    nb,
+                    update_tile_size,
+                    b,
+                    trsm_leaf_size,
+                    update_k_tile,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    }
 
     return;
 }
