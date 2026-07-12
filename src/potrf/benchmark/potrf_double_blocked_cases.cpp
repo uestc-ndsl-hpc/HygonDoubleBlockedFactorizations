@@ -1,11 +1,13 @@
 #include "potrf/benchmark/potrf_benchmark_common.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <type_traits>
 
 #include "potrf/double_blocked_potrf.h"
 #include "potrf/tiled_right_looking_potrf.h"
+#include "utils/memory/device_buffer.h"
 
 namespace potrf_benchmark {
 namespace {
@@ -138,6 +140,99 @@ void call_double_blocked_potrf_outer_panel_2d(
 }
 
 template <typename T>
+void call_double_blocked_potrf_packed_leaf(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    T* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_packed_leaf(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            packed_workspace,
+            packed_workspace_ld,
+            info);
+    } else {
+        double_blocked_potrf_double_packed_leaf(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            packed_workspace,
+            packed_workspace_ld,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
+void call_double_blocked_potrf_packed_leaf_outer_panel_2d(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    T* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_packed_leaf_outer_panel_2d(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            column_tile,
+            gemm_m_tile,
+            gemm_k_tile,
+            packed_workspace,
+            packed_workspace_ld,
+            info);
+    } else {
+        double_blocked_potrf_double_packed_leaf_outer_panel_2d(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            column_tile,
+            gemm_m_tile,
+            gemm_k_tile,
+            packed_workspace,
+            packed_workspace_ld,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
 void call_tiled_right_looking_double_blocked_potrf(
     rocblas_handle handle,
     T* A,
@@ -254,6 +349,29 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         context.verify,
         context.calc_gflops);
 
+    DeviceBuffer<T> packed_workspace(
+        static_cast<size_t>(b) * static_cast<size_t>(b));
+
+    context.runner.execute(
+        "DoubleBlock+PackedLeaf",
+        nb_b + "/" + std::to_string(nb) + "/" + std::to_string(b),
+        context.reset,
+        [&]() {
+            call_double_blocked_potrf_packed_leaf<T>(
+                context.handle,
+                context.d_A,
+                context.n,
+                context.lda,
+                nb,
+                b,
+                nb,
+                packed_workspace.get(),
+                b,
+                context.d_info);
+        },
+        context.verify,
+        context.calc_gflops);
+
     constexpr int outer_gemm_m_tile = 8192;
     constexpr int outer_gemm_k_tile = 8192;
 
@@ -284,6 +402,29 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
                     column_tile,
                     outer_gemm_m_tile,
                     outer_gemm_k_tile,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+
+        context.runner.execute(
+            "DoubleBlock+PackedLeaf+Outer2D",
+            parameters + "/" + std::to_string(b),
+            context.reset,
+            [&]() {
+                call_double_blocked_potrf_packed_leaf_outer_panel_2d<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    nb,
+                    b,
+                    nb,
+                    column_tile,
+                    outer_gemm_m_tile,
+                    outer_gemm_k_tile,
+                    packed_workspace.get(),
+                    b,
                     context.d_info);
             },
             context.verify,

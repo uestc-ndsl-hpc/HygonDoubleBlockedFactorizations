@@ -7,6 +7,7 @@
 #include <rocsolver/rocsolver.h>
 
 #include "gemm/update_gemm.h"
+#include "potrf/packed_leaf.h"
 #include "syrk/kblocked_syrk.h"
 #include "trsm/double_blocked_trsm.h"
 #include "trsm/right_lower_trsm.h"
@@ -50,6 +51,64 @@ void rocsolver_potrf(rocblas_handle handle, int n, T* A, int lda, int* info)
             A,
             lda,
             info));
+    }
+
+    return;
+}
+
+template <typename T>
+void dispatch_pack_potrf_leaf(const T* source,
+                              int source_ld,
+                              T* destination,
+                              int destination_ld,
+                              int n,
+                              hipStream_t stream)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        pack_potrf_leaf(
+            source,
+            source_ld,
+            destination,
+            destination_ld,
+            n,
+            stream);
+    } else {
+        pack_potrf_leaf_double(
+            source,
+            source_ld,
+            destination,
+            destination_ld,
+            n,
+            stream);
+    }
+
+    return;
+}
+
+template <typename T>
+void dispatch_unpack_potrf_leaf(const T* source,
+                                int source_ld,
+                                T* destination,
+                                int destination_ld,
+                                int n,
+                                hipStream_t stream)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        unpack_potrf_leaf(
+            source,
+            source_ld,
+            destination,
+            destination_ld,
+            n,
+            stream);
+    } else {
+        unpack_potrf_leaf_double(
+            source,
+            source_ld,
+            destination,
+            destination_ld,
+            n,
+            stream);
     }
 
     return;
@@ -387,7 +446,10 @@ void double_blocked_potrf_impl(
     int inner_gemm_k_threshold,
     int outer_column_tile = 0,
     int outer_gemm_m_tile = 0,
-    int outer_gemm_k_tile = 0)
+    int outer_gemm_k_tile = 0,
+    T* packed_leaf_workspace = nullptr,
+    int packed_leaf_ld = 0,
+    bool require_packed_leaf = false)
 {
     if (n <= 0) {
         return;
@@ -403,6 +465,17 @@ void double_blocked_potrf_impl(
 
     b = std::min(b, nb);
 
+    const bool use_packed_leaf =
+        packed_leaf_workspace != nullptr && packed_leaf_ld >= b;
+
+    hipStream_t stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+
+    if (require_packed_leaf && !use_packed_leaf) {
+        HIP_CHECK(hipMemsetAsync(info, 0xff, sizeof(int), stream));
+        return;
+    }
+
     for (int outer = 0; outer < n; outer += nb) {
         const int outer_size = std::min(nb, n - outer);
         const int outer_end = outer + outer_size;
@@ -414,15 +487,29 @@ void double_blocked_potrf_impl(
 
             T* A_ii = block_ptr(A, lda, inner, inner);
 
-            rocsolver_potrf(handle, inner_size, A_ii, lda, info);
+            T* factor = A_ii;
+            int factor_ld = lda;
+            if (use_packed_leaf) {
+                dispatch_pack_potrf_leaf(
+                    A_ii,
+                    lda,
+                    packed_leaf_workspace,
+                    packed_leaf_ld,
+                    inner_size,
+                    stream);
+                factor = packed_leaf_workspace;
+                factor_ld = packed_leaf_ld;
+            }
+
+            rocsolver_potrf(handle, inner_size, factor, factor_ld, info);
 
             if (use_double_blocked_trsm) {
                 dispatch_double_blocked_trsm_right_lower_transpose(
                     handle,
                     trailing_rows,
                     inner_size,
-                    A_ii,
-                    lda,
+                    factor,
+                    factor_ld,
                     block_ptr(A, lda, panel_start, inner),
                     lda);
             } else {
@@ -430,10 +517,20 @@ void double_blocked_potrf_impl(
                     handle,
                     trailing_rows,
                     inner_size,
-                    A_ii,
-                    lda,
+                    factor,
+                    factor_ld,
                     block_ptr(A, lda, panel_start, inner),
                     lda);
+            }
+
+            if (use_packed_leaf) {
+                dispatch_unpack_potrf_leaf(
+                    packed_leaf_workspace,
+                    packed_leaf_ld,
+                    A_ii,
+                    lda,
+                    inner_size,
+                    stream);
             }
 
             update_next_inner_panel(
@@ -584,6 +681,79 @@ void double_blocked_potrf_outer_panel_2d(
     return;
 }
 
+void double_blocked_potrf_packed_leaf(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    float* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        0,
+        0,
+        0,
+        packed_workspace,
+        packed_workspace_ld,
+        true);
+
+    return;
+}
+
+void double_blocked_potrf_packed_leaf_outer_panel_2d(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    float* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        column_tile,
+        gemm_m_tile,
+        gemm_k_tile,
+        packed_workspace,
+        packed_workspace_ld,
+        true);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -683,6 +853,79 @@ void double_blocked_potrf_double_outer_panel_2d(
         column_tile,
         gemm_m_tile,
         gemm_k_tile);
+
+    return;
+}
+
+void double_blocked_potrf_double_packed_leaf(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    double* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        0,
+        0,
+        0,
+        packed_workspace,
+        packed_workspace_ld,
+        true);
+
+    return;
+}
+
+void double_blocked_potrf_double_packed_leaf_outer_panel_2d(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    double* packed_workspace,
+    int packed_workspace_ld,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        column_tile,
+        gemm_m_tile,
+        gemm_k_tile,
+        packed_workspace,
+        packed_workspace_ld,
+        true);
 
     return;
 }

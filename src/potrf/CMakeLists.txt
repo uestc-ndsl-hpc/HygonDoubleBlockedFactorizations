@@ -1,6 +1,7 @@
 add_library(hygon_potrf STATIC
     blocked_potrf.cpp
     double_blocked_potrf.cpp
+    packed_leaf.cpp
     recursive_potrf.cpp
     tiled_right_looking_potrf.cpp
 )
@@ -52,6 +53,21 @@ target_link_libraries(profile_double_blocked_potrf
     amdhip64
     hygon_utils
     hygon_kernels
+)
+
+add_executable(profile_packed_leaf
+    profile_packed_leaf.cpp
+)
+
+apply_benchmark_options(profile_packed_leaf)
+link_rocm_runtime(profile_packed_leaf)
+target_link_libraries(profile_packed_leaf
+    rocsolver
+    rocblas
+    amdhip64
+    hygon_potrf
+    hygon_trsm
+    hygon_utils
 )
 
 add_executable(profile_blocked_potrf

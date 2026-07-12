@@ -54,6 +54,33 @@ void double_blocked_potrf_outer_panel_2d(
     int gemm_k_tile,
     int* info);
 
+void double_blocked_potrf_packed_leaf(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    float* packed_workspace,
+    int packed_workspace_ld,
+    int* info);
+
+void double_blocked_potrf_packed_leaf_outer_panel_2d(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    float* packed_workspace,
+    int packed_workspace_ld,
+    int* info);
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -100,6 +127,33 @@ void double_blocked_potrf_double_outer_panel_2d(
     int column_tile,
     int gemm_m_tile,
     int gemm_k_tile,
+    int* info);
+
+void double_blocked_potrf_double_packed_leaf(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    double* packed_workspace,
+    int packed_workspace_ld,
+    int* info);
+
+void double_blocked_potrf_double_packed_leaf_outer_panel_2d(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    double* packed_workspace,
+    int packed_workspace_ld,
     int* info);
 
 #ifdef __cplusplus
