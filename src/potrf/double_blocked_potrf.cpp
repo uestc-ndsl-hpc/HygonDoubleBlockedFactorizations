@@ -292,6 +292,86 @@ void prepare_next_outer_panel(
 }
 
 template <typename T>
+void prepare_next_outer_panel_2d(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int next_outer,
+    int nb,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile)
+{
+    if (next_outer >= n) {
+        return;
+    }
+
+    const int next_size = std::min(nb, n - next_outer);
+    column_tile = column_tile > 0
+        ? std::min(column_tile, next_size)
+        : next_size;
+    gemm_k_tile = gemm_k_tile > 0
+        ? std::min(gemm_k_tile, next_outer)
+        : next_outer;
+
+    // Partition the lower part of the next block column. Each diagonal tile
+    // uses SYRK; the rectangle below it uses GEMM, tiled only in M and K.
+    for (int col_offset = 0; col_offset < next_size;
+         col_offset += column_tile) {
+        const int cols = std::min(column_tile, next_size - col_offset);
+        const int col = next_outer + col_offset;
+
+        dispatch_syrk_lower_update_kblocked(
+            handle,
+            cols,
+            next_outer,
+            block_ptr(A, lda, col, 0),
+            lda,
+            block_ptr(A, lda, col, col),
+            lda,
+            syrk_k_tile);
+
+        const int row_start = col + cols;
+        const int rows = n - row_start;
+        if (rows <= 0) {
+            continue;
+        }
+
+        const int effective_m_tile = gemm_m_tile > 0
+            ? std::min(gemm_m_tile, rows)
+            : rows;
+
+        for (int k_offset = 0; k_offset < next_outer;
+             k_offset += gemm_k_tile) {
+            const int k_chunk =
+                std::min(gemm_k_tile, next_outer - k_offset);
+
+            for (int row_offset = 0; row_offset < rows;
+                 row_offset += effective_m_tile) {
+                const int tile_rows =
+                    std::min(effective_m_tile, rows - row_offset);
+
+                dispatch_gemm_nt_update(
+                    handle,
+                    tile_rows,
+                    cols,
+                    k_chunk,
+                    block_ptr(A, lda, row_start + row_offset, k_offset),
+                    lda,
+                    block_ptr(A, lda, col, k_offset),
+                    lda,
+                    block_ptr(A, lda, row_start + row_offset, col),
+                    lda);
+            }
+        }
+    }
+
+    return;
+}
+
+template <typename T>
 void double_blocked_potrf_impl(
     rocblas_handle handle,
     T* A,
@@ -304,7 +384,10 @@ void double_blocked_potrf_impl(
     int syrk_k_tile,
     int inner_gemm_m_tile,
     int inner_gemm_m_threshold,
-    int inner_gemm_k_threshold)
+    int inner_gemm_k_threshold,
+    int outer_column_tile = 0,
+    int outer_gemm_m_tile = 0,
+    int outer_gemm_k_tile = 0)
 {
     if (n <= 0) {
         return;
@@ -367,14 +450,28 @@ void double_blocked_potrf_impl(
                 inner_gemm_k_threshold);
         }
 
-        prepare_next_outer_panel(
-            handle,
-            A,
-            lda,
-            n,
-            outer_end,
-            nb,
-            syrk_k_tile);
+        if (outer_column_tile > 0) {
+            prepare_next_outer_panel_2d(
+                handle,
+                A,
+                lda,
+                n,
+                outer_end,
+                nb,
+                syrk_k_tile,
+                outer_column_tile,
+                outer_gemm_m_tile,
+                outer_gemm_k_tile);
+        } else {
+            prepare_next_outer_panel(
+                handle,
+                A,
+                lda,
+                n,
+                outer_end,
+                nb,
+                syrk_k_tile);
+        }
     }
 
     return;
@@ -454,6 +551,39 @@ void double_blocked_potrf_kblocked_syrk_adaptive_gemm(
     return;
 }
 
+void double_blocked_potrf_outer_panel_2d(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        column_tile,
+        gemm_m_tile,
+        gemm_k_tile);
+
+    return;
+}
+
 void double_blocked_potrf_double(rocblas_handle handle,
                                  double* A,
                                  int lda,
@@ -520,6 +650,39 @@ void double_blocked_potrf_double_kblocked_syrk_adaptive_gemm(
         kInnerGemmMTile,
         kInnerGemmMThreshold,
         kInnerGemmKThreshold);
+
+    return;
+}
+
+void double_blocked_potrf_double_outer_panel_2d(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    int* info)
+{
+    double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        info,
+        false,
+        syrk_k_tile,
+        kInnerGemmMTile,
+        kInnerGemmMThreshold,
+        kInnerGemmKThreshold,
+        column_tile,
+        gemm_m_tile,
+        gemm_k_tile);
 
     return;
 }

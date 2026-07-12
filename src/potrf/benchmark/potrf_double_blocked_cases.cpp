@@ -93,6 +93,51 @@ void call_double_blocked_potrf_kblocked_syrk_adaptive_gemm(
 }
 
 template <typename T>
+void call_double_blocked_potrf_outer_panel_2d(
+    rocblas_handle handle,
+    T* A,
+    int n,
+    int lda,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int column_tile,
+    int gemm_m_tile,
+    int gemm_k_tile,
+    int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_potrf_outer_panel_2d(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            column_tile,
+            gemm_m_tile,
+            gemm_k_tile,
+            info);
+    } else {
+        double_blocked_potrf_double_outer_panel_2d(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            syrk_k_tile,
+            column_tile,
+            gemm_m_tile,
+            gemm_k_tile,
+            info);
+    }
+
+    return;
+}
+
+template <typename T>
 void call_tiled_right_looking_double_blocked_potrf(
     rocblas_handle handle,
     T* A,
@@ -208,6 +253,42 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         },
         context.verify,
         context.calc_gflops);
+
+    constexpr int outer_gemm_m_tile = 8192;
+    constexpr int outer_gemm_k_tile = 8192;
+
+    for (int column_tile : context.outer_panel_column_tiles) {
+        if (column_tile <= 0 || column_tile > nb) {
+            continue;
+        }
+
+        const std::string parameters =
+            nb_b + "/" + std::to_string(nb) + "/" +
+            std::to_string(column_tile) + "/" +
+            std::to_string(outer_gemm_m_tile) + "/" +
+            std::to_string(outer_gemm_k_tile);
+
+        context.runner.execute(
+            "DoubleBlock+OuterPanel2D",
+            parameters,
+            context.reset,
+            [&]() {
+                call_double_blocked_potrf_outer_panel_2d<T>(
+                    context.handle,
+                    context.d_A,
+                    context.n,
+                    context.lda,
+                    nb,
+                    b,
+                    nb,
+                    column_tile,
+                    outer_gemm_m_tile,
+                    outer_gemm_k_tile,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    }
 
     const std::vector<int> default_update_tiles = {
         std::min(4096, nb)};

@@ -20,6 +20,7 @@ read -r -a NS <<< "${POTRF_NS:-8192 16384 24576 32768 40960}"
 read -r -a BASELINE_NBS <<< "${POTRF_BASELINE_NBS:-256 512 1024 2048}"
 read -r -a DOUBLE_NBS <<< "${POTRF_DOUBLE_NBS:-8192}"
 read -r -a MICRO_BLOCKS <<< "${POTRF_MICRO_BLOCKS:-512}"
+read -r -a OUTER_PANEL_TILES <<< "${POTRF_OUTER_PANEL_TILES:-}"
 
 ERROR_MODE=${POTRF_ERROR_MODE:-2}
 PRECISION=${POTRF_PRECISION:-0}
@@ -41,7 +42,8 @@ rm -f "${SUMMARY_LOG}"
     echo "Error verify mode  : ${ERROR_MODE}"
     echo "Baseline NBs       : ${BASELINE_NBS[*]}"
     echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]} / ${MICRO_BLOCKS[*]}"
-    echo "DoubleBlock methods: base, DBTRSM, KBSYRK, KBSYRK+MGEMM"
+    echo "Outer panel tiles  : ${OUTER_PANEL_TILES[*]:-(disabled)}"
+    echo "DoubleBlock methods: base, DBTRSM, KBSYRK, KBSYRK+MGEMM, optional OuterPanel2D"
     echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"
     echo "Test Blocked-RL    : ${TEST_BLOCKED}"
     echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"
@@ -63,6 +65,11 @@ for N in "${NS[@]}"; do
     OUT_FILE=${RESULT_DIR}/potrf_N${N}.log
     echo "Output detail      : ${OUT_FILE}" | tee -a "${SUMMARY_LOG}"
 
+    EXTRA_ARGS=()
+    if [[ ${#OUTER_PANEL_TILES[@]} -gt 0 ]]; then
+        EXTRA_ARGS+=(--outer-panel-tile "${OUTER_PANEL_TILES[@]}")
+    fi
+
     "${LAUNCH_PREFIX[@]}" "${EXEC}" \
         "${N}" \
         "${TEST_ROCSOLVER}" \
@@ -74,6 +81,7 @@ for N in "${NS[@]}"; do
         "${BASELINE_NBS[@]}" \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        "${EXTRA_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

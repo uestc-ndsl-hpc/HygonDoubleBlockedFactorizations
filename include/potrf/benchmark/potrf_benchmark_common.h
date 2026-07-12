@@ -24,6 +24,7 @@ struct PotrfBenchmarkOptions {
     std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
     std::vector<int> tiled_rl_update_tiles;
+    std::vector<int> outer_panel_column_tiles;
 };
 
 template <typename T>
@@ -38,6 +39,7 @@ struct PotrfBenchmarkContext {
     const std::vector<int>& double_nbs;
     const std::vector<int>& micro_blocks;
     const std::vector<int>& tiled_rl_update_tiles;
+    const std::vector<int>& outer_panel_column_tiles;
     int precision_type;
     BenchmarkRunner& runner;
     std::vector<BenchmarkResult>& results;

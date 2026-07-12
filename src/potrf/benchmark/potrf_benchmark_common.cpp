@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -174,6 +175,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     auto reset_a = [&]() {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
+        HIP_CHECK(hipMemset(d_info, 0, sizeof(int)));
     };
 
     auto calc_gflops_potrf = [n](double ms) {
@@ -181,12 +183,29 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
     };
 
     auto verify_potrf = [&] (double& f_err, double& b_err) {
+        int h_info = 0;
+        HIP_CHECK(hipMemcpy(
+            &h_info, d_info, sizeof(int), hipMemcpyDeviceToHost));
+        if (h_info != 0) {
+            throw std::runtime_error(
+                "POTRF failed with info=" + std::to_string(h_info));
+        }
+
         if (options.error_mode == ErrorMode::None) {
             return;
         }
 
         std::vector<T> h_res(num_elements);
         HIP_CHECK(hipMemcpy(h_res.data(), d_A, bytes, hipMemcpyDeviceToHost));
+
+        for (int i = 0; i < n; ++i) {
+            const double diagonal = static_cast<double>(
+                h_res[static_cast<size_t>(i) * n + i]);
+            if (!std::isfinite(diagonal) || diagonal <= 0.0) {
+                throw std::runtime_error(
+                    "POTRF produced a non-positive or non-finite diagonal");
+            }
+        }
 
         if (options.error_mode == ErrorMode::Forward || options.error_mode == ErrorMode::Both) {
             f_err = verify_potrf_against_double_ref(
@@ -217,6 +236,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         options.double_nbs,
         options.micro_blocks,
         options.tiled_rl_update_tiles,
+        options.outer_panel_column_tiles,
         options.precision_type,
         runner,
         results,
