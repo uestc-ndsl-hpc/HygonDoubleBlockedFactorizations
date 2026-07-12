@@ -77,6 +77,19 @@ target_link_libraries(profile_inverse_panel_potrf
     hygon_kernels
 )
 
+add_executable(profile_wavefront_overlap
+    profile_wavefront_overlap.cpp
+)
+
+apply_benchmark_options(profile_wavefront_overlap)
+link_rocm_runtime(profile_wavefront_overlap)
+target_link_libraries(profile_wavefront_overlap
+    rocsolver
+    rocblas
+    amdhip64
+    hygon_utils
+)
+
 add_executable(profile_blocked_potrf
     profile_blocked_potrf.cpp
 )
