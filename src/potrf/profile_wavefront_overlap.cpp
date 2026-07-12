@@ -230,6 +230,12 @@ int main(int argc, char** argv)
     hipDeviceProp_t properties;
     HIP_CHECK(hipGetDeviceProperties(&properties, options.device));
 
+    int concurrent_kernels = 0;
+    HIP_CHECK(hipDeviceGetAttribute(
+        &concurrent_kernels,
+        hipDeviceAttributeConcurrentKernels,
+        options.device));
+
     int least_priority = 0;
     int greatest_priority = 0;
     HIP_CHECK(
@@ -318,6 +324,18 @@ int main(int argc, char** argv)
         prepare_critical,
         enqueue_critical);
 
+    auto no_operation = []() { return; };
+    const ConcurrentTiming harness_timing = measure_concurrent(
+        control_stream,
+        critical_stream,
+        far_stream,
+        options.warmup,
+        options.iterations,
+        no_operation,
+        no_operation,
+        no_operation,
+        no_operation);
+
     std::cout << "Device            : " << options.device << " "
               << properties.name << "\n"
               << "Leaf block        : " << b << "\n"
@@ -328,7 +346,10 @@ int main(int argc, char** argv)
               << options.iterations << "\n"
               << "Stream priorities : critical=" << greatest_priority
               << ", far=" << least_priority << "\n"
+              << "Concurrent kernels: " << concurrent_kernels << "\n"
               << "Enqueue order     : far, then critical\n"
+              << "Harness overhead  : " << std::fixed << std::setprecision(3)
+              << harness_timing.wall_ms << " ms\n"
               << "Critical POTRF    : " << std::fixed << std::setprecision(3)
               << critical_ms << " ms\n\n";
 
