@@ -468,8 +468,10 @@ void double_blocked_potrf_impl(
     const bool use_packed_leaf =
         packed_leaf_workspace != nullptr && packed_leaf_ld >= b;
 
-    hipStream_t stream;
-    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+    hipStream_t stream = nullptr;
+    if (use_packed_leaf || require_packed_leaf) {
+        ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+    }
 
     if (require_packed_leaf && !use_packed_leaf) {
         HIP_CHECK(hipMemsetAsync(info, 0xff, sizeof(int), stream));
