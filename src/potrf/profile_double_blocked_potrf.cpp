@@ -113,12 +113,12 @@ public:
     ~OperationShapeProfiler()
     {
         for (const auto& sample : pending_) {
-            hipEventDestroy(sample.start);
-            hipEventDestroy(sample.stop);
+            (void)hipEventDestroy(sample.start);
+            (void)hipEventDestroy(sample.stop);
         }
         for (const auto& events : available_events_) {
-            hipEventDestroy(events.start);
-            hipEventDestroy(events.stop);
+            (void)hipEventDestroy(events.start);
+            (void)hipEventDestroy(events.stop);
         }
     }
 
@@ -130,6 +130,8 @@ public:
             HIP_CHECK(hipEventCreate(&events.stop));
             available_events_.push_back(events);
         }
+
+        return;
     }
 
     void add_sample(const std::string& operation,
@@ -155,6 +157,8 @@ public:
         it->total_time_ms += elapsed_ms;
         it->total_work += work;
         it->call_count += 1;
+
+        return;
     }
 
     template <typename Func>
@@ -188,6 +192,8 @@ public:
         func();
         HIP_CHECK(hipEventRecord(sample.stop, stream));
         pending_.push_back(sample);
+
+        return;
     }
 
     void resolve_pending()
@@ -208,6 +214,8 @@ public:
         }
 
         pending_.clear();
+
+        return;
     }
 
     void print(const std::string& title, int line_width = 126) const
@@ -248,6 +256,8 @@ public:
         }
 
         cout << string(line_width, '=') << "\n";
+
+        return;
     }
 
 private:
@@ -289,6 +299,8 @@ void measure_gemm_shape(hipStream_t stream,
     const double work = gemm_work(rows, cols, k);
     stage_profiler.add_sample(stage, elapsed, work);
     shape_profiler.add_sample(stage, rows, cols, k, elapsed, work);
+
+    return;
 }
 
 template <typename T>
@@ -552,6 +564,8 @@ void rocblas_tiled_syrk_lower_update_profiled(rocblas_handle handle,
                 });
         }
     }
+
+    return;
 }
 
 template <typename T>
