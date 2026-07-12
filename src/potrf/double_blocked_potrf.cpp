@@ -57,6 +57,8 @@ void run_stage(StageBreakdownProfiler* profiler,
     }
 
     profiler->measure(stream, name, work, std::forward<Func>(function));
+
+    return;
 }
 
 template <typename T>
@@ -262,6 +264,8 @@ void dispatch_pack_lower_triangular(const T* source,
         pack_lower_triangular_for_inverse_double(
             source, source_ld, destination, destination_ld, n, stream);
     }
+
+    return;
 }
 
 template <typename T>
@@ -275,6 +279,8 @@ void dispatch_zero_strict_upper(T* matrix,
     } else {
         zero_strict_upper_triangle_double(matrix, lda, n, stream);
     }
+
+    return;
 }
 
 template <typename T>
@@ -303,6 +309,8 @@ void dispatch_trtri(rocblas_handle handle,
             lda,
             info));
     }
+
+    return;
 }
 
 template <typename T>
@@ -352,6 +360,8 @@ void dispatch_inverse_panel_gemm(rocblas_handle handle,
             workspace,
             workspace_ld));
     }
+
+    return;
 }
 
 template <typename T>
@@ -438,9 +448,11 @@ void solve_panel_with_inverse(rocblas_handle handle,
                     static_cast<size_t>(tile_rows) * sizeof(T),
                     cols,
                     hipMemcpyDeviceToDevice,
-                    stream));
+                stream));
             });
     }
+
+    return;
 }
 
 template <typename T>
@@ -1126,4 +1138,6 @@ void double_blocked_potrf_inverse_panel_profiled(
         local_info,
         true,
         &profiler);
+
+    return;
 }

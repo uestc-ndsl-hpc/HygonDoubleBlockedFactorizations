@@ -40,6 +40,8 @@ void reset_matrix(float* destination,
         hipMemcpyDeviceToDevice,
         stream));
     HIP_CHECK(hipMemsetAsync(info, 0, sizeof(int), stream));
+
+    return;
 }
 
 } // namespace

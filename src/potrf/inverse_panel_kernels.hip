@@ -31,6 +31,8 @@ __global__ void pack_lower_triangular_kernel(const T* source,
             static_cast<size_t>(col) * source_ld + row;
         destination[destination_index] = source[source_index];
     }
+
+    return;
 }
 
 template <typename T>
@@ -42,6 +44,8 @@ __global__ void zero_strict_upper_triangle_kernel(T* matrix, int lda, int n)
     if (row < n && col < n && row < col) {
         matrix[static_cast<size_t>(col) * lda + row] = T(0);
     }
+
+    return;
 }
 
 template <typename T>
@@ -73,6 +77,8 @@ void launch_pack_lower_triangular(const T* source,
         destination_ld,
         n);
     HIP_CHECK(hipGetLastError());
+
+    return;
 }
 
 template <typename T>
@@ -100,6 +106,8 @@ void launch_zero_strict_upper_triangle(T* matrix,
         lda,
         n);
     HIP_CHECK(hipGetLastError());
+
+    return;
 }
 
 __global__ void record_first_factorization_error_kernel(
@@ -115,6 +123,8 @@ __global__ void record_first_factorization_error_kernel(
     if (local > 0) {
         atomicCAS(global_info, 0, global_offset + local);
     }
+
+    return;
 }
 
 } // namespace
@@ -130,6 +140,8 @@ void pack_lower_triangular_for_inverse(const float* source,
 {
     launch_pack_lower_triangular(
         source, source_ld, destination, destination_ld, n, stream);
+
+    return;
 }
 
 void pack_lower_triangular_for_inverse_double(const double* source,
@@ -141,6 +153,8 @@ void pack_lower_triangular_for_inverse_double(const double* source,
 {
     launch_pack_lower_triangular(
         source, source_ld, destination, destination_ld, n, stream);
+
+    return;
 }
 
 void zero_strict_upper_triangle(float* matrix,
@@ -149,6 +163,8 @@ void zero_strict_upper_triangle(float* matrix,
                                 hipStream_t stream)
 {
     launch_zero_strict_upper_triangle(matrix, lda, n, stream);
+
+    return;
 }
 
 void zero_strict_upper_triangle_double(double* matrix,
@@ -157,6 +173,8 @@ void zero_strict_upper_triangle_double(double* matrix,
                                        hipStream_t stream)
 {
     launch_zero_strict_upper_triangle(matrix, lda, n, stream);
+
+    return;
 }
 
 void record_first_factorization_error(const int* local_info,
@@ -174,6 +192,8 @@ void record_first_factorization_error(const int* local_info,
         global_info,
         global_offset);
     HIP_CHECK(hipGetLastError());
+
+    return;
 }
 
 } // extern "C"
