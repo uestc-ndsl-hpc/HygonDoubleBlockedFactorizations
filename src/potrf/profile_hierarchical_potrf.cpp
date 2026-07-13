@@ -425,6 +425,100 @@ void recursive_trsm_profiled(
     return;
 }
 
+void double_blocked_trsm_profiled(
+    rocblas_handle handle,
+    hipStream_t stream,
+    StageBreakdownProfiler& profiler,
+    float* A,
+    int lda,
+    float* B,
+    int ldb,
+    int rows,
+    int cols,
+    int outer_block_size,
+    int leaf_size)
+{
+    if (rows <= 0 || cols <= 0) {
+        return;
+    }
+
+    for (int outer = 0; outer < cols; outer += outer_block_size) {
+        const int outer_size =
+            std::min(outer_block_size, cols - outer);
+        const int outer_end = outer + outer_size;
+
+        for (int inner = outer; inner < outer_end; inner += leaf_size) {
+            const int inner_size =
+                std::min(leaf_size, outer_end - inner);
+            profiler.measure(
+                stream,
+                "DB TRSM leaf",
+                trsm_work(rows, inner_size),
+                [&]() {
+                    rocblas_trsm_right_lower_transpose(
+                        handle,
+                        rows,
+                        inner_size,
+                        block_ptr(A, lda, inner, inner),
+                        lda,
+                        B + static_cast<size_t>(inner) * ldb,
+                        ldb);
+                });
+
+            const int panel_start = inner + inner_size;
+            if (panel_start >= outer_end) {
+                continue;
+            }
+
+            const int panel_cols =
+                std::min(leaf_size, outer_end - panel_start);
+            const int solved_cols = panel_start - outer;
+            profiler.measure(
+                stream,
+                "DB TRSM inner GEMM",
+                gemm_work(rows, panel_cols, solved_cols),
+                [&]() {
+                    rocblas_gemm_nt_update(
+                        handle,
+                        rows,
+                        panel_cols,
+                        solved_cols,
+                        B + static_cast<size_t>(outer) * ldb,
+                        ldb,
+                        block_ptr(A, lda, panel_start, outer),
+                        lda,
+                        B + static_cast<size_t>(panel_start) * ldb,
+                        ldb);
+                });
+        }
+
+        const int trailing_cols = cols - outer_end;
+        if (trailing_cols <= 0) {
+            continue;
+        }
+
+        profiler.measure(
+            stream,
+            "DB TRSM outer GEMM",
+            gemm_work(rows, trailing_cols, outer_size),
+            [&]() {
+                rocblas_gemm_nt_update(
+                    handle,
+                    rows,
+                    trailing_cols,
+                    outer_size,
+                    B + static_cast<size_t>(outer) * ldb,
+                    ldb,
+                    block_ptr(A, lda, outer_end, outer),
+                    lda,
+                    B + static_cast<size_t>(outer_end) * ldb,
+                    ldb);
+            });
+    }
+
+    return;
+}
+
 void update_panel_from_current_outer_profiled(
     rocblas_handle handle,
     hipStream_t stream,
@@ -500,6 +594,7 @@ void factor_and_solve_panel_profiled(
     int panel_start,
     int panel_size,
     int leaf_size,
+    int trsm_outer_block_size,
     int* info)
 {
     float* diagonal = block_ptr(A, lda, panel_start, panel_start);
@@ -519,17 +614,32 @@ void factor_and_solve_panel_profiled(
         return;
     }
 
-    recursive_trsm_profiled(
-        handle,
-        stream,
-        profiler,
-        diagonal,
-        lda,
-        block_ptr(A, lda, below_start, panel_start),
-        lda,
-        below_rows,
-        panel_size,
-        leaf_size);
+    if (trsm_outer_block_size > 0) {
+        double_blocked_trsm_profiled(
+            handle,
+            stream,
+            profiler,
+            diagonal,
+            lda,
+            block_ptr(A, lda, below_start, panel_start),
+            lda,
+            below_rows,
+            panel_size,
+            std::min(trsm_outer_block_size, panel_size),
+            leaf_size);
+    } else {
+        recursive_trsm_profiled(
+            handle,
+            stream,
+            profiler,
+            diagonal,
+            lda,
+            block_ptr(A, lda, below_start, panel_start),
+            lda,
+            below_rows,
+            panel_size,
+            leaf_size);
+    }
 
     return;
 }
@@ -604,6 +714,7 @@ void hierarchical_potrf_profiled(
     int outer_block_size,
     int panel_block_size,
     int leaf_size,
+    int trsm_outer_block_size,
     int syrk_k_tile,
     int gemm_m_tile,
     int* info)
@@ -640,6 +751,7 @@ void hierarchical_potrf_profiled(
                 panel,
                 panel_size,
                 leaf_size,
+                trsm_outer_block_size,
                 info);
         }
 
@@ -679,6 +791,8 @@ int main(int argc, char** argv)
     const int panel_block_size =
         read_int_arg(argc, argv, "--panel-b", 8192);
     const int leaf_size = read_int_arg(argc, argv, "--leaf-b", 512);
+    const int trsm_outer_block_size =
+        read_int_arg(argc, argv, "--trsm-nb", 0);
     const int syrk_k_tile =
         read_int_arg(argc, argv, "--syrk-k-tile", 8192);
     const int gemm_m_tile =
@@ -688,12 +802,13 @@ int main(int argc, char** argv)
 
     if (n <= 0 || nb <= 0 || panel_block_size <= 0 ||
         panel_block_size > nb || leaf_size <= 0 ||
-        leaf_size > panel_block_size || syrk_k_tile <= 0 ||
+        leaf_size > panel_block_size || trsm_outer_block_size < 0 ||
+        trsm_outer_block_size > panel_block_size || syrk_k_tile <= 0 ||
         gemm_m_tile <= 0 || warmup < 0 || iters <= 0) {
         std::cerr
             << "Usage: profile_hierarchical_potrf "
             << "--n N --nb NB --panel-b PB --leaf-b IB "
-            << "--syrk-k-tile KT --gemm-m-tile MT "
+            << "[--trsm-nb TNB] --syrk-k-tile KT --gemm-m-tile MT "
             << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
@@ -720,6 +835,7 @@ int main(int argc, char** argv)
               << ", nb=" << nb
               << ", panel_b=" << panel_block_size
               << ", leaf_b=" << leaf_size
+              << ", trsm_nb=" << trsm_outer_block_size
               << ", syrk_k_tile=" << syrk_k_tile
               << ", gemm_m_tile=" << gemm_m_tile
               << ", warmup=" << warmup
@@ -739,6 +855,7 @@ int main(int argc, char** argv)
             nb,
             panel_block_size,
             leaf_size,
+            trsm_outer_block_size,
             syrk_k_tile,
             gemm_m_tile,
             d_info.get());
@@ -759,6 +876,7 @@ int main(int argc, char** argv)
             nb,
             panel_block_size,
             leaf_size,
+            trsm_outer_block_size,
             syrk_k_tile,
             gemm_m_tile,
             d_info.get());
@@ -771,6 +889,7 @@ int main(int argc, char** argv)
             ", nb=" + std::to_string(nb) +
             ", panel_b=" + std::to_string(panel_block_size) +
             ", leaf_b=" + std::to_string(leaf_size) +
+            ", trsm_nb=" + std::to_string(trsm_outer_block_size) +
             ", syrk_k_tile=" + std::to_string(syrk_k_tile) +
             ", gemm_m_tile=" + std::to_string(gemm_m_tile) + ")",
         110);

@@ -217,6 +217,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         options.double_nbs,
         options.micro_blocks,
         options.panel_blocks,
+        options.hierarchical_trsm_nbs,
         options.hierarchical_syrk_k_tiles,
         options.tail_nbs,
         options.precision_type,
