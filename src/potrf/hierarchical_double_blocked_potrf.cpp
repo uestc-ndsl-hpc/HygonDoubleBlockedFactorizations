@@ -25,6 +25,7 @@ void update_panel_from_current_outer(
     int outer,
     int panel_start,
     int panel_size,
+    int syrk_k_tile,
     int gemm_m_tile)
 {
     const int k = panel_start - outer;
@@ -32,19 +33,36 @@ void update_panel_from_current_outer(
         return;
     }
 
-    const int rows = n - panel_start;
-    const int effective_m_tile = rows > kGemmMThreshold ? gemm_m_tile : 0;
+    const float* panel_history = block_ptr(A, lda, panel_start, outer);
+    syrk_lower_update_kblocked(
+        handle,
+        panel_size,
+        k,
+        panel_history,
+        lda,
+        block_ptr(A, lda, panel_start, panel_start),
+        lda,
+        syrk_k_tile);
+
+    const int below_start = panel_start + panel_size;
+    const int below_rows = n - below_start;
+    if (below_rows <= 0) {
+        return;
+    }
+
+    const int effective_m_tile =
+        below_rows > kGemmMThreshold ? gemm_m_tile : 0;
 
     gemm_nt_update_m_tiled(
         handle,
-        rows,
+        below_rows,
         panel_size,
         k,
-        block_ptr(A, lda, panel_start, outer),
+        block_ptr(A, lda, below_start, outer),
         lda,
-        block_ptr(A, lda, panel_start, outer),
+        panel_history,
         lda,
-        block_ptr(A, lda, panel_start, panel_start),
+        block_ptr(A, lda, below_start, panel_start),
         lda,
         effective_m_tile);
 
@@ -186,6 +204,7 @@ void hierarchical_double_blocked_potrf(
                 outer,
                 panel,
                 panel_size,
+                syrk_k_tile,
                 gemm_m_tile);
 
             factor_and_solve_panel(

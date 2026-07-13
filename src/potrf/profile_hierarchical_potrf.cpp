@@ -435,6 +435,7 @@ void update_panel_from_current_outer_profiled(
     int outer,
     int panel_start,
     int panel_size,
+    int syrk_k_tile,
     int gemm_m_tile)
 {
     const int k = panel_start - outer;
@@ -442,23 +443,47 @@ void update_panel_from_current_outer_profiled(
         return;
     }
 
-    const int rows = n - panel_start;
+    const int effective_k_tile = syrk_k_tile > 0 ? syrk_k_tile : k;
+    for (int k_offset = 0; k_offset < k; k_offset += effective_k_tile) {
+        const int tile_k = std::min(effective_k_tile, k - k_offset);
+        profiler.measure(
+            stream,
+            "Inter-panel SYRK",
+            syrk_work(panel_size, tile_k),
+            [&]() {
+                rocblas_syrk_lower_update(
+                    handle,
+                    panel_size,
+                    tile_k,
+                    block_ptr(A, lda, panel_start, outer + k_offset),
+                    lda,
+                    block_ptr(A, lda, panel_start, panel_start),
+                    lda);
+            });
+    }
+
+    const int below_start = panel_start + panel_size;
+    const int below_rows = n - below_start;
+    if (below_rows <= 0) {
+        return;
+    }
+
     const int effective_m_tile =
-        rows > kGemmMThreshold ? gemm_m_tile : 0;
+        below_rows > kGemmMThreshold ? gemm_m_tile : 0;
 
     gemm_nt_update_m_tiled_profiled(
         handle,
         stream,
         profiler,
         "Inter-panel GEMM",
-        rows,
+        below_rows,
         panel_size,
         k,
-        block_ptr(A, lda, panel_start, outer),
+        block_ptr(A, lda, below_start, outer),
         lda,
         block_ptr(A, lda, panel_start, outer),
         lda,
-        block_ptr(A, lda, panel_start, panel_start),
+        block_ptr(A, lda, below_start, panel_start),
         lda,
         effective_m_tile);
 
@@ -602,6 +627,7 @@ void hierarchical_potrf_profiled(
                 outer,
                 panel,
                 panel_size,
+                syrk_k_tile,
                 gemm_m_tile);
 
             factor_and_solve_panel_profiled(
