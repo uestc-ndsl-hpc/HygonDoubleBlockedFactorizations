@@ -59,6 +59,7 @@ int main(int argc, char** argv)
         DoubleNb,
         MicroBlock,
         PanelBlock,
+        HierarchicalSyrkNTile,
         HierarchicalSyrkKTile,
         TailNb
     };
@@ -77,6 +78,10 @@ int main(int argc, char** argv)
             block_parameter = BlockParameter::PanelBlock;
             continue;
         }
+        if (std::strcmp(argv[i], "--hier-syrk-n-tile") == 0) {
+            block_parameter = BlockParameter::HierarchicalSyrkNTile;
+            continue;
+        }
         if (std::strcmp(argv[i], "--hier-syrk-k-tile") == 0) {
             block_parameter = BlockParameter::HierarchicalSyrkKTile;
             continue;
@@ -92,6 +97,8 @@ int main(int argc, char** argv)
             options.micro_blocks.push_back(std::atoi(argv[i]));
         } else if (block_parameter == BlockParameter::PanelBlock) {
             options.panel_blocks.push_back(std::atoi(argv[i]));
+        } else if (block_parameter == BlockParameter::HierarchicalSyrkNTile) {
+            options.hierarchical_syrk_n_tiles.push_back(std::atoi(argv[i]));
         } else if (block_parameter == BlockParameter::HierarchicalSyrkKTile) {
             options.hierarchical_syrk_k_tiles.push_back(std::atoi(argv[i]));
         } else if (block_parameter == BlockParameter::TailNb) {

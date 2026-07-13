@@ -223,6 +223,61 @@ void run_hierarchical_case(
 }
 
 template <typename T>
+void run_hierarchical_db_syrk_case(
+    PotrfBenchmarkContext<T>& context,
+    int nb,
+    int panel_block_size,
+    int potrf_leaf_size,
+    int syrk_n_tile,
+    int syrk_k_tile)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        if (panel_block_size <= 0 || panel_block_size > nb ||
+            potrf_leaf_size <= 0 || potrf_leaf_size > panel_block_size ||
+            syrk_n_tile <= 0 || syrk_n_tile > nb || syrk_k_tile <= 0) {
+            return;
+        }
+
+        const std::string parameters =
+            std::to_string(nb) + "/" + std::to_string(panel_block_size) +
+            "/" + std::to_string(potrf_leaf_size) + "/" +
+            std::to_string(syrk_n_tile) + "/" +
+            std::to_string(syrk_k_tile) + "/" +
+            std::to_string(kHierarchicalGemmMTile);
+
+        context.runner.execute(
+            "DoubleBlock+HierDBSYRK",
+            parameters,
+            context.reset,
+            [&]() {
+                hierarchical_double_blocked_potrf_db_syrk(
+                    context.handle,
+                    context.d_A,
+                    context.lda,
+                    context.n,
+                    nb,
+                    panel_block_size,
+                    potrf_leaf_size,
+                    syrk_n_tile,
+                    syrk_k_tile,
+                    kHierarchicalGemmMTile,
+                    context.d_info);
+            },
+            context.verify,
+            context.calc_gflops);
+    } else {
+        (void)context;
+        (void)nb;
+        (void)panel_block_size;
+        (void)potrf_leaf_size;
+        (void)syrk_n_tile;
+        (void)syrk_k_tile;
+    }
+
+    return;
+}
+
+template <typename T>
 void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
 {
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
@@ -312,6 +367,16 @@ void run_double_blocked_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         for (int syrk_k_tile : syrk_k_tiles) {
             run_hierarchical_case(
                 context, nb, panel_block_size, b, syrk_k_tile);
+
+            for (int syrk_n_tile : context.hierarchical_syrk_n_tiles) {
+                run_hierarchical_db_syrk_case(
+                    context,
+                    nb,
+                    panel_block_size,
+                    b,
+                    syrk_n_tile,
+                    syrk_k_tile);
+            }
         }
     }
 

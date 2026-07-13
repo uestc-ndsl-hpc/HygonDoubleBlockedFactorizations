@@ -24,6 +24,11 @@ float* block_ptr(float* A, int lda, int row, int col)
     return A + static_cast<size_t>(col) * static_cast<size_t>(lda) + row;
 }
 
+const float* block_ptr(const float* A, int lda, int row, int col)
+{
+    return A + static_cast<size_t>(col) * static_cast<size_t>(lda) + row;
+}
+
 double potrf_work(int n)
 {
     return static_cast<double>(n) * n * n / 3.0;
@@ -157,6 +162,81 @@ void rocblas_syrk_lower_update(
         &one,
         C,
         ldc));
+
+    return;
+}
+
+void double_blocked_syrk_lower_update_profiled(
+    rocblas_handle handle,
+    hipStream_t stream,
+    StageBreakdownProfiler& profiler,
+    const std::string& diagonal_stage,
+    const std::string& offdiagonal_stage,
+    int n,
+    int k,
+    const float* A,
+    int lda,
+    float* C,
+    int ldc,
+    int n_tile,
+    int k_tile)
+{
+    if (n <= 0 || k <= 0) {
+        return;
+    }
+
+    const int effective_n_tile =
+        n_tile > 0 && n_tile < n ? n_tile : n;
+    const int effective_k_tile =
+        k_tile > 0 && k_tile < k ? k_tile : k;
+
+    for (int k_offset = 0; k_offset < k; k_offset += effective_k_tile) {
+        const int tile_k = std::min(effective_k_tile, k - k_offset);
+
+        for (int col = 0; col < n; col += effective_n_tile) {
+            const int tile_cols = std::min(effective_n_tile, n - col);
+            const float* diagonal_input =
+                block_ptr(A, lda, col, k_offset);
+
+            profiler.measure(
+                stream,
+                diagonal_stage,
+                syrk_work(tile_cols, tile_k),
+                [&]() {
+                    rocblas_syrk_lower_update(
+                        handle,
+                        tile_cols,
+                        tile_k,
+                        diagonal_input,
+                        lda,
+                        block_ptr(C, ldc, col, col),
+                        ldc);
+                });
+
+            for (int row = col + tile_cols; row < n;
+                 row += effective_n_tile) {
+                const int tile_rows =
+                    std::min(effective_n_tile, n - row);
+                profiler.measure(
+                    stream,
+                    offdiagonal_stage,
+                    gemm_work(tile_rows, tile_cols, tile_k),
+                    [&]() {
+                        rocblas_gemm_nt_update(
+                            handle,
+                            tile_rows,
+                            tile_cols,
+                            tile_k,
+                            block_ptr(A, lda, row, k_offset),
+                            lda,
+                            diagonal_input,
+                            lda,
+                            block_ptr(C, ldc, row, col),
+                            ldc);
+                    });
+            }
+        }
+    }
 
     return;
 }
@@ -435,6 +515,7 @@ void update_panel_from_current_outer_profiled(
     int outer,
     int panel_start,
     int panel_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile)
 {
@@ -443,24 +524,20 @@ void update_panel_from_current_outer_profiled(
         return;
     }
 
-    const int effective_k_tile = syrk_k_tile > 0 ? syrk_k_tile : k;
-    for (int k_offset = 0; k_offset < k; k_offset += effective_k_tile) {
-        const int tile_k = std::min(effective_k_tile, k - k_offset);
-        profiler.measure(
-            stream,
-            "Inter-panel SYRK",
-            syrk_work(panel_size, tile_k),
-            [&]() {
-                rocblas_syrk_lower_update(
-                    handle,
-                    panel_size,
-                    tile_k,
-                    block_ptr(A, lda, panel_start, outer + k_offset),
-                    lda,
-                    block_ptr(A, lda, panel_start, panel_start),
-                    lda);
-            });
-    }
+    double_blocked_syrk_lower_update_profiled(
+        handle,
+        stream,
+        profiler,
+        "Inter-panel SYRK",
+        "Inter-panel SYRK GEMM",
+        panel_size,
+        k,
+        block_ptr(A, lda, panel_start, outer),
+        lda,
+        block_ptr(A, lda, panel_start, panel_start),
+        lda,
+        syrk_n_tile,
+        syrk_k_tile);
 
     const int below_start = panel_start + panel_size;
     const int below_rows = n - below_start;
@@ -543,6 +620,7 @@ void prepare_next_outer_panel_profiled(
     int n,
     int next_outer,
     int outer_block_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile)
 {
@@ -554,24 +632,20 @@ void prepare_next_outer_panel_profiled(
     const int below_start = next_outer + next_size;
     const int below_rows = n - below_start;
 
-    for (int k_offset = 0; k_offset < next_outer;
-         k_offset += syrk_k_tile) {
-        const int tile_k = std::min(syrk_k_tile, next_outer - k_offset);
-        profiler.measure(
-            stream,
-            "Outer SYRK",
-            syrk_work(next_size, tile_k),
-            [&]() {
-                rocblas_syrk_lower_update(
-                    handle,
-                    next_size,
-                    tile_k,
-                    block_ptr(A, lda, next_outer, k_offset),
-                    lda,
-                    block_ptr(A, lda, next_outer, next_outer),
-                    lda);
-            });
-    }
+    double_blocked_syrk_lower_update_profiled(
+        handle,
+        stream,
+        profiler,
+        "Outer SYRK",
+        "Outer SYRK GEMM",
+        next_size,
+        next_outer,
+        block_ptr(A, lda, next_outer, 0),
+        lda,
+        block_ptr(A, lda, next_outer, next_outer),
+        lda,
+        syrk_n_tile,
+        syrk_k_tile);
 
     const int effective_m_tile =
         below_rows > kGemmMThreshold ? gemm_m_tile : 0;
@@ -604,6 +678,7 @@ void hierarchical_potrf_profiled(
     int outer_block_size,
     int panel_block_size,
     int leaf_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile,
     int* info)
@@ -627,6 +702,7 @@ void hierarchical_potrf_profiled(
                 outer,
                 panel,
                 panel_size,
+                syrk_n_tile,
                 syrk_k_tile,
                 gemm_m_tile);
 
@@ -652,6 +728,7 @@ void hierarchical_potrf_profiled(
             n,
             outer_end,
             outer_block_size,
+            syrk_n_tile,
             syrk_k_tile,
             gemm_m_tile);
     }
@@ -679,6 +756,8 @@ int main(int argc, char** argv)
     const int panel_block_size =
         read_int_arg(argc, argv, "--panel-b", 8192);
     const int leaf_size = read_int_arg(argc, argv, "--leaf-b", 512);
+    const int syrk_n_tile =
+        read_int_arg(argc, argv, "--syrk-n-tile", 0);
     const int syrk_k_tile =
         read_int_arg(argc, argv, "--syrk-k-tile", 8192);
     const int gemm_m_tile =
@@ -688,12 +767,14 @@ int main(int argc, char** argv)
 
     if (n <= 0 || nb <= 0 || panel_block_size <= 0 ||
         panel_block_size > nb || leaf_size <= 0 ||
-        leaf_size > panel_block_size || syrk_k_tile <= 0 ||
+        leaf_size > panel_block_size || syrk_n_tile < 0 ||
+        syrk_n_tile > nb || syrk_k_tile <= 0 ||
         gemm_m_tile <= 0 || warmup < 0 || iters <= 0) {
         std::cerr
             << "Usage: profile_hierarchical_potrf "
             << "--n N --nb NB --panel-b PB --leaf-b IB "
-            << "--syrk-k-tile KT --gemm-m-tile MT "
+            << "[--syrk-n-tile NT] --syrk-k-tile KT "
+            << "--gemm-m-tile MT "
             << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
     }
@@ -720,6 +801,7 @@ int main(int argc, char** argv)
               << ", nb=" << nb
               << ", panel_b=" << panel_block_size
               << ", leaf_b=" << leaf_size
+              << ", syrk_n_tile=" << syrk_n_tile
               << ", syrk_k_tile=" << syrk_k_tile
               << ", gemm_m_tile=" << gemm_m_tile
               << ", warmup=" << warmup
@@ -739,6 +821,7 @@ int main(int argc, char** argv)
             nb,
             panel_block_size,
             leaf_size,
+            syrk_n_tile,
             syrk_k_tile,
             gemm_m_tile,
             d_info.get());
@@ -759,6 +842,7 @@ int main(int argc, char** argv)
             nb,
             panel_block_size,
             leaf_size,
+            syrk_n_tile,
             syrk_k_tile,
             gemm_m_tile,
             d_info.get());
@@ -771,6 +855,7 @@ int main(int argc, char** argv)
             ", nb=" + std::to_string(nb) +
             ", panel_b=" + std::to_string(panel_block_size) +
             ", leaf_b=" + std::to_string(leaf_size) +
+            ", syrk_n_tile=" + std::to_string(syrk_n_tile) +
             ", syrk_k_tile=" + std::to_string(syrk_k_tile) +
             ", gemm_m_tile=" + std::to_string(gemm_m_tile) + ")",
         110);

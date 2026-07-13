@@ -5,6 +5,7 @@
 
 #include "gemm/update_gemm.h"
 #include "potrf/blocked_potrf.h"
+#include "syrk/double_blocked_syrk.h"
 #include "syrk/kblocked_syrk.h"
 #include "trsm/recursive_trsm.h"
 
@@ -17,6 +18,37 @@ float* block_ptr(float* A, int lda, int row, int col)
     return A + static_cast<size_t>(col) * static_cast<size_t>(lda) + row;
 }
 
+void update_symmetric_lower(
+    rocblas_handle handle,
+    int n,
+    int k,
+    const float* A,
+    int lda,
+    float* C,
+    int ldc,
+    int syrk_n_tile,
+    int syrk_k_tile)
+{
+    if (syrk_n_tile > 0 && syrk_n_tile < n) {
+        double_blocked_syrk_lower_update(
+            handle,
+            n,
+            k,
+            A,
+            lda,
+            C,
+            ldc,
+            syrk_n_tile,
+            syrk_k_tile);
+        return;
+    }
+
+    syrk_lower_update_kblocked(
+        handle, n, k, A, lda, C, ldc, syrk_k_tile);
+
+    return;
+}
+
 void update_panel_from_current_outer(
     rocblas_handle handle,
     float* A,
@@ -25,6 +57,7 @@ void update_panel_from_current_outer(
     int outer,
     int panel_start,
     int panel_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile)
 {
@@ -34,7 +67,7 @@ void update_panel_from_current_outer(
     }
 
     const float* panel_history = block_ptr(A, lda, panel_start, outer);
-    syrk_lower_update_kblocked(
+    update_symmetric_lower(
         handle,
         panel_size,
         k,
@@ -42,6 +75,7 @@ void update_panel_from_current_outer(
         lda,
         block_ptr(A, lda, panel_start, panel_start),
         lda,
+        syrk_n_tile,
         syrk_k_tile);
 
     const int below_start = panel_start + panel_size;
@@ -115,6 +149,7 @@ void prepare_next_outer_panel(
     int n,
     int next_outer,
     int outer_block_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile)
 {
@@ -128,7 +163,7 @@ void prepare_next_outer_panel(
     const int effective_m_tile =
         below_rows > kGemmMThreshold ? gemm_m_tile : 0;
 
-    syrk_lower_update_kblocked(
+    update_symmetric_lower(
         handle,
         next_size,
         next_outer,
@@ -136,6 +171,7 @@ void prepare_next_outer_panel(
         lda,
         block_ptr(A, lda, next_outer, next_outer),
         lda,
+        syrk_n_tile,
         syrk_k_tile);
 
     gemm_nt_update_m_tiled(
@@ -154,11 +190,7 @@ void prepare_next_outer_panel(
     return;
 }
 
-} // namespace
-
-extern "C" {
-
-void hierarchical_double_blocked_potrf(
+void hierarchical_double_blocked_potrf_impl(
     rocblas_handle handle,
     float* A,
     int lda,
@@ -166,6 +198,7 @@ void hierarchical_double_blocked_potrf(
     int outer_block_size,
     int panel_block_size,
     int potrf_leaf_size,
+    int syrk_n_tile,
     int syrk_k_tile,
     int gemm_m_tile,
     int* info)
@@ -204,6 +237,7 @@ void hierarchical_double_blocked_potrf(
                 outer,
                 panel,
                 panel_size,
+                syrk_n_tile,
                 syrk_k_tile,
                 gemm_m_tile);
 
@@ -225,9 +259,71 @@ void hierarchical_double_blocked_potrf(
             n,
             outer_end,
             outer_block_size,
+            syrk_n_tile,
             syrk_k_tile,
             gemm_m_tile);
     }
+
+    return;
+}
+
+} // namespace
+
+extern "C" {
+
+void hierarchical_double_blocked_potrf(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int outer_block_size,
+    int panel_block_size,
+    int potrf_leaf_size,
+    int syrk_k_tile,
+    int gemm_m_tile,
+    int* info)
+{
+    hierarchical_double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        outer_block_size,
+        panel_block_size,
+        potrf_leaf_size,
+        0,
+        syrk_k_tile,
+        gemm_m_tile,
+        info);
+
+    return;
+}
+
+void hierarchical_double_blocked_potrf_db_syrk(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int outer_block_size,
+    int panel_block_size,
+    int potrf_leaf_size,
+    int syrk_n_tile,
+    int syrk_k_tile,
+    int gemm_m_tile,
+    int* info)
+{
+    hierarchical_double_blocked_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        outer_block_size,
+        panel_block_size,
+        potrf_leaf_size,
+        syrk_n_tile,
+        syrk_k_tile,
+        gemm_m_tile,
+        info);
 
     return;
 }
