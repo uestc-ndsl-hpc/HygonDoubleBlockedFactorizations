@@ -62,6 +62,26 @@ int main(int argc, char** argv)
 
     BlockParameter block_parameter = BlockParameter::Nb;
     for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--fast-recursive") == 0) {
+            options.test_fast_recursive = true;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--fast-leaf") == 0 && i + 1 < argc) {
+            options.fast_recursive_leaf = std::atoi(argv[++i]);
+            continue;
+        }
+        if (std::strcmp(argv[i], "--fast-base-nb") == 0 && i + 1 < argc) {
+            options.fast_recursive_base_nb = std::atoi(argv[++i]);
+            continue;
+        }
+        if (std::strcmp(argv[i], "--strassen-min") == 0 && i + 1 < argc) {
+            options.strassen_min_size = std::atoi(argv[++i]);
+            continue;
+        }
+        if (std::strcmp(argv[i], "--fast-syrk-k-tile") == 0 && i + 1 < argc) {
+            options.fast_recursive_syrk_k_tile = std::atoi(argv[++i]);
+            continue;
+        }
         if (std::strcmp(argv[i], "--double-nb") == 0) {
             block_parameter = BlockParameter::DoubleNb;
             continue;

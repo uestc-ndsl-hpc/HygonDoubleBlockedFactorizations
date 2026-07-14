@@ -216,6 +216,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         options.nbs,
         options.double_nbs,
         options.micro_blocks,
+        options.fast_recursive_leaf,
+        options.fast_recursive_base_nb,
+        options.strassen_min_size,
+        options.fast_recursive_syrk_k_tile,
         options.precision_type,
         runner,
         results,
@@ -241,6 +245,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     if (options.test_recursive) {
         run_recursive_cases(context);
+    }
+
+    if (options.test_fast_recursive) {
+        run_fast_recursive_case(context);
     }
 
     print_benchmark_results(

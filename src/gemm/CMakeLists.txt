@@ -1,5 +1,6 @@
 add_library(hygon_gemm STATIC
     mixed_gemm.cpp
+    strassen_gemm.cpp
     update_gemm.cpp
 )
 
