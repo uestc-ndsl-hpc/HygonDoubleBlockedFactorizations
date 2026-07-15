@@ -27,6 +27,7 @@ TEST_ROCSOLVER=${POTRF_TEST_ROCSOLVER:-1}
 TEST_RECURSIVE=${POTRF_TEST_RECURSIVE:-1}
 TEST_BLOCKED=${POTRF_TEST_BLOCKED:-1}
 TEST_DOUBLE_BLOCKED=${POTRF_TEST_DOUBLE_BLOCKED:-1}
+TEST_DOUBLE_LEFT_LOOKING=${POTRF_TEST_DOUBLE_LEFT_LOOKING:-0}
 
 mkdir -p "${RESULT_DIR}"
 rm -f "${SUMMARY_LOG}"
@@ -45,6 +46,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"
     echo "Test Blocked-RL    : ${TEST_BLOCKED}"
     echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"
+    echo "Test DoubleBlock LL: ${TEST_DOUBLE_LEFT_LOOKING}"
     echo "Test Recursive     : ${TEST_RECURSIVE}"
 } | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}"
@@ -63,6 +65,11 @@ for N in "${NS[@]}"; do
     OUT_FILE=${RESULT_DIR}/potrf_N${N}.log
     echo "Output detail      : ${OUT_FILE}" | tee -a "${SUMMARY_LOG}"
 
+    EXTRA_ARGS=()
+    if [[ "${TEST_DOUBLE_LEFT_LOOKING}" == "1" ]]; then
+        EXTRA_ARGS+=(--double-left-looking)
+    fi
+
     "${LAUNCH_PREFIX[@]}" "${EXEC}" \
         "${N}" \
         "${TEST_ROCSOLVER}" \
@@ -74,6 +81,7 @@ for N in "${NS[@]}"; do
         "${BASELINE_NBS[@]}" \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        "${EXTRA_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

@@ -17,6 +17,7 @@ struct PotrfBenchmarkOptions {
     bool test_rocsolver = true;
     bool test_blocked = true;
     bool test_double_blocked = true;
+    bool test_double_blocked_left_looking = false;
     bool test_recursive = true;
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
@@ -58,5 +59,8 @@ void run_blocked_cases(PotrfBenchmarkContext<T>& context);
 
 template <typename T>
 void run_double_blocked_cases(PotrfBenchmarkContext<T>& context);
+
+template <typename T>
+void run_double_blocked_left_looking_cases(PotrfBenchmarkContext<T>& context);
 
 } // namespace potrf_benchmark

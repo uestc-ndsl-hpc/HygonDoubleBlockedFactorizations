@@ -62,6 +62,10 @@ int main(int argc, char** argv)
 
     BlockParameter block_parameter = BlockParameter::Nb;
     for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--double-left-looking") == 0) {
+            options.test_double_blocked_left_looking = true;
+            continue;
+        }
         if (std::strcmp(argv[i], "--double-nb") == 0) {
             block_parameter = BlockParameter::DoubleNb;
             continue;

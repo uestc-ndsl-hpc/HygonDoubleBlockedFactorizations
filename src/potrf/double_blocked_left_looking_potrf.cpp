@@ -1,0 +1,372 @@
+#include "potrf/double_blocked_left_looking_potrf.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <type_traits>
+
+#include <rocsolver/rocsolver.h>
+
+#include "gemm/update_gemm.h"
+#include "syrk/kblocked_syrk.h"
+#include "trsm/right_lower_trsm.h"
+#include "utils/common/error_check.h"
+
+namespace {
+
+template <typename T>
+T* block_ptr(T* A, int lda, int row, int col)
+{
+    return A + static_cast<size_t>(col) * lda + row;
+}
+
+template <typename T>
+void potrf_lower(rocblas_handle handle,
+                 int n,
+                 T* A,
+                 int lda,
+                 int* info)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        ROCBLAS_CHECK(rocsolver_spotrf(
+            handle, rocblas_fill_lower, n, A, lda, info));
+    } else {
+        ROCBLAS_CHECK(rocsolver_dpotrf(
+            handle, rocblas_fill_lower, n, A, lda, info));
+    }
+
+    return;
+}
+
+template <typename T>
+void trsm_right_lower_transpose_dispatch(rocblas_handle handle,
+                                         int rows,
+                                         int cols,
+                                         const T* diagonal,
+                                         int lda,
+                                         T* panel,
+                                         int ldb)
+{
+    if (rows <= 0 || cols <= 0) {
+        return;
+    }
+
+    if constexpr (std::is_same_v<T, float>) {
+        trsm_right_lower_transpose(
+            handle, rows, cols, diagonal, lda, panel, ldb);
+    } else {
+        trsm_right_lower_transpose_double(
+            handle, rows, cols, diagonal, lda, panel, ldb);
+    }
+
+    return;
+}
+
+template <typename T>
+void syrk_lower_update_dispatch(rocblas_handle handle,
+                                int n,
+                                int k,
+                                const T* history,
+                                int lda,
+                                T* diagonal,
+                                int ldc,
+                                int k_tile)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        syrk_lower_update_kblocked(
+            handle, n, k, history, lda, diagonal, ldc, k_tile);
+    } else {
+        syrk_lower_update_kblocked_double(
+            handle, n, k, history, lda, diagonal, ldc, k_tile);
+    }
+
+    return;
+}
+
+template <typename T>
+void gemm_nt_update_dispatch(rocblas_handle handle,
+                             int rows,
+                             int cols,
+                             int k,
+                             const T* row_history,
+                             int lda,
+                             const T* column_history,
+                             int ldb,
+                             T* target,
+                             int ldc,
+                             int m_tile)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        gemm_nt_update_m_tiled(
+            handle,
+            rows,
+            cols,
+            k,
+            row_history,
+            lda,
+            column_history,
+            ldb,
+            target,
+            ldc,
+            m_tile);
+    } else {
+        gemm_nt_update_m_tiled_double(
+            handle,
+            rows,
+            cols,
+            k,
+            row_history,
+            lda,
+            column_history,
+            ldb,
+            target,
+            ldc,
+            m_tile);
+    }
+
+    return;
+}
+
+template <typename T>
+void materialize_outer_block_column(rocblas_handle handle,
+                                    T* A,
+                                    int lda,
+                                    int n,
+                                    int outer,
+                                    int outer_size,
+                                    int nb,
+                                    int syrk_k_tile,
+                                    int gemm_m_tile)
+{
+    if (outer <= 0) {
+        return;
+    }
+
+    const int below_start = outer + outer_size;
+    const int below_rows = n - below_start;
+
+    for (int previous = 0; previous < outer; previous += nb) {
+        const int history_size = std::min(nb, outer - previous);
+
+        syrk_lower_update_dispatch(
+            handle,
+            outer_size,
+            history_size,
+            block_ptr(A, lda, outer, previous),
+            lda,
+            block_ptr(A, lda, outer, outer),
+            lda,
+            syrk_k_tile);
+
+        // Each previous outer block contributes exactly one block-column
+        // product to the current panel in the mathematical LL schedule.
+        gemm_nt_update_dispatch(
+            handle,
+            below_rows,
+            outer_size,
+            history_size,
+            block_ptr(A, lda, below_start, previous),
+            lda,
+            block_ptr(A, lda, outer, previous),
+            lda,
+            block_ptr(A, lda, below_start, outer),
+            lda,
+            gemm_m_tile);
+    }
+
+    return;
+}
+
+template <typename T>
+void factor_outer_diagonal_left_looking(rocblas_handle handle,
+                                        T* A,
+                                        int lda,
+                                        int outer,
+                                        int outer_end,
+                                        int b,
+                                        int* info)
+{
+    for (int inner = outer; inner < outer_end; inner += b) {
+        const int inner_size = std::min(b, outer_end - inner);
+        const int below_inner = inner + inner_size;
+        const int below_rows = outer_end - below_inner;
+
+        for (int previous = outer; previous < inner; previous += b) {
+            const int history_size = std::min(b, inner - previous);
+
+            syrk_lower_update_dispatch(
+                handle,
+                inner_size,
+                history_size,
+                block_ptr(A, lda, inner, previous),
+                lda,
+                block_ptr(A, lda, inner, inner),
+                lda,
+                0);
+
+            gemm_nt_update_dispatch(
+                handle,
+                below_rows,
+                inner_size,
+                history_size,
+                block_ptr(A, lda, below_inner, previous),
+                lda,
+                block_ptr(A, lda, inner, previous),
+                lda,
+                block_ptr(A, lda, below_inner, inner),
+                lda,
+                0);
+        }
+
+        T* diagonal = block_ptr(A, lda, inner, inner);
+        potrf_lower(handle, inner_size, diagonal, lda, info);
+
+        trsm_right_lower_transpose_dispatch(
+            handle,
+            outer_end - below_inner,
+            inner_size,
+            diagonal,
+            lda,
+            block_ptr(A, lda, below_inner, inner),
+            lda);
+    }
+
+    return;
+}
+
+template <typename T>
+void double_blocked_left_looking_potrf_impl(rocblas_handle handle,
+                                            T* A,
+                                            int lda,
+                                            int n,
+                                            int nb,
+                                            int b,
+                                            int syrk_k_tile,
+                                            int gemm_m_tile,
+                                            int* info)
+{
+    if (n <= 0) {
+        return;
+    }
+    if (nb <= 0) {
+        nb = n;
+    }
+    if (b <= 0) {
+        b = nb;
+    }
+    b = std::min(b, nb);
+
+    for (int outer = 0; outer < n; outer += nb) {
+        const int outer_size = std::min(nb, n - outer);
+        const int outer_end = outer + outer_size;
+
+        // Pull all previous outer-block contributions into the current block
+        // column before any factorization inside this outer block begins.
+        materialize_outer_block_column(
+            handle,
+            A,
+            lda,
+            n,
+            outer,
+            outer_size,
+            nb,
+            syrk_k_tile,
+            gemm_m_tile);
+
+        factor_outer_diagonal_left_looking(
+            handle, A, lda, outer, outer_end, b, info);
+
+        trsm_right_lower_transpose_dispatch(
+            handle,
+            n - outer_end,
+            outer_size,
+            block_ptr(A, lda, outer, outer),
+            lda,
+            block_ptr(A, lda, outer_end, outer),
+            lda);
+    }
+
+    return;
+}
+
+} // namespace
+
+extern "C" {
+
+void double_blocked_left_looking_potrf(rocblas_handle handle,
+                                       float* A,
+                                       int lda,
+                                       int n,
+                                       int nb,
+                                       int b,
+                                       int* info)
+{
+    double_blocked_left_looking_potrf_impl(
+        handle, A, lda, n, nb, b, 0, 0, info);
+
+    return;
+}
+
+void double_blocked_left_looking_potrf_optimized(rocblas_handle handle,
+                                                 float* A,
+                                                 int lda,
+                                                 int n,
+                                                 int nb,
+                                                 int b,
+                                                 int syrk_k_tile,
+                                                 int gemm_m_tile,
+                                                 int* info)
+{
+    double_blocked_left_looking_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        syrk_k_tile,
+        gemm_m_tile,
+        info);
+
+    return;
+}
+
+void double_blocked_left_looking_potrf_double(rocblas_handle handle,
+                                              double* A,
+                                              int lda,
+                                              int n,
+                                              int nb,
+                                              int b,
+                                              int* info)
+{
+    double_blocked_left_looking_potrf_impl(
+        handle, A, lda, n, nb, b, 0, 0, info);
+
+    return;
+}
+
+void double_blocked_left_looking_potrf_double_optimized(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int syrk_k_tile,
+    int gemm_m_tile,
+    int* info)
+{
+    double_blocked_left_looking_potrf_impl(
+        handle,
+        A,
+        lda,
+        n,
+        nb,
+        b,
+        syrk_k_tile,
+        gemm_m_tile,
+        info);
+
+    return;
+}
+
+} // extern "C"

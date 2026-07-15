@@ -239,6 +239,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         run_double_blocked_cases(context);
     }
 
+    if (options.test_double_blocked_left_looking) {
+        run_double_blocked_left_looking_cases(context);
+    }
+
     if (options.test_recursive) {
         run_recursive_cases(context);
     }
