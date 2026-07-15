@@ -15,6 +15,8 @@ struct GetrfBenchmarkOptions {
     int n = 4096;
     int precision_type = 0;
     ErrorMode error_mode = ErrorMode::None;
+    bool pivoting = false;
+    int trsm_leaf = 512;
     std::vector<int> nbs;
     std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
@@ -24,9 +26,12 @@ template <typename T>
 struct GetrfBenchmarkContext {
     rocblas_handle handle;
     T* d_A;
+    int* d_ipiv;
     int* d_info;
     int n;
     int lda;
+    bool pivoting;
+    int trsm_leaf;
     const std::vector<int>& nbs;
     const std::vector<int>& double_nbs;
     const std::vector<int>& micro_blocks;

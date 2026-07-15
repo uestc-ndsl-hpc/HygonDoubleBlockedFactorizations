@@ -3,25 +3,38 @@
 #include <string>
 #include <type_traits>
 
+#include "getrf/blocked_getrf.h"
 #include "getrf/blocked_getrf_npvt.h"
 
 namespace getrf_benchmark {
 namespace {
 
 template <typename T>
-void call_blocked_getrf_npvt(rocblas_handle handle,
-                             T* A,
-                             int lda,
-                             int n,
-                             int nb,
-                             int* info)
+void call_blocked_getrf(rocblas_handle handle,
+                        T* A,
+                        int lda,
+                        int n,
+                        int nb,
+                        bool pivoting,
+                        int* ipiv,
+                        int* info)
 {
-    if constexpr (std::is_same_v<T, float>) {
-        blocked_right_looking_getrf_npvt(
-            handle, A, lda, n, nb, info);
+    if (pivoting) {
+        if constexpr (std::is_same_v<T, float>) {
+            blocked_right_looking_getrf(
+                handle, A, lda, n, nb, ipiv, info);
+        } else {
+            blocked_right_looking_getrf_double(
+                handle, A, lda, n, nb, ipiv, info);
+        }
     } else {
-        blocked_right_looking_getrf_npvt_double(
-            handle, A, lda, n, nb, info);
+        if constexpr (std::is_same_v<T, float>) {
+            blocked_right_looking_getrf_npvt(
+                handle, A, lda, n, nb, info);
+        } else {
+            blocked_right_looking_getrf_npvt_double(
+                handle, A, lda, n, nb, info);
+        }
     }
 
     return;
@@ -38,16 +51,18 @@ void run_blocked_cases(GetrfBenchmarkContext<T>& context)
         }
 
         context.runner.execute(
-            "Blocked-RL-LU-NPVT",
+            context.pivoting ? "Blocked-RL-LU" : "Blocked-RL-LU-NPVT",
             std::to_string(nb),
             context.reset,
             [&]() {
-                call_blocked_getrf_npvt(
+                call_blocked_getrf(
                     context.handle,
                     context.d_A,
                     context.lda,
                     context.n,
                     nb,
+                    context.pivoting,
+                    context.d_ipiv,
                     context.d_info);
             },
             context.verify,

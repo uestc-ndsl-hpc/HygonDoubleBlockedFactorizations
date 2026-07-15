@@ -1,7 +1,12 @@
 add_library(hygon_getrf STATIC
+    blocked_getrf.cpp
     blocked_getrf_npvt.cpp
+    double_blocked_getrf.cpp
     double_blocked_getrf_npvt.cpp
+    getrf_pivot_kernels.hip
 )
+
+set_source_files_properties(getrf_pivot_kernels.hip PROPERTIES LANGUAGE CXX)
 
 apply_benchmark_options(hygon_getrf)
 target_link_libraries(hygon_getrf

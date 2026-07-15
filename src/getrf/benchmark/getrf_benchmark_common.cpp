@@ -29,7 +29,7 @@ double calculate_gflops(int n, double time_ms)
 }
 
 template <typename T>
-void generate_stable_dense_matrix(std::vector<T>& A, int n)
+void generate_dense_matrix(std::vector<T>& A, int n, bool pivoting)
 {
     std::mt19937 gen(1234567890u);
     std::uniform_real_distribution<double> dist(-0.5, 0.5);
@@ -37,8 +37,10 @@ void generate_stable_dense_matrix(std::vector<T>& A, int n)
     for (T& value : A) {
         value = static_cast<T>(dist(gen));
     }
-    for (int i = 0; i < n; ++i) {
-        A[static_cast<size_t>(i) * n + i] += static_cast<T>(n);
+    if (!pivoting) {
+        for (int i = 0; i < n; ++i) {
+            A[static_cast<size_t>(i) * n + i] += static_cast<T>(n);
+        }
     }
 
     return;
@@ -47,8 +49,10 @@ void generate_stable_dense_matrix(std::vector<T>& A, int n)
 template <typename T>
 double verify_backward_error_sampled(const T* packed_lu,
                                      const T* original,
+                                     const int* pivots,
                                      int n,
                                      int lda,
+                                     bool pivoting,
                                      int sample_count = 4096)
 {
     const long long total = static_cast<long long>(n) * n;
@@ -57,6 +61,20 @@ double verify_backward_error_sampled(const T* packed_lu,
 
     std::mt19937 gen(20260715u);
     std::uniform_int_distribution<int> index_dist(0, n - 1);
+
+    std::vector<int> permutation(n);
+    for (int row = 0; row < n; ++row) {
+        permutation[row] = row;
+    }
+    if (pivoting) {
+        for (int row = 0; row < n; ++row) {
+            const int pivot_row = pivots[row] - 1;
+            if (pivot_row < row || pivot_row >= n) {
+                return std::numeric_limits<double>::infinity();
+            }
+            std::swap(permutation[row], permutation[pivot_row]);
+        }
+    }
 
     double residual_norm_sq = 0.0;
     double original_norm_sq = 0.0;
@@ -82,8 +100,9 @@ double verify_backward_error_sampled(const T* packed_lu,
             reconstructed += l_value * u_value;
         }
 
+        const int original_row = permutation[row];
         const double a_value = static_cast<double>(
-            original[static_cast<size_t>(col) * lda + row]);
+            original[static_cast<size_t>(col) * lda + original_row]);
         const double residual = reconstructed - a_value;
         residual_norm_sq += residual * residual;
         original_norm_sq += a_value * a_value;
@@ -107,10 +126,11 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     const size_t bytes = element_count * sizeof(T);
 
     std::vector<T> h_A_original(element_count);
-    generate_stable_dense_matrix(h_A_original, n);
+    generate_dense_matrix(h_A_original, n, options.pivoting);
 
     DeviceBuffer<T> d_A_original(element_count);
     DeviceBuffer<T> d_A(element_count);
+    DeviceBuffer<int> d_ipiv(n);
     DeviceBuffer<int> d_info(1);
 
     HIP_CHECK(hipMemcpy(
@@ -126,6 +146,7 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     auto reset = [&]() {
         HIP_CHECK(hipMemcpy(
             d_A, d_A_original, bytes, hipMemcpyDeviceToDevice));
+        HIP_CHECK(hipMemset(d_ipiv, 0, static_cast<size_t>(n) * sizeof(int)));
         HIP_CHECK(hipMemset(d_info, 0, sizeof(int)));
     };
 
@@ -146,8 +167,24 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         std::vector<T> h_lu(element_count);
         HIP_CHECK(hipMemcpy(
             h_lu.data(), d_A, bytes, hipMemcpyDeviceToHost));
+
+        std::vector<int> h_ipiv;
+        if (options.pivoting) {
+            h_ipiv.resize(n);
+            HIP_CHECK(hipMemcpy(
+                h_ipiv.data(),
+                d_ipiv,
+                static_cast<size_t>(n) * sizeof(int),
+                hipMemcpyDeviceToHost));
+        }
+
         backward_error = verify_backward_error_sampled(
-            h_lu.data(), h_A_original.data(), n, n);
+            h_lu.data(),
+            h_A_original.data(),
+            options.pivoting ? h_ipiv.data() : nullptr,
+            n,
+            n,
+            options.pivoting);
     };
 
     auto calc_gflops = [n](double time_ms) {
@@ -157,9 +194,12 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     GetrfBenchmarkContext<T> context{
         handle,
         d_A,
+        d_ipiv,
         d_info,
         n,
         n,
+        options.pivoting,
+        options.trsm_leaf,
         options.nbs,
         options.double_nbs,
         options.micro_blocks,
@@ -171,13 +211,14 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         calc_gflops
     };
 
-    std::cout << ">>> Running GETRF-NPVT Benchmarks...\n";
+    const std::string mode = options.pivoting ? "GETRF" : "GETRF-NPVT";
+    std::cout << ">>> Running " << mode << " Benchmarks...\n";
     run_rocsolver_case(context);
     run_blocked_cases(context);
     run_double_blocked_cases(context);
 
     print_benchmark_results(
-        "GETRF-NPVT Benchmark Summary (N = " + std::to_string(n) + ")",
+        mode + " Benchmark Summary (N = " + std::to_string(n) + ")",
         results,
         options.error_mode,
         120);
@@ -192,10 +233,14 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
 void run_getrf_benchmarks(const GetrfBenchmarkOptions& options)
 {
     if (options.precision_type == 1) {
-        std::cout << "Running GETRF-NPVT benchmark in DOUBLE precision\n";
+        std::cout << "Running "
+                  << (options.pivoting ? "GETRF" : "GETRF-NPVT")
+                  << " benchmark in DOUBLE precision\n";
         run_all_benchmarks<double>(options);
     } else {
-        std::cout << "Running GETRF-NPVT benchmark in FLOAT precision\n";
+        std::cout << "Running "
+                  << (options.pivoting ? "GETRF" : "GETRF-NPVT")
+                  << " benchmark in FLOAT precision\n";
         run_all_benchmarks<float>(options);
     }
 

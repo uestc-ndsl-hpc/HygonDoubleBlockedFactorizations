@@ -8,7 +8,8 @@ namespace {
 enum class BlockParameter {
     Nb,
     DoubleNb,
-    MicroBlock
+    MicroBlock,
+    TrsmLeaf
 };
 
 } // namespace
@@ -29,6 +30,15 @@ int main(int argc, char** argv)
 
     BlockParameter parameter = BlockParameter::Nb;
     for (int i = 4; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--pivot") == 0
+            || std::strcmp(argv[i], "-p") == 0) {
+            options.pivoting = true;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--npvt") == 0) {
+            options.pivoting = false;
+            continue;
+        }
         if (std::strcmp(argv[i], "--double-nb") == 0) {
             parameter = BlockParameter::DoubleNb;
             continue;
@@ -37,12 +47,19 @@ int main(int argc, char** argv)
             parameter = BlockParameter::MicroBlock;
             continue;
         }
+        if (std::strcmp(argv[i], "--trsm-leaf") == 0) {
+            parameter = BlockParameter::TrsmLeaf;
+            continue;
+        }
 
         const int value = std::atoi(argv[i]);
         if (parameter == BlockParameter::DoubleNb) {
             options.double_nbs.push_back(value);
         } else if (parameter == BlockParameter::MicroBlock) {
             options.micro_blocks.push_back(value);
+        } else if (parameter == BlockParameter::TrsmLeaf) {
+            options.trsm_leaf = value;
+            parameter = BlockParameter::Nb;
         } else {
             options.nbs.push_back(value);
         }

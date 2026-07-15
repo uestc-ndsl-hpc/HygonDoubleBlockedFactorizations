@@ -13,30 +13,65 @@ fi
 ROOT_DIR=${SCRIPT_DIR}
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_getrf
-RESULT_DIR=${GETRF_RESULT_DIR:-${ROOT_DIR}/results/fp32/getrf_npvt}
+PIVOTING=${GETRF_PIVOTING:-1}
+if [[ "${PIVOTING}" == "1" ]]; then
+    MODE_NAME=GETRF
+    DEFAULT_RESULT_SUBDIR=getrf_pivoted
+else
+    MODE_NAME=GETRF-NPVT
+    DEFAULT_RESULT_SUBDIR=getrf_npvt
+fi
+
+RESULT_DIR=${GETRF_RESULT_DIR:-${ROOT_DIR}/results/fp32/${DEFAULT_RESULT_SUBDIR}}
 SUMMARY_LOG=${RESULT_DIR}/summary.log
 
 read -r -a NS <<< "${GETRF_NS:-4096 8192 16384 24576 32768 40960}"
 read -r -a BASELINE_NBS <<< "${GETRF_BASELINE_NBS:-1024 2048}"
-read -r -a DOUBLE_NBS <<< "${GETRF_DOUBLE_NBS:-8192}"
-read -r -a MICRO_BLOCKS <<< "${GETRF_MICRO_BLOCKS:-1024 2048}"
+DOUBLE_NBS=()
+MICRO_BLOCKS=()
+if [[ -n "${GETRF_DOUBLE_NBS:-}" ]]; then
+    read -r -a DOUBLE_NBS <<< "${GETRF_DOUBLE_NBS}"
+fi
+if [[ -n "${GETRF_MICRO_BLOCKS:-}" ]]; then
+    read -r -a MICRO_BLOCKS <<< "${GETRF_MICRO_BLOCKS}"
+fi
 
 PRECISION=${GETRF_PRECISION:-0}
 VERIFY=${GETRF_VERIFY:-0}
+TRSM_LEAF=${GETRF_TRSM_LEAF:-512}
+
+PIVOT_ARGS=()
+if [[ "${PIVOTING}" == "1" ]]; then
+    PIVOT_ARGS+=(--pivot)
+fi
+
+DOUBLE_BLOCK_ARGS=()
+if (( ${#DOUBLE_NBS[@]} > 0 )); then
+    DOUBLE_BLOCK_ARGS+=(--double-nb "${DOUBLE_NBS[@]}")
+fi
+if (( ${#MICRO_BLOCKS[@]} > 0 )); then
+    DOUBLE_BLOCK_ARGS+=(--b "${MICRO_BLOCKS[@]}")
+fi
 
 mkdir -p "${RESULT_DIR}"
 rm -f "${SUMMARY_LOG}"
 
 {
     echo "=================================================="
-    echo "GETRF-NPVT benchmark"
+    echo "${MODE_NAME} benchmark"
     echo "Executable         : ${EXEC}"
     echo "Result directory   : ${RESULT_DIR}"
     echo "Matrix sizes       : ${NS[*]}"
     echo "Precision mode     : ${PRECISION} (0=FP32, 1=FP64)"
     echo "Backward verify    : ${VERIFY}"
+    echo "Pivoting            : ${PIVOTING}"
     echo "Blocked-RL NBs     : ${BASELINE_NBS[*]}"
-    echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]} / ${MICRO_BLOCKS[*]}"
+    if (( ${#DOUBLE_NBS[@]} == 0 && ${#MICRO_BLOCKS[@]} == 0 )); then
+        echo "DoubleBlock NB/B   : N/2 / N/4 (reference defaults)"
+    else
+        echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]:-N/2} / ${MICRO_BLOCKS[*]:-N/4}"
+    fi
+    echo "Recursive TRSM leaf: ${TRSM_LEAF}"
 } | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
@@ -49,7 +84,7 @@ configure_numa_launch_prefix "${SUMMARY_LOG}"
 
 for N in "${NS[@]}"; do
     echo "" | tee -a "${SUMMARY_LOG}"
-    echo ">>> Running GETRF-NPVT benchmark: N=${N}" | tee -a "${SUMMARY_LOG}"
+    echo ">>> Running ${MODE_NAME} benchmark: N=${N}" | tee -a "${SUMMARY_LOG}"
 
     OUT_FILE=${RESULT_DIR}/getrf_N${N}.log
     "${LAUNCH_PREFIX[@]}" "${EXEC}" \
@@ -57,8 +92,9 @@ for N in "${NS[@]}"; do
         "${PRECISION}" \
         "${VERIFY}" \
         "${BASELINE_NBS[@]}" \
-        --double-nb "${DOUBLE_NBS[@]}" \
-        --b "${MICRO_BLOCKS[@]}" \
+        "${PIVOT_ARGS[@]}" \
+        "${DOUBLE_BLOCK_ARGS[@]}" \
+        --trsm-leaf "${TRSM_LEAF}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"
@@ -66,6 +102,6 @@ done
 
 echo "" | tee -a "${SUMMARY_LOG}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
-echo "GETRF-NPVT benchmark finished" | tee -a "${SUMMARY_LOG}"
+echo "${MODE_NAME} benchmark finished" | tee -a "${SUMMARY_LOG}"
 echo "Summary: ${SUMMARY_LOG}" | tee -a "${SUMMARY_LOG}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
