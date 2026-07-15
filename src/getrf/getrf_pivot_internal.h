@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <type_traits>
 
+#include "utils/common/rocblas_compat.h"
 #include <rocsolver/rocsolver.h>
 
 #include "getrf/getrf_pivot_kernels.h"

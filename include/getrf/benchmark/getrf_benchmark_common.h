@@ -3,11 +3,10 @@
 #include <functional>
 #include <vector>
 
-#include <rocblas/rocblas.h>
-
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_runner.h"
 #include "utils/benchmark/error_mode.h"
+#include "utils/common/rocblas_compat.h"
 
 namespace getrf_benchmark {
 

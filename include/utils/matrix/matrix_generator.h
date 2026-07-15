@@ -1,7 +1,8 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include <rocblas/rocblas.h>
+
+#include "utils/common/rocblas_compat.h"
 
 unsigned int get_random_seed();
 

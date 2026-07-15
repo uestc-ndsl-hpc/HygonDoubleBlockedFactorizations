@@ -1,20 +1,11 @@
 #ifndef ERROR_CHECK_H
 #define ERROR_CHECK_H
 
-#include <iostream>
 #include <cstdlib>
-#include <hip/hip_runtime.h>
-#include <rocblas/rocblas.h>
+#include <iostream>
 
-#define HIP_CHECK(cmd)                                                     \
-    do {                                                                   \
-        hipError_t error = cmd;                                            \
-        if (error != hipSuccess) {                                         \
-            std::cerr << "HIP error at " << __FILE__ << ":" << __LINE__    \
-                      << ": " << hipGetErrorString(error) << std::endl;    \
-            std::exit(EXIT_FAILURE);                                       \
-        }                                                                  \
-    } while(0)
+#include "utils/common/hip_error_check.h"
+#include "utils/common/rocblas_compat.h"
 
 #define ROCBLAS_CHECK(cmd)                                                 \
     do {                                                                   \
@@ -25,6 +16,6 @@
                       << std::endl;                                        \
             std::exit(EXIT_FAILURE);                                       \
         }                                                                  \
-    } while(0)
+    } while (0)
 
 #endif
