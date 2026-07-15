@@ -2,6 +2,7 @@
 #include <hip/hip_fp16.h>
 
 #include "kernels/fp16_convert.h"
+#include "utils/common/error_check.h"
 
 extern "C" {
 

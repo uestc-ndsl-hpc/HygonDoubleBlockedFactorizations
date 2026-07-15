@@ -3,7 +3,7 @@
 #include <hip/hip_runtime.h>
 
 #include "getrf/getrf_pivot_kernels.h"
-#include "utils/common/hip_error_check.h"
+#include "utils/common/error_check.h"
 
 namespace {
 

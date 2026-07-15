@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/common/rocblas_compat.h"
+#include <rocblas/rocblas.h>
 
 #ifdef __cplusplus
 extern "C" {

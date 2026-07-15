@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <type_traits>
 
-#include "utils/common/rocblas_compat.h"
+#include <rocblas/rocblas.h>
 #include <rocsolver/rocsolver.h>
 
 #include "utils/common/error_check.h"

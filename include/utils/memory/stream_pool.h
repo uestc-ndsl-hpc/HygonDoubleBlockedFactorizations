@@ -1,8 +1,7 @@
 #pragma once
 #include <hip/hip_runtime.h>
+#include <rocblas/rocblas.h>
 #include <vector>
-
-#include "utils/common/rocblas_compat.h"
 
 struct RocblasStreamContext {
     hipStream_t stream;
