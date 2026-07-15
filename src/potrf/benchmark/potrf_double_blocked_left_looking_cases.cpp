@@ -8,7 +8,8 @@
 namespace potrf_benchmark {
 namespace {
 
-constexpr int kOuterGemmMTile = 8192;
+constexpr int kSyrkKTile = 8192;
+constexpr int kGemmMTile = 8192;
 
 template <typename T>
 void call_left_looking(rocblas_handle handle,
@@ -41,10 +42,10 @@ void call_left_looking_optimized(rocblas_handle handle,
 {
     if constexpr (std::is_same_v<T, float>) {
         double_blocked_left_looking_potrf_optimized(
-            handle, A, lda, n, nb, b, nb, kOuterGemmMTile, info);
+            handle, A, lda, n, nb, b, kSyrkKTile, kGemmMTile, info);
     } else {
         double_blocked_left_looking_potrf_double_optimized(
-            handle, A, lda, n, nb, b, nb, kOuterGemmMTile, info);
+            handle, A, lda, n, nb, b, kSyrkKTile, kGemmMTile, info);
     }
 
     return;
@@ -56,7 +57,7 @@ void run_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
     const std::string nb_b = std::to_string(nb) + "/" + std::to_string(b);
 
     context.runner.execute(
-        "DoubleBlock-LL",
+        "DoubleBlock-RefLL",
         nb_b,
         context.reset,
         [&]() {
@@ -73,8 +74,9 @@ void run_pair(PotrfBenchmarkContext<T>& context, int nb, int b)
         context.calc_gflops);
 
     context.runner.execute(
-        "DoubleBlock-LL+MTile",
-        nb_b + "/" + std::to_string(kOuterGemmMTile),
+        "DoubleBlock-RefLL+Tile",
+        nb_b + "/" + std::to_string(kSyrkKTile) + "/"
+            + std::to_string(kGemmMTile),
         context.reset,
         [&]() {
             call_left_looking_optimized<T>(

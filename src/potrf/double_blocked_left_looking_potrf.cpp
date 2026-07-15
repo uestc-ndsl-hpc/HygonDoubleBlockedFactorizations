@@ -127,108 +127,93 @@ void gemm_nt_update_dispatch(rocblas_handle handle,
 }
 
 template <typename T>
-void materialize_outer_block_column(rocblas_handle handle,
-                                    T* A,
-                                    int lda,
-                                    int n,
-                                    int outer,
-                                    int outer_size,
-                                    int nb,
-                                    int syrk_k_tile,
-                                    int gemm_m_tile)
+void prepare_next_inner_block_column(rocblas_handle handle,
+                                     T* A,
+                                     int lda,
+                                     int n,
+                                     int outer,
+                                     int next_inner,
+                                     int outer_end,
+                                     int b,
+                                     int syrk_k_tile,
+                                     int gemm_m_tile)
 {
-    if (outer <= 0) {
+    if (next_inner >= outer_end) {
         return;
     }
 
-    const int below_start = outer + outer_size;
+    const int next_size = std::min(b, outer_end - next_inner);
+    const int history_size = next_inner - outer;
+    const int below_start = next_inner + next_size;
     const int below_rows = n - below_start;
 
-    for (int previous = 0; previous < outer; previous += nb) {
-        const int history_size = std::min(nb, outer - previous);
+    syrk_lower_update_dispatch(
+        handle,
+        next_size,
+        history_size,
+        block_ptr(A, lda, next_inner, outer),
+        lda,
+        block_ptr(A, lda, next_inner, next_inner),
+        lda,
+        syrk_k_tile);
 
-        syrk_lower_update_dispatch(
-            handle,
-            outer_size,
-            history_size,
-            block_ptr(A, lda, outer, previous),
-            lda,
-            block_ptr(A, lda, outer, outer),
-            lda,
-            syrk_k_tile);
-
-        // Each previous outer block contributes exactly one block-column
-        // product to the current panel in the mathematical LL schedule.
-        gemm_nt_update_dispatch(
-            handle,
-            below_rows,
-            outer_size,
-            history_size,
-            block_ptr(A, lda, below_start, previous),
-            lda,
-            block_ptr(A, lda, outer, previous),
-            lda,
-            block_ptr(A, lda, below_start, outer),
-            lda,
-            gemm_m_tile);
-    }
+    gemm_nt_update_dispatch(
+        handle,
+        below_rows,
+        next_size,
+        history_size,
+        block_ptr(A, lda, below_start, outer),
+        lda,
+        block_ptr(A, lda, next_inner, outer),
+        lda,
+        block_ptr(A, lda, below_start, next_inner),
+        lda,
+        gemm_m_tile);
 
     return;
 }
 
 template <typename T>
-void factor_outer_diagonal_left_looking(rocblas_handle handle,
-                                        T* A,
-                                        int lda,
-                                        int outer,
-                                        int outer_end,
-                                        int b,
-                                        int* info)
+void prepare_next_outer_block_column(rocblas_handle handle,
+                                     T* A,
+                                     int lda,
+                                     int n,
+                                     int next_outer,
+                                     int nb,
+                                     int syrk_k_tile,
+                                     int gemm_m_tile)
 {
-    for (int inner = outer; inner < outer_end; inner += b) {
-        const int inner_size = std::min(b, outer_end - inner);
-        const int below_inner = inner + inner_size;
-        const int below_rows = outer_end - below_inner;
-
-        for (int previous = outer; previous < inner; previous += b) {
-            const int history_size = std::min(b, inner - previous);
-
-            syrk_lower_update_dispatch(
-                handle,
-                inner_size,
-                history_size,
-                block_ptr(A, lda, inner, previous),
-                lda,
-                block_ptr(A, lda, inner, inner),
-                lda,
-                0);
-
-            gemm_nt_update_dispatch(
-                handle,
-                below_rows,
-                inner_size,
-                history_size,
-                block_ptr(A, lda, below_inner, previous),
-                lda,
-                block_ptr(A, lda, inner, previous),
-                lda,
-                block_ptr(A, lda, below_inner, inner),
-                lda,
-                0);
-        }
-
-        T* diagonal = block_ptr(A, lda, inner, inner);
-        potrf_lower(handle, inner_size, diagonal, lda, info);
-
-        trsm_right_lower_transpose_dispatch(
-            handle,
-            outer_end - below_inner,
-            inner_size,
-            diagonal,
-            lda,
-            block_ptr(A, lda, below_inner, inner),
-            lda);
+    if (next_outer >= n) {
+        return;
     }
+
+    const int next_size = std::min(nb, n - next_outer);
+    const int history_size = next_outer;
+    const int below_start = next_outer + next_size;
+    const int below_rows = n - below_start;
+
+    syrk_lower_update_dispatch(
+        handle,
+        next_size,
+        history_size,
+        block_ptr(A, lda, next_outer, 0),
+        lda,
+        block_ptr(A, lda, next_outer, next_outer),
+        lda,
+        syrk_k_tile);
+
+    gemm_nt_update_dispatch(
+        handle,
+        below_rows,
+        next_size,
+        history_size,
+        block_ptr(A, lda, below_start, 0),
+        lda,
+        block_ptr(A, lda, next_outer, 0),
+        lda,
+        block_ptr(A, lda, below_start, next_outer),
+        lda,
+        gemm_m_tile);
 
     return;
 }
@@ -259,30 +244,48 @@ void double_blocked_left_looking_potrf_impl(rocblas_handle handle,
         const int outer_size = std::min(nb, n - outer);
         const int outer_end = outer + outer_size;
 
-        // Pull all previous outer-block contributions into the current block
-        // column before any factorization inside this outer block begins.
-        materialize_outer_block_column(
+        for (int inner = outer; inner < outer_end; inner += b) {
+            const int inner_size = std::min(b, outer_end - inner);
+            const int next_inner = inner + inner_size;
+
+            T* diagonal = block_ptr(A, lda, inner, inner);
+            potrf_lower(handle, inner_size, diagonal, lda, info);
+
+            trsm_right_lower_transpose_dispatch(
+                handle,
+                n - next_inner,
+                inner_size,
+                diagonal,
+                lda,
+                block_ptr(A, lda, next_inner, inner),
+                lda);
+
+            // Match the CUDA reference: all history inside this outer block
+            // is accumulated once when preparing the next inner block column.
+            prepare_next_inner_block_column(
+                handle,
+                A,
+                lda,
+                n,
+                outer,
+                next_inner,
+                outer_end,
+                b,
+                syrk_k_tile,
+                gemm_m_tile);
+        }
+
+        // The next outer block column receives all global history in one
+        // SYRK/GEMM pair instead of one update per previous outer block.
+        prepare_next_outer_block_column(
             handle,
             A,
             lda,
             n,
-            outer,
-            outer_size,
+            outer_end,
             nb,
             syrk_k_tile,
             gemm_m_tile);
-
-        factor_outer_diagonal_left_looking(
-            handle, A, lda, outer, outer_end, b, info);
-
-        trsm_right_lower_transpose_dispatch(
-            handle,
-            n - outer_end,
-            outer_size,
-            block_ptr(A, lda, outer, outer),
-            lda,
-            block_ptr(A, lda, outer_end, outer),
-            lda);
     }
 
     return;
