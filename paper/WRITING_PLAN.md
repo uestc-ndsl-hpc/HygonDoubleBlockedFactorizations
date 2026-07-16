@@ -7,19 +7,22 @@ double-blocked Cholesky and pivoted LU factorizations for the Hygon K100_AI DCU.
 The external performance baseline is the official rocSOLVER library.
 
 The paper does not claim that double blocking is a new concept. Its intended
-contribution is the architecture-oriented realization of double blocking in the
-Hygon HIP software stack, together with factorization-specific mechanisms that
-make the structure effective on K100_AI.
+contribution is a factorization-specific double-blocked framework for LU and
+Cholesky, a correctness-preserving LU permutation mapping, and an empirical
+study of the framework on the Hygon HIP software stack. Iterative blocked TRSM,
+K-blocked SYRK, and M-tiled GEMM are general execution transformations; they are
+not claimed as new or K100_AI-specific algorithms.
 
 ## 2. Central Claim
 
 The working claim is:
 
 > Double blocking decouples the granularity of dependency-bound panel
-> factorization from the granularity of high-throughput matrix updates. On
-> Hygon K100_AI, this separation enables a common factorization framework in
-> which POTRF and GETRF can use different update, triangular-solve, and data
-> movement policies while retaining the same two-level schedule.
+> factorization from the granularity of panel preparation. The separation
+> provides a common factorization framework in which POTRF and GETRF retain the
+> same two-level schedule while using factorization-specific update and data
+> movement policies. Measurements on K100_AI determine whether general
+> BLAS-level transformations should be enabled for the generated shapes.
 
 This claim must be supported by the final ablation study and stage profiles.
 
@@ -34,6 +37,7 @@ This claim must be supported by the final ablation study and stage profiles.
 - End-to-end comparison with `rocsolver_spotrf` and `rocsolver_sgetrf`.
 - Internal ablations of the double-blocked implementations.
 - Runtime, throughput, stage breakdown, and numerical backward error.
+- Exact-shape primitive controls used to derive fixed K100_AI dispatch rules.
 
 ### Out of scope unless additional evidence is collected
 
@@ -44,6 +48,9 @@ This claim must be supported by the final ablation study and stage profiles.
 - Performance comparisons beyond matrix sizes supported reliably by the
   rocSOLVER baseline.
 - Claims that double blocking itself is novel.
+- Claims that blocked TRSM or tiled SYRK/GEMM are inherently K100_AI-specific.
+- Architecture-specific conclusions inferred from algebra alone rather than
+  exact-shape and end-to-end measurements.
 
 ## 4. Stable Terminology
 
@@ -72,10 +79,13 @@ levels.
 - Motivation must establish a measurable conflict before introducing a method.
 - Methods must describe matrix regions, dependencies, and invariants before
   discussing API calls or tuning constants.
-- Each optimization must state the bottleneck, algebraic transformation,
-  correctness condition, and expected performance effect.
-- Implementation details belong after the Methods and Optimizations sections
-  and should explain only decisions needed to reproduce the algorithms.
+- Each execution transformation must state the bottleneck, algebraic
+  transformation, correctness condition, and measured selection criterion.
+- Generic execution transformations must remain separate from algorithmic and
+  platform-specific contribution claims.
+- Implementation details belong after the Methods and Operation-Level Mapping
+  sections and should explain only decisions needed to reproduce the
+  algorithms.
 - Preliminary logs and parameter-search histories must not appear as the main
   narrative. They may supply an ablation or sensitivity figure after the
   experiment protocol is frozen.
@@ -91,13 +101,17 @@ levels.
 - [x] Draft the introduction and background.
 - [x] Draft the unified double-blocking framework.
 - [x] Draft DB-POTRF and DB-GETRF algorithms.
-- [x] Draft the Hygon implementation section.
+- [x] Draft the reference implementation section.
 - [x] Create an empty evaluation section.
 - [x] Draft related work positioning, limitations, and conclusion.
 
 ### Phase B: Experiment freeze
 
 - [ ] Finish all algorithm changes intended for the paper.
+- [ ] Add an exact-shape left/unit-lower TRSM control matching DB-LU; the
+  existing right-side TRSM benchmark is not a valid substitute.
+- [ ] Archive generated TRSM, SYRK, and GEMM shapes with their leading
+  dimensions.
 - [ ] Run correctness tests at small and non-power-of-two sizes.
 - [ ] Select one source commit for all reported experiments.
 - [ ] Record the DTK, compiler, rocBLAS, rocSOLVER, driver, and device versions.
@@ -109,6 +123,8 @@ levels.
 ### Phase C: Unified evaluation
 
 - [ ] Run primitive shape characterization.
+- [ ] Compare untiled and transformed TRSM, SYRK, and GEMM at generated shapes.
+- [ ] Retain only transformations with stable stage and end-to-end effects.
 - [ ] Run end-to-end POTRF scaling.
 - [ ] Run POTRF ablations.
 - [ ] Run POTRF stage profiles.
@@ -181,7 +197,8 @@ experiments must use a separate dataset and be reported separately.
 ## 7. Required Figures and Tables
 
 - Figure 1: measured panel-update conflict as block width changes.
-- Figure 2: selected K100_AI GEMM, SYRK, and TRSM shape behavior.
+- Figure 2: untiled-versus-transformed K100_AI GEMM, SYRK, and TRSM behavior
+  at exact factorization shapes.
 - Figure 3: aligned DB-LU and DB-Cholesky double-blocking workflows.
 - Figure 4: delayed LU pivot regions and two-stage gather/scatter permutation.
 - Figure 5: POTRF throughput versus matrix size.
@@ -203,12 +220,17 @@ experiments must use a separate dataset and be reported separately.
   calls.
 - Both implementations use rocSOLVER for local diagonal or panel
   factorization and rocBLAS for BLAS-3 operations.
+- The TRSM, SYRK, and GEMM transformations are general and parameterized
+  independently of the double-blocked dependency graph.
 
 ### Requires the unified evaluation
 
 - End-to-end speedup over rocSOLVER.
 - Stability of speedup over the complete matrix-size range.
-- The contribution of each optimization to final performance.
+- The contribution of each retained execution transformation to final
+  performance.
+- Whether each general execution transformation should remain enabled on
+  K100_AI after direct primitive, stage, and end-to-end controls.
 - The final recommended values or policies for `B`, `b`, `T_K`, `T_M`,
   `b_t`, and `b_p`.
 - Numerical equivalence within the reported backward-error tolerance.
@@ -218,6 +240,28 @@ experiments must use a separate dataset and be reported separately.
 - "The first double-blocked factorization."
 - Universal superiority over alternative blocked schedules.
 - "Architecture independent."
+- "K100_AI-specific TRSM/SYRK/GEMM algorithm."
 - "rocSOLVER uses a particular internal blocking algorithm" without source
   evidence.
 - "No numerical cost" without reporting backward error.
+
+## 9. Reference Coverage Backlog
+
+References remain intentionally absent until the algorithm and evaluation
+narrative is frozen. The final bibliography must cover all of the following
+areas rather than relying mainly on OSLA:
+
+- foundational blocked LU and Cholesky formulations and stability;
+- recursive, inner-blocked, and multi-level dense factorizations;
+- MAGMA and comparable hybrid CPU-GPU solver libraries;
+- GPU-resident LU and Cholesky implementations and vendor solver libraries;
+- tiled and task-based systems, including representative DAG runtimes;
+- GPU pivot search, row interchange, batched permutation, and fused panels;
+- communication-avoiding and tournament-pivoting LU, clearly distinguished
+  from standard partial pivoting;
+- OSLA as the closest double-blocking precedent;
+- rocBLAS, rocSOLVER, HIP, and Hygon platform documentation.
+
+Each Related Work paragraph must receive at least one primary citation, and
+claims about a named system must be checked against its original paper or
+official documentation before numbering the bibliography.
