@@ -32,7 +32,7 @@ This claim must be supported by the final ablation study and stage profiles.
 - FP32 as the primary precision.
 - Hygon K100_AI, HIP, rocBLAS, and rocSOLVER.
 - End-to-end comparison with `rocsolver_spotrf` and `rocsolver_sgetrf`.
-- Internal ablations of the proposed double-blocked implementations.
+- Internal ablations of the double-blocked implementations.
 - Runtime, throughput, stage breakdown, and numerical backward error.
 
 ### Out of scope unless additional evidence is collected
@@ -216,7 +216,7 @@ experiments must use a separate dataset and be reported separately.
 ### Do not claim
 
 - "The first double-blocked factorization."
-- "Universally faster than blocked right-looking algorithms."
+- Universal superiority over alternative blocked schedules.
 - "Architecture independent."
 - "rocSOLVER uses a particular internal blocking algorithm" without source
   evidence.

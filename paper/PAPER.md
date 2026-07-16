@@ -11,18 +11,17 @@ operations and compute-intensive matrix updates. On a GPU, these two stages
 favor different granularities: a narrow panel limits the critical path, whereas
 a wide update exposes more regular Level-3 BLAS operations. A conventional
 single-level blocked algorithm couples both requirements to one block size and
-does not allow them to be tuned independently. This paper presents
-double-blocked LU and Cholesky factorizations for the Hygon K100_AI DCU. An
-outer panel controls coarse-grained matrix updates and data movement, while an
-inner block controls local GETRF or POTRF operations. For LU factorization, we
-delay the application of panel pivots, compose the ordered swaps into a
-conflict-free permutation, and apply it through an ordered gather/scatter
-kernel pair. For Cholesky factorization, we preserve the triangular update
-structure while regularizing selected SYRK and GEMM shapes. Iterative blocked
-TRSM and row-tiled GEMM further adapt the algorithms to the execution
-characteristics of the Hygon BLAS stack. The implementation uses HIP, rocBLAS,
-and rocSOLVER and preserves the conventional partial-pivoting LU and Cholesky
-factorizations.
+does not allow them to be tuned independently. A double-blocked formulation
+for the Hygon K100_AI DCU separates these requirements through an outer width
+for coarse-grained panel preparation and an inner width for local GETRF or
+POTRF operations. In the LU path, panel pivots are delayed where dependencies
+permit, composed into a conflict-free permutation, and applied by an ordered
+gather/scatter kernel pair. In the Cholesky path, the lower-triangular update is
+retained while selected SYRK and GEMM dimensions are regularized. Iterative
+blocked TRSM and M-tiled GEMM supply additional execution tiles without
+changing the two-level factorization schedule. The corresponding HIP mapping
+uses rocBLAS and rocSOLVER while retaining conventional partial-pivoting LU
+and Cholesky definitions.
 <!-- Insert the final rocSOLVER comparison and accuracy results here. -->
 
 **Index Terms:** dense linear algebra, LU factorization, Cholesky
@@ -63,45 +62,38 @@ factorization, while the outer width determines the unit of panel preparation
 and delayed update. The concept has recently been applied to one-sided
 factorizations in OSLA [1]. However, realizing the method on the Hygon software
 stack raises two implementation issues that are not addressed by direct API
-substitution. Our implementation expresses LU pivoting without a cooperative
-grid-wide barrier and selects the resulting GEMM, SYRK, and TRSM call shapes
-for rocBLAS on K100_AI.
+substitution: LU permutation requires global read-before-write ordering, and
+the generated GEMM, SYRK, and TRSM shapes must match the behavior of rocBLAS
+on K100_AI.
 
-We present double-blocked LU and Cholesky implementations designed for this
-environment. Both algorithms use a panel-oriented schedule that prepares only
-the next required inner or outer panel. Their specializations differ where the
-mathematics differs. LU accumulates partial-pivoting information and delays
-external row movement. Cholesky separates the symmetric diagonal update from
-the rectangular update below it. A third execution granularity is then used to
-partition an unfavorable reduction or row dimension without changing the
-factorization schedule.
+The design consists of LU and Cholesky specializations under one panel-oriented
+schedule. Only the next required inner or outer panel is prepared. LU
+accumulates partial-pivoting information and delays external row movement,
+whereas Cholesky separates the symmetric diagonal update from the rectangular
+update below it. Additional execution tiles partition unfavorable triangular,
+reduction, or row dimensions without changing the factorization schedule.
 
-The contributions of this paper are as follows:
+The technical scope comprises the following elements:
 
-- We analyze how the panel-update conflict appears in LU and Cholesky
-  factorization on Hygon DCUs and use the analysis to derive a common
-  two-level blocking schedule.
-- We implement a double-blocked LU factorization that retains standard partial
-  pivoting while batching external row permutations. A two-kernel
-  gather/scatter design uses stream ordering instead of cooperative grid
+- A common two-level schedule derived from the panel-update granularity
+  conflict in LU and Cholesky factorization.
+- A partial-pivoting DB-LU formulation with delayed external permutations and
+  an ordered gather/scatter mapping that avoids cooperative grid
   synchronization.
-- We implement a double-blocked Cholesky factorization with separate
-  inner-panel and outer-panel updates, K-blocked SYRK, and conditional M-tiled
-  GEMM.
-- We integrate iterative blocked TRSM, reusable permutation workspaces, and
-  shape-aware BLAS dispatch into a HIP implementation based on rocBLAS and
-  rocSOLVER.
-- We evaluate the proposed methods against the official rocSOLVER GETRF and
-  POTRF routines using end-to-end scaling, stage-level ablation, and numerical
-  residuals.
-  <!-- Add measured speedups after the unified evaluation. -->
+- A DB-Cholesky formulation with distinct inner- and outer-panel updates,
+  K-blocked SYRK, and conditional M-tiled GEMM.
+- A HIP execution mapping with iterative blocked TRSM, reusable permutation
+  workspaces, and shape-aware dispatch to rocBLAS and rocSOLVER.
+- An evaluation protocol based on official rocSOLVER baselines, end-to-end
+  scaling, stage-level ablation, and numerical residuals.
+  <!-- Add numerical results only after the unified evaluation. -->
 
 The remainder of this paper is organized as follows. Section II reviews the
 factorizations and their update schedules. Section III analyzes the conflict
 between panel factorization, matrix updates, and LU row movement. Section IV
 presents the double-blocked algorithms. Section V describes the
-Hygon-oriented optimizations, and Section VI summarizes the implementation.
-Section VII is reserved for the unified experimental evaluation. Section VIII
+Hygon execution policies, and Section VI specifies the reference
+implementation. Section VII defines the experimental evaluation. Section VIII
 discusses related work, and Section IX concludes the paper.
 
 ## II. Background
@@ -176,28 +168,27 @@ The absence of row exchanges makes its control flow more regular than LU, but
 the lower-triangular destination distinguishes its diagonal SYRK update from
 the rectangular GEMM updates used elsewhere in the panel.
 
-### B. Left-Looking and Right-Looking Schedules
+### B. Panel-Oriented Deferred Updates
 
-A right-looking algorithm uses a newly factorized panel to update the complete
-trailing matrix. This exposes a large update immediately but repeatedly touches
-matrix regions that will not be factorized until much later. A left-looking
-algorithm accumulates contributions from previously computed panels when the
-next panel is required. It postpones updates to regions that are not yet needed
-but places a wider-history operation on the panel-preparation path.
+A panel-oriented schedule need not update every region as soon as a new factor
+becomes available. Contributions may remain deferred until their destination
+panel becomes the next dependency on the factorization path. This reduces
+updates to matrix regions that are not yet required, while increasing the
+history accumulated by each panel-preparation operation.
 
-The algorithms in this paper use a panel-oriented left-looking schedule. After
-an inner block has been factorized, only the next inner panel inside the current
-outer block is prepared. At the outer boundary, only the next outer panel is
-prepared. This schedule is particularly useful for LU because it also defines
-when delayed pivots must become visible.
+The double-blocked schedule prepares only the next inner panel inside the
+current outer block. At an outer boundary, it prepares only the next outer
+panel. For LU, the same boundaries determine when a delayed permutation must
+become visible to subsequent pivot searches and updates.
 
 ### C. Hygon DCU Software Stack
 
 The target platform is a Hygon K100_AI DCU programmed through HIP. rocBLAS
 provides GEMM, SYRK, and TRSM, while rocSOLVER provides the local GETRF and
 POTRF operations. These routines are treated as external library primitives;
-the analysis makes no assumption about their internal blocking. Our algorithms
-control the dimensions, order, and data regions supplied to the library.
+the analysis makes no assumption about their internal blocking. The
+double-blocked schedules control the dimensions, order, and data regions
+supplied to the library.
 
 ## III. Performance Analysis and Design Motivation
 
@@ -243,7 +234,7 @@ continues to bound local factorization.
 
 > **[Figure 1 required: panel-update conflict.]** Plot, on the same K100_AI
 > platform, panel time and update throughput as the single-level block width
-> increases. The figure must establish the opposing trends that motivate
+> increases. The figure should quantify the opposing effects associated with
 > independent $B$ and $b$ values. Populate it only from the unified experiment
 > run, using the $b=B$ degeneration or isolated panel/update shapes rather than
 > introducing another end-to-end library baseline.
@@ -370,7 +361,7 @@ A_{Q:n,Q:R} \leftarrow
 A_{Q:n,Q:R} - L_{Q:n,I:Q}U_{I:Q,Q:R}.
 $$
 
-At $I_e$, pivots generated in the completed outer panel are applied to the
+At $I_e$, pivots generated in the current outer panel are applied to the
 earlier column history. The pivots accumulated from the beginning of the
 factorization are applied to the next outer panel. Its upper part is then
 obtained from
@@ -480,8 +471,8 @@ for I = 0, B, 2B, ... while I < n do
         Q = J + w
 
         POTRF(A[J:J+w, J:J+w])
-        A[Q:n, J:J+w] =
-            A[Q:n, J:J+w] * inverse(transpose(A[J:J+w, J:J+w]))
+        A[Q:n, J:J+w] = right_side_TRSM(
+            A[J:J+w, J:J+w], A[Q:n, J:J+w])
 
         if Q < I_e then
             R = min(Q + b, I_e)
@@ -521,12 +512,12 @@ When $b=B$, the inner loop contains one block and the method degenerates to a
 single-level panel schedule. This property provides a controlled way to
 measure whether the second blocking level is beneficial.
 
-## V. Optimizations for Hygon DCUs
+## V. Execution Policies for Hygon DCUs
 
 The two-level schedule determines when each matrix region becomes available,
 but it does not prescribe how an individual permutation, triangular solve, or
-matrix update is executed. This section describes the operation-level choices
-used in the Hygon implementation.
+matrix update is executed. The following operation-level policies define the
+mapping from that schedule to the Hygon software stack.
 
 ### A. Delayed and Batched Pivot Application
 
@@ -545,8 +536,8 @@ uploaded to the device.
 
 A naive in-place parallel permutation is unsafe because one destination can
 overwrite a source needed by another thread. OSLA resolves this dependency
-with a read-synchronize-write cooperative kernel [1]. The Hygon implementation
-uses two separate HIP kernels instead. For a tile of columns, the gather kernel
+with a read-synchronize-write cooperative kernel [1]. The Hygon mapping uses
+two ordered HIP kernels instead. For a tile of columns, the gather kernel
 computes
 
 $$
@@ -567,11 +558,11 @@ storage and allows one workspace to serve both inner and outer permutations.
 
 The outer LU panel requires a unit-lower-triangular solve whose triangular
 dimension grows with the factorization. A single large TRSM may correspond to
-a low-throughput library shape. We partition the triangular dimension into
-fixed-width blocks of at most $b_t$. At block position $p$, let $L_{pp}$ be
-the current diagonal block, $B_p$ the corresponding block rows of the
-right-hand side, and $B_r$ the rows below it. The blocked forward substitution
-evaluates
+a low-throughput library shape. The triangular dimension is therefore
+partitioned into fixed-width blocks of at most $b_t$. At block position $p$,
+let $L_{pp}$ be the current diagonal block, $B_p$ the corresponding block rows
+of the right-hand side, and $B_r$ the rows below it. The blocked forward
+substitution evaluates
 
 $$
 X_p=L_{pp}^{-1}B_p,
@@ -595,8 +586,8 @@ $$
 C \leftarrow C-AA^T.
 $$
 
-When the reduction dimension is large, the implementation partitions the
-columns of $A$ into chunks of width $T_K$:
+When the reduction dimension is large, the columns of $A$ are partitioned into
+chunks of width $T_K$:
 
 $$
 C \leftarrow C-\sum_q A_qA_q^T.
@@ -637,8 +628,8 @@ $$
 
 Each $C_i$ has at most $T_M$ rows. DB-LU applies this transformation to the
 inner-panel update. DB-Cholesky enables it only when the row and reduction
-dimensions exceed measured thresholds, avoiding additional launch overhead for
-cases in which tiling provides no measured benefit.
+dimensions exceed measured thresholds, so the extra tiled launches are not
+introduced unconditionally.
 
 The values of $T_K$, $T_M$, and the dispatch thresholds are selected from
 primitive shape measurements rather than from the outer block size. This
@@ -646,19 +637,19 @@ keeps two decisions separate: $B$ and $b$ express the dependency graph, while
 the execution tiles describe the call shapes submitted to the target BLAS
 implementation.
 
-## VI. Implementation
+## VI. Reference Implementation
 
 ### A. Library Mapping and Execution Order
 
-The implementation is written in C++ and HIP. Matrices use column-major storage
-with a configurable leading dimension. Local factorization calls map to
+The reference implementation uses C++ and HIP. Matrices use column-major
+storage with a configurable leading dimension. Local factorization calls map to
 rocsolver_sgetrf or rocsolver_spotrf in FP32 and to their FP64 counterparts.
 Matrix updates and triangular solves map to rocBLAS. The double-blocked
 factorizations are denoted DB-GETRF and DB-POTRF in the implementation.
 
 All GPU library calls and custom kernels are submitted to the stream associated
 with the rocBLAS handle. To isolate the effects of blocking, pivot batching,
-and operation shaping, the implementation uses a single ordered stream.
+and operation shaping, execution is restricted to a single ordered stream.
 Multi-stream look-ahead is outside the scope of this paper.
 
 ### B. Addressing and Workspace Management
@@ -681,19 +672,19 @@ the timed factorization.
 
 End-to-end timing uses HIP events on the execution stream. Before every timed
 method, the same deterministically generated input matrix is restored on the
-device. All individual iteration times are retained; the evaluation reports
-the arithmetic mean, median, sample standard deviation, minimum, and maximum.
+device. All individual iteration times are retained. The reported summary
+statistics are the arithmetic mean, median, sample standard deviation, minimum,
+and maximum.
 GETRF throughput uses $2n^3/3$ operations and POTRF throughput uses $n^3/3$
 operations.
 
-Numerical validation is performed outside the timed region. Scaling runs use
+Numerical validation remains outside the timed region. Scaling runs use
 a deterministic set of 4096 entries to estimate the relative residuals of
 $PA-LU$ and $A-LL^T$. Separate correctness runs explicitly form $L$ and $U$
-or $L$ and reconstruct the complete product with FP64 rocBLAS GEMM. They
-report the full Frobenius residual at representative power-of-two and
-non-power-of-two sizes. The final evaluation records both policies and does
-not compare a full residual from one method with a sampled residual from
-another.
+or $L$ and reconstruct the complete product with FP64 rocBLAS GEMM. Full
+Frobenius residuals are recorded at representative power-of-two and
+non-power-of-two sizes. Sampled and full residuals remain separately labeled
+and are not compared as equivalent quantities.
 
 ## VII. Experimental Evaluation
 
@@ -729,36 +720,34 @@ selected for the target device and library.
 
 OSLA applies double blocking to LU, Cholesky, and QR factorization on NVIDIA
 GPUs and combines the structure with specialized panel and mixed-precision
-optimizations [1]. The present work follows its two-level blocking strategy but
-studies a different software and hardware environment. We focus
-on native-precision LU and Cholesky on K100_AI. In particular, our LU
-implementation replaces OSLA's cooperative read-synchronize-write permutation
-with ordered gather and scatter HIP kernels and combines it with rocBLAS shape
-regularization.
+optimizations [1]. The relation to OSLA is the two-level schedule; the scope
+here is native-precision LU and Cholesky on K100_AI. The relevant distinction
+is the execution mapping: ordered gather and scatter HIP kernels provide LU
+read-before-write ordering without adopting OSLA's cooperative kernel, while
+BLAS call shapes are selected for the Hygon rocBLAS stack.
 
 Communication-avoiding LU reduces panel communication by modifying pivot
 selection or organizing it as a reduction [7]. DB-LU does not change the pivot
 rule. It retains standard partial pivoting and delays only the application of
 the resulting permutation to matrix regions that are not yet data-dependent.
 
-rocBLAS and rocSOLVER provide the vendor operations used by our implementation
-[8], [9]. They are also the basis of the official comparison in Section VII.
-Our contribution lies at the factorization schedule and data-transformation
-level rather than in replacing the vendor GEMM or local factorization kernels.
+rocBLAS and rocSOLVER provide the vendor operations used by the reference
+implementation [8], [9]. rocSOLVER also supplies the external baselines in
+Section VII. The distinction from these vendor routines lies at the
+factorization schedule and data-transformation level rather than in custom
+GEMM or local-factorization kernels.
 
 ## IX. Conclusion
 
-This paper described double-blocked LU and Cholesky factorizations for Hygon
-DCUs. The design is derived from the conflict between narrow
-dependency-bound panels and wide matrix updates. An outer panel width controls
-coarse-grained accumulation and data movement, while an inner width bounds
-local factorization. LU uses the resulting delay to batch partial-pivoting row
-movement, and Cholesky uses it to separate symmetric and rectangular updates.
-Iterative blocked TRSM, K-blocked SYRK, and M-tiled GEMM provide an additional
-execution granularity without changing the mathematical partition.
+Double blocking separates the width of local factorization from the width of
+coarse-grained panel preparation. Within this structure, LU delay boundaries
+also delimit legal batching of partial-pivoting row movement, while Cholesky
+separates symmetric diagonal updates from rectangular off-diagonal updates.
+Iterative blocked TRSM, K-blocked SYRK, and M-tiled GEMM act as execution tiles
+inside the two-level schedule rather than as additional factorization levels.
 
-The resulting HIP implementation retains the standard numerical
-factorizations and uses rocBLAS and rocSOLVER as computational building blocks.
+The HIP mapping retains the standard numerical definitions and uses rocBLAS
+and rocSOLVER as computational building blocks.
 <!-- Insert the final performance and accuracy conclusion after evaluation. -->
 
 ## References
