@@ -37,7 +37,8 @@ POTRF_GEMM_M_THRESHOLD=${PAPER_POTRF_GEMM_M_THRESHOLD:-32768}
 POTRF_GEMM_K_THRESHOLD=${PAPER_POTRF_GEMM_K_THRESHOLD:-5632}
 POTRF_METHODS=${PAPER_POTRF_METHODS:-rocsolver,double,kbsyrk,mgemm}
 
-GETRF_TRSM_LEAF=${PAPER_GETRF_TRSM_LEAF:-512}
+GETRF_OUTER_TRSM=${PAPER_GETRF_OUTER_TRSM:-iterative}
+GETRF_TRSM_BLOCK=${PAPER_GETRF_TRSM_BLOCK:-2048}
 GETRF_PIVOT_TILE=${PAPER_GETRF_PIVOT_TILE:-2048}
 GETRF_GEMM_M_TILE=${PAPER_GETRF_GEMM_M_TILE:-8192}
 GETRF_METHODS=${PAPER_GETRF_METHODS:-rocsolver,double,batched,mgemm}
@@ -89,7 +90,8 @@ rm -f "${SUMMARY_LOG}"
     echo "POTRF methods       : ${POTRF_METHODS}"
     echo "GETRF B policy      : N/2"
     echo "GETRF b policy      : min(N/4,4096)"
-    echo "GETRF leaf/bp/TM    : ${GETRF_TRSM_LEAF}/${GETRF_PIVOT_TILE}/${GETRF_GEMM_M_TILE}"
+    echo "GETRF outer TRSM    : ${GETRF_OUTER_TRSM}/${GETRF_TRSM_BLOCK}"
+    echo "GETRF bp/TM         : ${GETRF_PIVOT_TILE}/${GETRF_GEMM_M_TILE}"
     echo "GETRF methods       : ${GETRF_METHODS}"
     echo "Stage profile N     : ${PROFILE_N}"
     echo "Scaling warmup/iters: ${PAPER_WARMUP_ITERS:-2}/${PAPER_PROFILE_ITERS:-10}"
@@ -167,7 +169,8 @@ if section_enabled correctness; then
             --methods "${GETRF_METHODS}" \
             --double-nb 2048 \
             --b 512 \
-            --trsm-leaf "${GETRF_TRSM_LEAF}" \
+            --outer-trsm "${GETRF_OUTER_TRSM}" \
+            --trsm-block "${GETRF_TRSM_BLOCK}" \
             --pivot-tile "${GETRF_PIVOT_TILE}" \
             --inner-gemm-m-tile "${CORRECTNESS_TILE}" \
             --full-residual \
@@ -218,7 +221,8 @@ if section_enabled scaling; then
             --methods "${GETRF_METHODS}" \
             --double-nb "${GETRF_NB}" \
             --b "${GETRF_B}" \
-            --trsm-leaf "${GETRF_TRSM_LEAF}" \
+            --outer-trsm "${GETRF_OUTER_TRSM}" \
+            --trsm-block "${GETRF_TRSM_BLOCK}" \
             --pivot-tile "${GETRF_PIVOT_TILE}" \
             --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
     done
@@ -253,10 +257,25 @@ if section_enabled profiles; then
         --n "${PROFILE_N}" \
         --outer-nb "${PROFILE_GETRF_NB}" \
         --inner-nb "${PROFILE_GETRF_B}" \
-        --trsm-leaf "${GETRF_TRSM_LEAF}" \
+        --outer-trsm "${GETRF_OUTER_TRSM}" \
+        --trsm-block "${GETRF_TRSM_BLOCK}" \
         --pivot-tile "${GETRF_PIVOT_TILE}" \
         --inner-gemm-m-tile 0 \
         --pivot-mode immediate \
+        --warmup "${STAGE_WARMUP}" \
+        --iters "${STAGE_ITERS}"
+
+    run_profile \
+        "${PROFILE_DIR}/getrf_direct_outer_trsm_N${PROFILE_N}.log" \
+        "${GETRF_PROFILE_EXEC}" \
+        --n "${PROFILE_N}" \
+        --outer-nb "${PROFILE_GETRF_NB}" \
+        --inner-nb "${PROFILE_GETRF_B}" \
+        --outer-trsm direct \
+        --trsm-block "${GETRF_TRSM_BLOCK}" \
+        --pivot-tile "${GETRF_PIVOT_TILE}" \
+        --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}" \
+        --pivot-mode batched \
         --warmup "${STAGE_WARMUP}" \
         --iters "${STAGE_ITERS}"
 
@@ -266,7 +285,8 @@ if section_enabled profiles; then
         --n "${PROFILE_N}" \
         --outer-nb "${PROFILE_GETRF_NB}" \
         --inner-nb "${PROFILE_GETRF_B}" \
-        --trsm-leaf "${GETRF_TRSM_LEAF}" \
+        --outer-trsm "${GETRF_OUTER_TRSM}" \
+        --trsm-block "${GETRF_TRSM_BLOCK}" \
         --pivot-tile "${GETRF_PIVOT_TILE}" \
         --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}" \
         --pivot-mode batched \

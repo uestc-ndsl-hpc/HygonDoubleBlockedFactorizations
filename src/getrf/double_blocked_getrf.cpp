@@ -14,7 +14,7 @@ using getrf_pivot_internal::block_ptr;
 using getrf_pivot_internal::factor_panel;
 using getrf_pivot_internal::gemm_nn_update;
 using getrf_pivot_internal::trsm_left_lower_unit;
-using getrf_pivot_internal::trsm_left_lower_unit_recursive;
+using getrf_pivot_internal::trsm_left_lower_unit_iterative;
 
 void mark_getrf_failure(rocblas_handle handle, int* info)
 {
@@ -77,7 +77,8 @@ void prepare_next_outer_panel(rocblas_handle handle,
                               int n,
                               int next_outer,
                               int outer_nb,
-                              int trsm_leaf)
+                              getrf_outer_trsm_mode outer_trsm_mode,
+                              int trsm_block)
 {
     if (next_outer >= n) {
         return;
@@ -85,16 +86,26 @@ void prepare_next_outer_panel(rocblas_handle handle,
 
     const int next_size = std::min(outer_nb, n - next_outer);
 
-    // The reference GETRF recursively exposes this large TRSM as GEMM updates.
-    trsm_left_lower_unit_recursive(
-        handle,
-        next_outer,
-        next_size,
-        A,
-        lda,
-        block_ptr(A, lda, 0, next_outer),
-        lda,
-        trsm_leaf);
+    if (outer_trsm_mode == getrf_outer_trsm_direct) {
+        trsm_left_lower_unit(
+            handle,
+            next_outer,
+            next_size,
+            A,
+            lda,
+            block_ptr(A, lda, 0, next_outer),
+            lda);
+    } else {
+        trsm_left_lower_unit_iterative(
+            handle,
+            next_outer,
+            next_size,
+            A,
+            lda,
+            block_ptr(A, lda, 0, next_outer),
+            lda,
+            trsm_block);
+    }
 
     gemm_nn_update(
         handle,
@@ -118,7 +129,8 @@ void double_blocked_getrf_impl(rocblas_handle handle,
                                int n,
                                int outer_nb,
                                int inner_nb,
-                               int trsm_leaf,
+                               getrf_outer_trsm_mode outer_trsm_mode,
+                               int trsm_block,
                                int* ipiv,
                                int* info)
 {
@@ -171,7 +183,8 @@ void double_blocked_getrf_impl(rocblas_handle handle,
             n,
             outer_end,
             outer_nb,
-            trsm_leaf);
+            outer_trsm_mode,
+            trsm_block);
     }
 
     return;
@@ -187,7 +200,8 @@ void double_blocked_getrf(rocblas_handle handle,
                           int n,
                           int outer_nb,
                           int inner_nb,
-                          int trsm_leaf,
+                          getrf_outer_trsm_mode outer_trsm_mode,
+                          int trsm_block,
                           int* ipiv,
                           int* info)
 {
@@ -198,7 +212,8 @@ void double_blocked_getrf(rocblas_handle handle,
         n,
         outer_nb,
         inner_nb,
-        trsm_leaf,
+        outer_trsm_mode,
+        trsm_block,
         ipiv,
         info);
 
@@ -211,7 +226,8 @@ void double_blocked_getrf_double(rocblas_handle handle,
                                  int n,
                                  int outer_nb,
                                  int inner_nb,
-                                 int trsm_leaf,
+                                 getrf_outer_trsm_mode outer_trsm_mode,
+                                 int trsm_block,
                                  int* ipiv,
                                  int* info)
 {
@@ -222,7 +238,8 @@ void double_blocked_getrf_double(rocblas_handle handle,
         n,
         outer_nb,
         inner_nb,
-        trsm_leaf,
+        outer_trsm_mode,
+        trsm_block,
         ipiv,
         info);
 
@@ -236,7 +253,8 @@ void double_blocked_getrf_batched_pivot(
     int n,
     int outer_nb,
     int inner_nb,
-    int trsm_leaf,
+    getrf_outer_trsm_mode outer_trsm_mode,
+    int trsm_block,
     int inner_gemm_m_tile,
     int* ipiv,
     int* info,
@@ -257,7 +275,8 @@ void double_blocked_getrf_batched_pivot(
             n,
             outer_nb,
             inner_nb,
-            trsm_leaf,
+            outer_trsm_mode,
+            trsm_block,
             inner_gemm_m_tile,
             ipiv,
             info,
@@ -276,7 +295,8 @@ void double_blocked_getrf_double_batched_pivot(
     int n,
     int outer_nb,
     int inner_nb,
-    int trsm_leaf,
+    getrf_outer_trsm_mode outer_trsm_mode,
+    int trsm_block,
     int inner_gemm_m_tile,
     int* ipiv,
     int* info,
@@ -297,7 +317,8 @@ void double_blocked_getrf_double_batched_pivot(
             n,
             outer_nb,
             inner_nb,
-            trsm_leaf,
+            outer_trsm_mode,
+            trsm_block,
             inner_gemm_m_tile,
             ipiv,
             info,

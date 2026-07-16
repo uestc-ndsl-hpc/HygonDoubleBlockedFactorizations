@@ -41,7 +41,8 @@ fi
 
 PRECISION=${GETRF_PRECISION:-0}
 VERIFY=${GETRF_VERIFY:-0}
-TRSM_LEAF=${GETRF_TRSM_LEAF:-512}
+OUTER_TRSM=${GETRF_OUTER_TRSM:-iterative}
+TRSM_BLOCK=${GETRF_TRSM_BLOCK:-${GETRF_TRSM_LEAF:-2048}}
 PIVOT_COLUMN_TILE=${GETRF_PIVOT_COLUMN_TILE:-2048}
 INNER_GEMM_M_TILE=${GETRF_INNER_GEMM_M_TILE:-8192}
 METHODS=${GETRF_METHODS:-${DEFAULT_METHODS}}
@@ -93,7 +94,8 @@ rm -f "${SUMMARY_LOG}"
     else
         echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]:-N/2} / ${MICRO_BLOCKS[*]:-N/4}"
     fi
-    echo "Recursive TRSM leaf: ${TRSM_LEAF}"
+    echo "Outer TRSM mode    : ${OUTER_TRSM}"
+    echo "TRSM block         : ${TRSM_BLOCK}"
     echo "Pivot column tile  : ${PIVOT_COLUMN_TILE}"
     echo "Inner GEMM M tile  : ${INNER_GEMM_M_TILE}"
     echo "Full residual      : ${FULL_RESIDUAL} (max N=${FULL_RESIDUAL_MAX_N})"
@@ -148,7 +150,8 @@ for N in "${NS[@]}"; do
         --methods "${METHODS}" \
         --double-nb "${RUN_DOUBLE_NBS[@]}" \
         --b "${RUN_MICRO_BLOCKS[@]}" \
-        --trsm-leaf "${TRSM_LEAF}" \
+        --outer-trsm "${OUTER_TRSM}" \
+        --trsm-block "${TRSM_BLOCK}" \
         --pivot-tile "${PIVOT_COLUMN_TILE}" \
         --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
         "${FULL_RESIDUAL_ARGS[@]}" \
@@ -167,7 +170,8 @@ for N in "${NS[@]}"; do
             --n "${N}" \
             --outer-nb "${PROFILE_OUTER_NB}" \
             --inner-nb "${PROFILE_INNER_NB}" \
-            --trsm-leaf "${TRSM_LEAF}" \
+            --outer-trsm "${OUTER_TRSM}" \
+            --trsm-block "${TRSM_BLOCK}" \
             --pivot-tile "${PIVOT_COLUMN_TILE}" \
             --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
             --pivot-mode "${STAGE_PROFILE_PIVOT_MODE}" \

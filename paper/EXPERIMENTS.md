@@ -18,7 +18,7 @@ The unified script currently records the following candidate policy:
 
 - DB-POTRF: `B=8192`, `b=1024`, `T_K=8192`, `T_M=8192`, with M tiling
   enabled for `M>32768` and `K>=5632`.
-- DB-GETRF: `B=N/2`, `b=min(N/4,4096)`, recursive TRSM leaf `512`, pivot
+- DB-GETRF: `B=N/2`, `b=min(N/4,4096)`, iterative TRSM block `2048`, pivot
   column tile `2048`, and inner-GEMM row tile `8192`.
 
 These values may be changed only before the source commit is frozen. A single
@@ -62,8 +62,8 @@ bash run_paper_experiments.sh
 Scaling uses `N=8192,16384,24576,32768,40960`. The script compares rocSOLVER
 with the basic and optimized double-blocked variants required by the ablation;
 it does not select a different configuration at each size. The profile section
-runs the final POTRF and both immediate- and batched-pivot GETRF schedules at
-`N=40960`.
+runs the final POTRF, the immediate- and batched-pivot GETRF schedules, and a
+direct-versus-iterative outer-TRSM control at `N=40960`.
 
 ## 5. Artifacts
 

@@ -223,7 +223,7 @@ void apply_uploaded_permutation(hipStream_t stream,
 }
 
 template <typename T, typename Observer>
-void trsm_left_lower_unit_recursive(rocblas_handle handle,
+void trsm_left_lower_unit_iterative(rocblas_handle handle,
                                     Observer& observer,
                                     int rows,
                                     int cols,
@@ -231,7 +231,7 @@ void trsm_left_lower_unit_recursive(rocblas_handle handle,
                                     int ldl,
                                     T* B,
                                     int ldb,
-                                    int leaf_size)
+                                    int block_size)
 {
     using getrf_pivot_internal::block_ptr;
     using getrf_pivot_internal::gemm_nn_update;
@@ -240,58 +240,44 @@ void trsm_left_lower_unit_recursive(rocblas_handle handle,
     if (rows <= 0 || cols <= 0) {
         return;
     }
-    if (leaf_size <= 0 || rows <= leaf_size) {
+
+    const int step = block_size > 0 ? block_size : rows;
+    for (int row = 0; row < rows; row += step) {
+        const int diagonal_rows = std::min(step, rows - row);
         observer.measure(
-            "Outer TRSM leaf",
-            trsm_work(rows, cols),
+            "Outer TRSM block",
+            trsm_work(diagonal_rows, cols),
             [&]() {
                 trsm_left_lower_unit(
-                    handle, rows, cols, L, ldl, B, ldb);
+                    handle,
+                    diagonal_rows,
+                    cols,
+                    block_ptr(L, ldl, row, row),
+                    ldl,
+                    B + row,
+                    ldb);
             });
-        return;
+
+        const int trailing_rows = rows - row - diagonal_rows;
+        if (trailing_rows > 0) {
+            observer.measure(
+                "Outer TRSM GEMM",
+                gemm_work(trailing_rows, cols, diagonal_rows),
+                [&]() {
+                    gemm_nn_update(
+                        handle,
+                        trailing_rows,
+                        cols,
+                        diagonal_rows,
+                        block_ptr(L, ldl, row + diagonal_rows, row),
+                        ldl,
+                        B + row,
+                        ldb,
+                        B + row + diagonal_rows,
+                        ldb);
+                });
+        }
     }
-
-    const int top_rows = rows / 2;
-    const int bottom_rows = rows - top_rows;
-
-    trsm_left_lower_unit_recursive(
-        handle,
-        observer,
-        top_rows,
-        cols,
-        L,
-        ldl,
-        B,
-        ldb,
-        leaf_size);
-
-    observer.measure(
-        "Outer TRSM GEMM",
-        gemm_work(bottom_rows, cols, top_rows),
-        [&]() {
-            gemm_nn_update(
-                handle,
-                bottom_rows,
-                cols,
-                top_rows,
-                block_ptr(L, ldl, top_rows, 0),
-                ldl,
-                B,
-                ldb,
-                B + top_rows,
-                ldb);
-        });
-
-    trsm_left_lower_unit_recursive(
-        handle,
-        observer,
-        bottom_rows,
-        cols,
-        block_ptr(L, ldl, top_rows, top_rows),
-        ldl,
-        B + top_rows,
-        ldb,
-        leaf_size);
 
     return;
 }
@@ -397,7 +383,8 @@ void prepare_next_outer_panel(rocblas_handle handle,
                               int n,
                               int next_outer,
                               int outer_nb,
-                              int trsm_leaf)
+                              getrf_outer_trsm_mode outer_trsm_mode,
+                              int trsm_block)
 {
     using getrf_pivot_internal::block_ptr;
     using getrf_pivot_internal::gemm_nn_update;
@@ -408,16 +395,32 @@ void prepare_next_outer_panel(rocblas_handle handle,
 
     const int next_size = std::min(outer_nb, n - next_outer);
 
-    trsm_left_lower_unit_recursive(
-        handle,
-        observer,
-        next_outer,
-        next_size,
-        A,
-        lda,
-        block_ptr(A, lda, 0, next_outer),
-        lda,
-        trsm_leaf);
+    if (outer_trsm_mode == getrf_outer_trsm_direct) {
+        observer.measure(
+            "Outer TRSM direct",
+            trsm_work(next_outer, next_size),
+            [&]() {
+                getrf_pivot_internal::trsm_left_lower_unit(
+                    handle,
+                    next_outer,
+                    next_size,
+                    A,
+                    lda,
+                    block_ptr(A, lda, 0, next_outer),
+                    lda);
+            });
+    } else {
+        trsm_left_lower_unit_iterative(
+            handle,
+            observer,
+            next_outer,
+            next_size,
+            A,
+            lda,
+            block_ptr(A, lda, 0, next_outer),
+            lda,
+            trsm_block);
+    }
 
     observer.measure(
         "Outer GEMM",
@@ -447,7 +450,8 @@ bool double_blocked_getrf(rocblas_handle handle,
                           int n,
                           int outer_nb,
                           int inner_nb,
-                          int trsm_leaf,
+                          getrf_outer_trsm_mode outer_trsm_mode,
+                          int trsm_block,
                           int inner_gemm_m_tile,
                           int* ipiv,
                           int* info,
@@ -612,7 +616,8 @@ bool double_blocked_getrf(rocblas_handle handle,
             n,
             outer_end,
             outer_nb,
-            trsm_leaf);
+            outer_trsm_mode,
+            trsm_block);
     }
 
     return true;

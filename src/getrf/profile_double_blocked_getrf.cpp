@@ -43,7 +43,7 @@ double gemm_work(int rows, int cols, int k)
 }
 
 template <typename T>
-void trsm_left_lower_unit_recursive_profiled(
+void trsm_left_lower_unit_iterative_profiled(
     rocblas_handle handle,
     hipStream_t stream,
     StageBreakdownProfiler& profiler,
@@ -53,68 +53,51 @@ void trsm_left_lower_unit_recursive_profiled(
     int ldl,
     T* B,
     int ldb,
-    int leaf_size)
+    int block_size)
 {
     if (rows <= 0 || cols <= 0) {
         return;
     }
 
-    if (leaf_size <= 0 || rows <= leaf_size) {
+    const int step = block_size > 0 ? block_size : rows;
+    for (int row = 0; row < rows; row += step) {
+        const int diagonal_rows = std::min(step, rows - row);
         profiler.measure(
             stream,
-            "Outer TRSM leaf",
-            trsm_work(rows, cols),
+            "Outer TRSM block",
+            trsm_work(diagonal_rows, cols),
             [&]() {
                 trsm_left_lower_unit(
-                    handle, rows, cols, L, ldl, B, ldb);
+                    handle,
+                    diagonal_rows,
+                    cols,
+                    block_ptr(L, ldl, row, row),
+                    ldl,
+                    B + row,
+                    ldb);
             });
-        return;
+
+        const int trailing_rows = rows - row - diagonal_rows;
+        if (trailing_rows > 0) {
+            profiler.measure(
+                stream,
+                "Outer TRSM GEMM",
+                gemm_work(trailing_rows, cols, diagonal_rows),
+                [&]() {
+                    gemm_nn_update(
+                        handle,
+                        trailing_rows,
+                        cols,
+                        diagonal_rows,
+                        block_ptr(L, ldl, row + diagonal_rows, row),
+                        ldl,
+                        B + row,
+                        ldb,
+                        B + row + diagonal_rows,
+                        ldb);
+                });
+        }
     }
-
-    const int top_rows = rows / 2;
-    const int bottom_rows = rows - top_rows;
-
-    trsm_left_lower_unit_recursive_profiled(
-        handle,
-        stream,
-        profiler,
-        top_rows,
-        cols,
-        L,
-        ldl,
-        B,
-        ldb,
-        leaf_size);
-
-    profiler.measure(
-        stream,
-        "Outer TRSM GEMM",
-        gemm_work(bottom_rows, cols, top_rows),
-        [&]() {
-            gemm_nn_update(
-                handle,
-                bottom_rows,
-                cols,
-                top_rows,
-                block_ptr(L, ldl, top_rows, 0),
-                ldl,
-                B,
-                ldb,
-                B + top_rows,
-                ldb);
-        });
-
-    trsm_left_lower_unit_recursive_profiled(
-        handle,
-        stream,
-        profiler,
-        bottom_rows,
-        cols,
-        block_ptr(L, ldl, top_rows, top_rows),
-        ldl,
-        B + top_rows,
-        ldb,
-        leaf_size);
 
     return;
 }
@@ -196,7 +179,8 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
                                        int n,
                                        int next_outer,
                                        int outer_nb,
-                                       int trsm_leaf)
+                                       getrf_outer_trsm_mode outer_trsm_mode,
+                                       int trsm_block)
 {
     if (next_outer >= n) {
         return;
@@ -204,17 +188,34 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
 
     const int next_size = std::min(outer_nb, n - next_outer);
 
-    trsm_left_lower_unit_recursive_profiled(
-        handle,
-        stream,
-        profiler,
-        next_outer,
-        next_size,
-        A,
-        lda,
-        block_ptr(A, lda, 0, next_outer),
-        lda,
-        trsm_leaf);
+    if (outer_trsm_mode == getrf_outer_trsm_direct) {
+        profiler.measure(
+            stream,
+            "Outer TRSM direct",
+            trsm_work(next_outer, next_size),
+            [&]() {
+                trsm_left_lower_unit(
+                    handle,
+                    next_outer,
+                    next_size,
+                    A,
+                    lda,
+                    block_ptr(A, lda, 0, next_outer),
+                    lda);
+            });
+    } else {
+        trsm_left_lower_unit_iterative_profiled(
+            handle,
+            stream,
+            profiler,
+            next_outer,
+            next_size,
+            A,
+            lda,
+            block_ptr(A, lda, 0, next_outer),
+            lda,
+            trsm_block);
+    }
 
     profiler.measure(
         stream,
@@ -246,7 +247,8 @@ void double_blocked_getrf_profiled(rocblas_handle handle,
                                    int n,
                                    int outer_nb,
                                    int inner_nb,
-                                   int trsm_leaf,
+                                   getrf_outer_trsm_mode outer_trsm_mode,
+                                   int trsm_block,
                                    int* ipiv,
                                    int* info)
 {
@@ -310,7 +312,8 @@ void double_blocked_getrf_profiled(rocblas_handle handle,
             n,
             outer_end,
             outer_nb,
-            trsm_leaf);
+            outer_trsm_mode,
+            trsm_block);
     }
 
     return;
@@ -369,7 +372,17 @@ int main(int argc, char** argv)
         argv,
         "--inner-nb",
         read_int_arg(argc, argv, "--b", outer_nb / 2));
-    const int trsm_leaf = read_int_arg(argc, argv, "--trsm-leaf", 512);
+    const int trsm_block = read_int_arg(
+        argc,
+        argv,
+        "--trsm-block",
+        read_int_arg(argc, argv, "--trsm-leaf", 2048));
+    const std::string outer_trsm_name = read_string_arg(
+        argc, argv, "--outer-trsm", "iterative");
+    const getrf_outer_trsm_mode outer_trsm_mode =
+        outer_trsm_name == "direct"
+        ? getrf_outer_trsm_direct
+        : getrf_outer_trsm_iterative;
     const int requested_pivot_column_tile = read_int_arg(
         argc, argv, "--pivot-tile", 2048);
     const int inner_gemm_m_tile = read_int_arg(
@@ -380,13 +393,15 @@ int main(int argc, char** argv)
     const int iters = read_int_arg(argc, argv, "--iters", 3);
 
     if (n <= 0 || outer_nb <= 0 || inner_nb <= 0 || inner_nb > outer_nb
-        || trsm_leaf <= 0 || requested_pivot_column_tile <= 0
+        || trsm_block <= 0 || requested_pivot_column_tile <= 0
         || inner_gemm_m_tile < 0
+        || (outer_trsm_name != "direct" && outer_trsm_name != "iterative")
         || (pivot_mode != "immediate" && pivot_mode != "batched")
         || warmup < 0 || iters <= 0) {
         std::cerr << "Usage: profile_double_blocked_getrf "
                   << "--n N --outer-nb NB --inner-nb B "
-                  << "[--trsm-leaf L] [--pivot-tile T] "
+                  << "[--outer-trsm direct|iterative] "
+                  << "[--trsm-block BT] [--pivot-tile T] "
                   << "[--inner-gemm-m-tile TM] "
                   << "[--pivot-mode immediate|batched] "
                   << "[--warmup W] [--iters I]\n";
@@ -442,7 +457,8 @@ int main(int argc, char** argv)
     std::cout << "Profiling pivoted DoubleBlock GETRF: N=" << n
               << ", outer_nb=" << outer_nb
               << ", inner_nb=" << inner_nb
-              << ", trsm_leaf=" << trsm_leaf
+              << ", outer_trsm=" << outer_trsm_name
+              << ", trsm_block=" << trsm_block
               << ", pivot_mode=" << pivot_mode
               << ", pivot_tile=" << pivot_column_tile
               << ", inner_gemm_m_tile=" << inner_gemm_m_tile
@@ -465,7 +481,8 @@ int main(int argc, char** argv)
                     n,
                     outer_nb,
                     inner_nb,
-                    trsm_leaf,
+                    outer_trsm_mode,
+                    trsm_block,
                     inner_gemm_m_tile,
                     d_ipiv.get(),
                     d_info.get(),
@@ -483,7 +500,8 @@ int main(int argc, char** argv)
                 n,
                 outer_nb,
                 inner_nb,
-                trsm_leaf,
+                outer_trsm_mode,
+                trsm_block,
                 d_ipiv.get(),
                 d_info.get());
         }
@@ -505,7 +523,8 @@ int main(int argc, char** argv)
                     n,
                     outer_nb,
                     inner_nb,
-                    trsm_leaf,
+                    outer_trsm_mode,
+                    trsm_block,
                     inner_gemm_m_tile,
                     d_ipiv.get(),
                     d_info.get(),
@@ -523,7 +542,8 @@ int main(int argc, char** argv)
                 n,
                 outer_nb,
                 inner_nb,
-                trsm_leaf,
+                outer_trsm_mode,
+                trsm_block,
                 d_ipiv.get(),
                 d_info.get());
         }
@@ -534,7 +554,8 @@ int main(int argc, char** argv)
         "Pivoted DoubleBlock GETRF Stage Breakdown (N=" + std::to_string(n)
         + ", outer_nb=" + std::to_string(outer_nb)
         + ", inner_nb=" + std::to_string(inner_nb)
-        + ", trsm_leaf=" + std::to_string(trsm_leaf)
+        + ", outer_trsm=" + outer_trsm_name
+        + ", trsm_block=" + std::to_string(trsm_block)
         + ", pivot_mode=" + pivot_mode
         + ", pivot_tile=" + std::to_string(pivot_column_tile)
         + ", inner_gemm_m_tile=" + std::to_string(inner_gemm_m_tile)

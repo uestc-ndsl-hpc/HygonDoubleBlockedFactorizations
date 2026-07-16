@@ -16,7 +16,8 @@ void call_double_blocked_getrf(rocblas_handle handle,
                                int n,
                                int nb,
                                int b,
-                               int trsm_leaf,
+                               getrf_outer_trsm_mode outer_trsm_mode,
+                               int trsm_block,
                                bool pivoting,
                                int* ipiv,
                                int* info)
@@ -24,10 +25,28 @@ void call_double_blocked_getrf(rocblas_handle handle,
     if (pivoting) {
         if constexpr (std::is_same_v<T, float>) {
             double_blocked_getrf(
-                handle, A, lda, n, nb, b, trsm_leaf, ipiv, info);
+                handle,
+                A,
+                lda,
+                n,
+                nb,
+                b,
+                outer_trsm_mode,
+                trsm_block,
+                ipiv,
+                info);
         } else {
             double_blocked_getrf_double(
-                handle, A, lda, n, nb, b, trsm_leaf, ipiv, info);
+                handle,
+                A,
+                lda,
+                n,
+                nb,
+                b,
+                outer_trsm_mode,
+                trsm_block,
+                ipiv,
+                info);
         }
     } else {
         if constexpr (std::is_same_v<T, float>) {
@@ -49,7 +68,8 @@ void call_double_blocked_getrf_batched_pivot(
     int n,
     int nb,
     int b,
-    int trsm_leaf,
+    getrf_outer_trsm_mode outer_trsm_mode,
+    int trsm_block,
     int inner_gemm_m_tile,
     int* ipiv,
     int* info,
@@ -63,7 +83,8 @@ void call_double_blocked_getrf_batched_pivot(
             n,
             nb,
             b,
-            trsm_leaf,
+            outer_trsm_mode,
+            trsm_block,
             inner_gemm_m_tile,
             ipiv,
             info,
@@ -76,7 +97,8 @@ void call_double_blocked_getrf_batched_pivot(
             n,
             nb,
             b,
-            trsm_leaf,
+            outer_trsm_mode,
+            trsm_block,
             inner_gemm_m_tile,
             ipiv,
             info,
@@ -106,11 +128,16 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                 continue;
             }
 
-            const std::string parameters =
-                std::to_string(nb) + "/" + std::to_string(b)
-                + (context.pivoting
-                    ? "/" + std::to_string(context.trsm_leaf)
-                    : "");
+            std::string parameters =
+                std::to_string(nb) + "/" + std::to_string(b);
+            if (context.pivoting) {
+                if (context.outer_trsm_mode == getrf_outer_trsm_direct) {
+                    parameters += "/direct";
+                } else {
+                    parameters += "/iterative/"
+                        + std::to_string(context.trsm_block);
+                }
+            }
             if (context.test_double_basic) {
                 context.runner.execute(
                     context.pivoting
@@ -126,7 +153,8 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                             context.n,
                             nb,
                             b,
-                            context.trsm_leaf,
+                            context.outer_trsm_mode,
+                            context.trsm_block,
                             context.pivoting,
                             context.d_ipiv,
                             context.d_info);
@@ -151,7 +179,8 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                                 context.n,
                                 nb,
                                 b,
-                                context.trsm_leaf,
+                                context.outer_trsm_mode,
+                                context.trsm_block,
                                 0,
                                 context.d_ipiv,
                                 context.d_info,
@@ -176,7 +205,8 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                                 context.n,
                                 nb,
                                 b,
-                                context.trsm_leaf,
+                                context.outer_trsm_mode,
+                                context.trsm_block,
                                 context.inner_gemm_m_tile,
                                 context.d_ipiv,
                                 context.d_info,

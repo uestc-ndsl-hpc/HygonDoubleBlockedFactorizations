@@ -12,7 +12,7 @@ enum class BlockParameter {
     Nb,
     DoubleNb,
     MicroBlock,
-    TrsmLeaf,
+    TrsmBlock,
     PivotTile,
     InnerGemmMTile
 };
@@ -114,8 +114,27 @@ int main(int argc, char** argv)
             parameter = BlockParameter::MicroBlock;
             continue;
         }
-        if (std::strcmp(argv[i], "--trsm-leaf") == 0) {
-            parameter = BlockParameter::TrsmLeaf;
+        if (std::strcmp(argv[i], "--outer-trsm") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after --outer-trsm.\n";
+                return EXIT_FAILURE;
+            }
+            const char* mode = argv[++i];
+            if (std::strcmp(mode, "direct") == 0) {
+                options.outer_trsm_mode = getrf_outer_trsm_direct;
+            } else if (std::strcmp(mode, "iterative") == 0) {
+                options.outer_trsm_mode = getrf_outer_trsm_iterative;
+            } else {
+                std::cerr << "Invalid --outer-trsm value. Use direct or "
+                             "iterative.\n";
+                return EXIT_FAILURE;
+            }
+            parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--trsm-block") == 0
+            || std::strcmp(argv[i], "--trsm-leaf") == 0) {
+            parameter = BlockParameter::TrsmBlock;
             continue;
         }
         if (std::strcmp(argv[i], "--pivot-tile") == 0) {
@@ -132,8 +151,8 @@ int main(int argc, char** argv)
             options.double_nbs.push_back(value);
         } else if (parameter == BlockParameter::MicroBlock) {
             options.micro_blocks.push_back(value);
-        } else if (parameter == BlockParameter::TrsmLeaf) {
-            options.trsm_leaf = value;
+        } else if (parameter == BlockParameter::TrsmBlock) {
+            options.trsm_block = value;
             parameter = BlockParameter::Nb;
         } else if (parameter == BlockParameter::PivotTile) {
             options.pivot_column_tile = value;
@@ -148,6 +167,10 @@ int main(int argc, char** argv)
 
     if (options.nbs.empty()) {
         options.nbs.push_back(2048);
+    }
+    if (options.trsm_block <= 0) {
+        std::cerr << "--trsm-block must be positive.\n";
+        return EXIT_FAILURE;
     }
 
     if (!options.pivoting) {

@@ -24,7 +24,8 @@ struct GetrfBenchmarkOptions {
     bool test_mgemm = true;
     bool full_residual = false;
     int full_residual_max_n = 8192;
-    int trsm_leaf = 512;
+    getrf_outer_trsm_mode outer_trsm_mode = getrf_outer_trsm_iterative;
+    int trsm_block = 2048;
     int pivot_column_tile = 2048;
     int inner_gemm_m_tile = 8192;
     std::vector<int> nbs;
@@ -44,7 +45,8 @@ struct GetrfBenchmarkContext {
     bool test_double_basic;
     bool test_batched_pivot;
     bool test_mgemm;
-    int trsm_leaf;
+    getrf_outer_trsm_mode outer_trsm_mode;
+    int trsm_block;
     int pivot_column_tile;
     int inner_gemm_m_tile;
     getrf_batched_pivot_workspace* batched_pivot_workspace;

@@ -62,50 +62,49 @@ void apply_panel_pivots(rocblas_handle handle,
 }
 
 template <typename T>
-void trsm_left_lower_unit_recursive(rocblas_handle handle,
+void trsm_left_lower_unit_iterative(rocblas_handle handle,
                                     int rows,
                                     int cols,
                                     const T* L,
                                     int ldl,
                                     T* B,
                                     int ldb,
-                                    int leaf_size)
+                                    int block_size)
 {
     if (rows <= 0 || cols <= 0) {
         return;
     }
-    if (leaf_size <= 0 || rows <= leaf_size) {
+    if (block_size <= 0 || rows <= block_size) {
         trsm_left_lower_unit(handle, rows, cols, L, ldl, B, ldb);
         return;
     }
 
-    const int top_rows = rows / 2;
-    const int bottom_rows = rows - top_rows;
+    for (int row = 0; row < rows; row += block_size) {
+        const int diagonal_rows = std::min(block_size, rows - row);
+        trsm_left_lower_unit(
+            handle,
+            diagonal_rows,
+            cols,
+            block_ptr(L, ldl, row, row),
+            ldl,
+            B + row,
+            ldb);
 
-    trsm_left_lower_unit_recursive(
-        handle, top_rows, cols, L, ldl, B, ldb, leaf_size);
-
-    gemm_nn_update(
-        handle,
-        bottom_rows,
-        cols,
-        top_rows,
-        block_ptr(L, ldl, top_rows, 0),
-        ldl,
-        B,
-        ldb,
-        B + top_rows,
-        ldb);
-
-    trsm_left_lower_unit_recursive(
-        handle,
-        bottom_rows,
-        cols,
-        block_ptr(L, ldl, top_rows, top_rows),
-        ldl,
-        B + top_rows,
-        ldb,
-        leaf_size);
+        const int trailing_rows = rows - row - diagonal_rows;
+        if (trailing_rows > 0) {
+            gemm_nn_update(
+                handle,
+                trailing_rows,
+                cols,
+                diagonal_rows,
+                block_ptr(L, ldl, row + diagonal_rows, row),
+                ldl,
+                B + row,
+                ldb,
+                B + row + diagonal_rows,
+                ldb);
+        }
+    }
 
     return;
 }

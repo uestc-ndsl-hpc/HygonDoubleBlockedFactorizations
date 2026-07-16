@@ -37,7 +37,7 @@ This claim must be supported by the final ablation study and stage profiles.
 
 ### Out of scope unless additional evidence is collected
 
-- Claims of superiority over every blocked or recursive factorization.
+- Claims of superiority over every alternative factorization schedule.
 - Claims of portability to arbitrary GPU architectures.
 - Claims about the internal algorithm used by rocSOLVER.
 - FP64 performance claims without a complete FP64 evaluation.
@@ -58,7 +58,7 @@ Use the following names consistently:
 - `b`: inner panel width.
 - `T_K`: reduction-dimension tile for SYRK.
 - `T_M`: row-dimension tile for GEMM.
-- `b_t`: recursive TRSM leaf size.
+- `b_t`: iterative TRSM block size.
 - `b_p`: column tile used by the batched permutation workspace.
 
 Use "outer block" and "inner panel" in prose. Avoid switching between
@@ -163,15 +163,14 @@ The following protocol is provisional until Phase B is complete.
 ### GETRF methods
 
 1. rocSOLVER GETRF with partial pivoting.
-2. Basic DoubleBlock GETRF with immediate pivot application and recursive
-   outer TRSM.
+2. Basic DoubleBlock GETRF with immediate pivot application and iterative
+   blocked outer TRSM.
 3. DoubleBlock plus batched pivoting.
 4. DB-GETRF: batched pivoting plus M-tiled inner GEMM.
 
-Recursive outer TRSM is common to the current DoubleBlock GETRF variants. It
-must not be presented as an additional optimization after batched pivoting
-unless a direct-TRSM control variant is implemented before the experiment
-freeze.
+Iterative blocked outer TRSM is common to the DoubleBlock GETRF variants. A
+direct rocBLAS outer-TRSM run is retained only as an implementation ablation;
+it is not a separate factorization method.
 
 ### Parameter policy
 
@@ -200,7 +199,8 @@ experiments must use a separate dataset and be reported separately.
 - Both factorizations use an outer block and an inner panel.
 - DB-POTRF provides K-blocked SYRK and conditional M-tiled GEMM updates.
 - DB-GETRF provides delayed pivot composition and two-stage permutation.
-- DB-GETRF uses recursive outer TRSM with GEMM updates and leaf TRSM calls.
+- DB-GETRF uses iterative blocked outer TRSM with GEMM updates and block TRSM
+  calls.
 - Both implementations use rocSOLVER for local diagonal or panel
   factorization and rocBLAS for BLAS-3 operations.
 
