@@ -41,6 +41,51 @@ void call_double_blocked_getrf(rocblas_handle handle,
     return;
 }
 
+template <typename T>
+void call_double_blocked_getrf_batched_pivot(
+    rocblas_handle handle,
+    T* A,
+    int lda,
+    int n,
+    int nb,
+    int b,
+    int trsm_leaf,
+    int inner_gemm_m_tile,
+    int* ipiv,
+    int* info,
+    getrf_batched_pivot_workspace* workspace)
+{
+    if constexpr (std::is_same_v<T, float>) {
+        double_blocked_getrf_batched_pivot(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            trsm_leaf,
+            inner_gemm_m_tile,
+            ipiv,
+            info,
+            workspace);
+    } else {
+        double_blocked_getrf_double_batched_pivot(
+            handle,
+            A,
+            lda,
+            n,
+            nb,
+            b,
+            trsm_leaf,
+            inner_gemm_m_tile,
+            ipiv,
+            info,
+            workspace);
+    }
+
+    return;
+}
+
 } // namespace
 
 template <typename T>
@@ -85,6 +130,56 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                 },
                 context.verify,
                 context.calc_gflops);
+
+            if (context.pivoting) {
+                const std::string batched_parameters = parameters + "/"
+                    + std::to_string(context.pivot_column_tile);
+                context.runner.execute(
+                    "DoubleBlock-LU+BatchedPivot",
+                    batched_parameters,
+                    context.reset,
+                    [&]() {
+                        call_double_blocked_getrf_batched_pivot(
+                            context.handle,
+                            context.d_A,
+                            context.lda,
+                            context.n,
+                            nb,
+                            b,
+                            context.trsm_leaf,
+                            0,
+                            context.d_ipiv,
+                            context.d_info,
+                            context.batched_pivot_workspace);
+                    },
+                    context.verify,
+                    context.calc_gflops);
+
+                if (context.inner_gemm_m_tile > 0) {
+                    const std::string tiled_parameters = batched_parameters
+                        + "/" + std::to_string(context.inner_gemm_m_tile);
+                    context.runner.execute(
+                        "DoubleBlock-LU+BatchedPivot+MGEMM",
+                        tiled_parameters,
+                        context.reset,
+                        [&]() {
+                            call_double_blocked_getrf_batched_pivot(
+                                context.handle,
+                                context.d_A,
+                                context.lda,
+                                context.n,
+                                nb,
+                                b,
+                                context.trsm_leaf,
+                                context.inner_gemm_m_tile,
+                                context.d_ipiv,
+                                context.d_info,
+                                context.batched_pivot_workspace);
+                        },
+                        context.verify,
+                        context.calc_gflops);
+                }
+            }
         }
     }
 

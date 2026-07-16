@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 
 #include <hip/hip_runtime.h>
@@ -6,6 +7,9 @@
 #include "utils/common/error_check.h"
 
 namespace {
+
+constexpr int kPermutationThreads = 256;
+constexpr int kPermutationMaxBlocks = 65535;
 
 template <typename T>
 __global__ void apply_panel_pivots_kernel(T* A,
@@ -100,6 +104,107 @@ void launch_apply_panel_pivots(T* A,
     return;
 }
 
+template <typename T>
+__global__ void gather_permuted_rows_kernel(const T* A,
+                                             int lda,
+                                             int columns,
+                                             const int* sources,
+                                             int move_count,
+                                             T* temporary)
+{
+    const size_t total = static_cast<size_t>(columns) * move_count;
+    const size_t stride = static_cast<size_t>(blockDim.x) * gridDim.x;
+
+    for (size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x
+             + threadIdx.x;
+         index < total;
+         index += stride) {
+        const int move = static_cast<int>(index % move_count);
+        const int column = static_cast<int>(index / move_count);
+        temporary[index] = A[static_cast<size_t>(column) * lda + sources[move]];
+    }
+
+    return;
+}
+
+template <typename T>
+__global__ void scatter_permuted_rows_kernel(T* A,
+                                              int lda,
+                                              int columns,
+                                              const int* targets,
+                                              int move_count,
+                                              const T* temporary)
+{
+    const size_t total = static_cast<size_t>(columns) * move_count;
+    const size_t stride = static_cast<size_t>(blockDim.x) * gridDim.x;
+
+    for (size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x
+             + threadIdx.x;
+         index < total;
+         index += stride) {
+        const int move = static_cast<int>(index % move_count);
+        const int column = static_cast<int>(index / move_count);
+        A[static_cast<size_t>(column) * lda + targets[move]] = temporary[index];
+    }
+
+    return;
+}
+
+template <typename T>
+void launch_apply_permutation(T* A,
+                              int lda,
+                              int column_count,
+                              const int* sources,
+                              const int* targets,
+                              int move_count,
+                              T* temporary,
+                              int column_tile,
+                              hipStream_t stream)
+{
+    if (column_count <= 0 || move_count <= 0 || column_tile <= 0) {
+        return;
+    }
+
+    for (int column = 0; column < column_count; column += column_tile) {
+        const int columns = std::min(column_tile, column_count - column);
+        const size_t total = static_cast<size_t>(columns) * move_count;
+        const int blocks = static_cast<int>(std::min<size_t>(
+            kPermutationMaxBlocks,
+            (total + kPermutationThreads - 1) / kPermutationThreads));
+        T* tile = A + static_cast<size_t>(column) * lda;
+
+        hipLaunchKernelGGL(
+            HIP_KERNEL_NAME(gather_permuted_rows_kernel<T>),
+            dim3(blocks),
+            dim3(kPermutationThreads),
+            0,
+            stream,
+            tile,
+            lda,
+            columns,
+            sources,
+            move_count,
+            temporary);
+        HIP_CHECK(hipGetLastError());
+
+        hipLaunchKernelGGL(
+            HIP_KERNEL_NAME(scatter_permuted_rows_kernel<T>),
+            dim3(blocks),
+            dim3(kPermutationThreads),
+            0,
+            stream,
+            tile,
+            lda,
+            columns,
+            targets,
+            move_count,
+            temporary);
+        HIP_CHECK(hipGetLastError());
+    }
+
+    return;
+}
+
 } // namespace
 
 extern "C" {
@@ -128,6 +233,54 @@ void launch_apply_getrf_panel_pivots_double(double* A,
 {
     launch_apply_panel_pivots(
         A, lda, n, panel, panel_size, pivots, stream);
+
+    return;
+}
+
+void launch_apply_getrf_permutation(float* A,
+                                    int lda,
+                                    int column_count,
+                                    const int* sources,
+                                    const int* targets,
+                                    int move_count,
+                                    float* temporary,
+                                    int column_tile,
+                                    hipStream_t stream)
+{
+    launch_apply_permutation(
+        A,
+        lda,
+        column_count,
+        sources,
+        targets,
+        move_count,
+        temporary,
+        column_tile,
+        stream);
+
+    return;
+}
+
+void launch_apply_getrf_permutation_double(double* A,
+                                           int lda,
+                                           int column_count,
+                                           const int* sources,
+                                           const int* targets,
+                                           int move_count,
+                                           double* temporary,
+                                           int column_tile,
+                                           hipStream_t stream)
+{
+    launch_apply_permutation(
+        A,
+        lda,
+        column_count,
+        sources,
+        targets,
+        move_count,
+        temporary,
+        column_tile,
+        stream);
 
     return;
 }

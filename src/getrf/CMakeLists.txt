@@ -33,3 +33,15 @@ target_link_libraries(benchmark_getrf
     hygon_getrf
     hygon_utils
 )
+
+add_executable(profile_double_blocked_getrf
+    profile_double_blocked_getrf.cpp
+)
+
+apply_benchmark_options(profile_double_blocked_getrf)
+link_rocm_runtime(profile_double_blocked_getrf)
+target_link_libraries(profile_double_blocked_getrf
+    rocsolver
+    hygon_getrf
+    hygon_utils
+)

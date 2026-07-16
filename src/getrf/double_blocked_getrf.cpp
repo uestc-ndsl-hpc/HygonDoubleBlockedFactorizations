@@ -1,8 +1,11 @@
 #include "getrf/double_blocked_getrf.h"
 
 #include <algorithm>
+#include <iostream>
 
+#include "getrf_batched_pivot_internal.h"
 #include "getrf_pivot_internal.h"
+#include "utils/common/error_check.h"
 
 namespace {
 
@@ -12,6 +15,19 @@ using getrf_pivot_internal::factor_panel;
 using getrf_pivot_internal::gemm_nn_update;
 using getrf_pivot_internal::trsm_left_lower_unit;
 using getrf_pivot_internal::trsm_left_lower_unit_recursive;
+
+void mark_getrf_failure(rocblas_handle handle, int* info)
+{
+    if (info == nullptr) {
+        return;
+    }
+
+    hipStream_t stream;
+    ROCBLAS_CHECK(rocblas_get_stream(handle, &stream));
+    HIP_CHECK(hipMemsetAsync(info, 0xff, sizeof(int), stream));
+
+    return;
+}
 
 template <typename T>
 void prepare_next_inner_panel(rocblas_handle handle,
@@ -209,6 +225,86 @@ void double_blocked_getrf_double(rocblas_handle handle,
         trsm_leaf,
         ipiv,
         info);
+
+    return;
+}
+
+void double_blocked_getrf_batched_pivot(
+    rocblas_handle handle,
+    float* A,
+    int lda,
+    int n,
+    int outer_nb,
+    int inner_nb,
+    int trsm_leaf,
+    int inner_gemm_m_tile,
+    int* ipiv,
+    int* info,
+    getrf_batched_pivot_workspace* workspace)
+{
+    if (!getrf_batched_pivot_internal::workspace_is_valid(workspace, n)) {
+        std::cerr << "Invalid batched-pivot GETRF workspace\n";
+        mark_getrf_failure(handle, info);
+        return;
+    }
+
+    getrf_batched_pivot_internal::NullObserver observer;
+    if (!getrf_batched_pivot_internal::double_blocked_getrf(
+            handle,
+            observer,
+            A,
+            lda,
+            n,
+            outer_nb,
+            inner_nb,
+            trsm_leaf,
+            inner_gemm_m_tile,
+            ipiv,
+            info,
+            *workspace)) {
+        std::cerr << "Invalid pivot returned by panel GETRF\n";
+        mark_getrf_failure(handle, info);
+    }
+
+    return;
+}
+
+void double_blocked_getrf_double_batched_pivot(
+    rocblas_handle handle,
+    double* A,
+    int lda,
+    int n,
+    int outer_nb,
+    int inner_nb,
+    int trsm_leaf,
+    int inner_gemm_m_tile,
+    int* ipiv,
+    int* info,
+    getrf_batched_pivot_workspace* workspace)
+{
+    if (!getrf_batched_pivot_internal::workspace_is_valid(workspace, n)) {
+        std::cerr << "Invalid batched-pivot GETRF workspace\n";
+        mark_getrf_failure(handle, info);
+        return;
+    }
+
+    getrf_batched_pivot_internal::NullObserver observer;
+    if (!getrf_batched_pivot_internal::double_blocked_getrf(
+            handle,
+            observer,
+            A,
+            lda,
+            n,
+            outer_nb,
+            inner_nb,
+            trsm_leaf,
+            inner_gemm_m_tile,
+            ipiv,
+            info,
+            *workspace)) {
+        std::cerr << "Invalid pivot returned by panel GETRF\n";
+        mark_getrf_failure(handle, info);
+    }
 
     return;
 }

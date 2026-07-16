@@ -133,6 +133,32 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     DeviceBuffer<int> d_ipiv(n);
     DeviceBuffer<int> d_info(1);
 
+    const int pivot_column_tile = std::min(
+        n, std::max(1, options.pivot_column_tile));
+    const size_t pivot_capacity = options.pivoting
+        ? static_cast<size_t>(n)
+        : 0;
+    DeviceBuffer<int> d_pivot_sources(pivot_capacity);
+    DeviceBuffer<int> d_pivot_targets(pivot_capacity);
+    DeviceBuffer<T> d_pivot_swap(
+        pivot_capacity * static_cast<size_t>(pivot_column_tile));
+    std::vector<int> h_pivots(pivot_capacity);
+    std::vector<int> h_permutation(pivot_capacity);
+    std::vector<int> h_sources(pivot_capacity);
+    std::vector<int> h_targets(pivot_capacity);
+
+    getrf_batched_pivot_workspace batched_pivot_workspace{
+        d_pivot_sources.get(),
+        d_pivot_targets.get(),
+        d_pivot_swap.get(),
+        h_pivots.data(),
+        h_permutation.data(),
+        h_sources.data(),
+        h_targets.data(),
+        options.pivoting ? n : 0,
+        pivot_column_tile
+    };
+
     HIP_CHECK(hipMemcpy(
         d_A_original,
         h_A_original.data(),
@@ -200,6 +226,9 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         n,
         options.pivoting,
         options.trsm_leaf,
+        pivot_column_tile,
+        options.inner_gemm_m_tile,
+        options.pivoting ? &batched_pivot_workspace : nullptr,
         options.nbs,
         options.double_nbs,
         options.micro_blocks,

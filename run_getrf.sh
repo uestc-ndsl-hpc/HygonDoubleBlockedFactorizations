@@ -13,6 +13,7 @@ fi
 ROOT_DIR=${SCRIPT_DIR}
 BUILD_DIR=${ROOT_DIR}/build
 EXEC=${BUILD_DIR}/benchmark_getrf
+PROFILE_EXEC=${BUILD_DIR}/profile_double_blocked_getrf
 PIVOTING=${GETRF_PIVOTING:-1}
 if [[ "${PIVOTING}" == "1" ]]; then
     MODE_NAME=GETRF
@@ -39,6 +40,21 @@ fi
 PRECISION=${GETRF_PRECISION:-0}
 VERIFY=${GETRF_VERIFY:-0}
 TRSM_LEAF=${GETRF_TRSM_LEAF:-512}
+PIVOT_COLUMN_TILE=${GETRF_PIVOT_COLUMN_TILE:-2048}
+INNER_GEMM_M_TILE=${GETRF_INNER_GEMM_M_TILE:-8192}
+RUN_STAGE_PROFILE=${GETRF_RUN_STAGE_PROFILE:-0}
+STAGE_PROFILE_WARMUP=${GETRF_STAGE_PROFILE_WARMUP:-1}
+STAGE_PROFILE_ITERS=${GETRF_STAGE_PROFILE_ITERS:-3}
+STAGE_PROFILE_PIVOT_MODE=${GETRF_STAGE_PROFILE_PIVOT_MODE:-batched}
+
+if [[ "${RUN_STAGE_PROFILE}" == "1" && "${PIVOTING}" != "1" ]]; then
+    echo "GETRF stage profiling currently supports pivoted GETRF only." >&2
+    exit 2
+fi
+if [[ "${RUN_STAGE_PROFILE}" == "1" && "${PRECISION}" != "0" ]]; then
+    echo "GETRF stage profiling currently supports FP32 only." >&2
+    exit 2
+fi
 
 PIVOT_ARGS=()
 if [[ "${PIVOTING}" == "1" ]]; then
@@ -72,6 +88,13 @@ rm -f "${SUMMARY_LOG}"
         echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]:-N/2} / ${MICRO_BLOCKS[*]:-N/4}"
     fi
     echo "Recursive TRSM leaf: ${TRSM_LEAF}"
+    echo "Pivot column tile  : ${PIVOT_COLUMN_TILE}"
+    echo "Inner GEMM M tile  : ${INNER_GEMM_M_TILE}"
+    echo "Run stage profile   : ${RUN_STAGE_PROFILE}"
+    if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
+        echo "Stage warmup/iters : ${STAGE_PROFILE_WARMUP}/${STAGE_PROFILE_ITERS}"
+        echo "Stage pivot mode   : ${STAGE_PROFILE_PIVOT_MODE}"
+    fi
 } | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
@@ -80,6 +103,12 @@ check_benchmark_binary \
     "${EXEC}" \
     "${SUMMARY_LOG}" \
     "rocsolver|rocblas|amdhip64|hsa-runtime64"
+if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
+    check_benchmark_binary \
+        "${PROFILE_EXEC}" \
+        "${SUMMARY_LOG}" \
+        "rocsolver|rocblas|amdhip64|hsa-runtime64"
+fi
 configure_numa_launch_prefix "${SUMMARY_LOG}"
 
 for N in "${NS[@]}"; do
@@ -95,9 +124,33 @@ for N in "${NS[@]}"; do
         "${PIVOT_ARGS[@]}" \
         "${DOUBLE_BLOCK_ARGS[@]}" \
         --trsm-leaf "${TRSM_LEAF}" \
+        --pivot-tile "${PIVOT_COLUMN_TILE}" \
+        --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"
+
+    if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
+        PROFILE_OUTER_NB=${GETRF_PROFILE_OUTER_NB:-$((N / 2))}
+        PROFILE_INNER_NB=${GETRF_PROFILE_INNER_NB:-$((PROFILE_OUTER_NB / 2))}
+        PROFILE_OUT_FILE=${RESULT_DIR}/getrf_profile_N${N}.log
+
+        echo ">>> Profiling DoubleBlock GETRF: N=${N}, NB/B=${PROFILE_OUTER_NB}/${PROFILE_INNER_NB}" \
+            | tee -a "${SUMMARY_LOG}"
+        "${LAUNCH_PREFIX[@]}" "${PROFILE_EXEC}" \
+            --n "${N}" \
+            --outer-nb "${PROFILE_OUTER_NB}" \
+            --inner-nb "${PROFILE_INNER_NB}" \
+            --trsm-leaf "${TRSM_LEAF}" \
+            --pivot-tile "${PIVOT_COLUMN_TILE}" \
+            --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
+            --pivot-mode "${STAGE_PROFILE_PIVOT_MODE}" \
+            --warmup "${STAGE_PROFILE_WARMUP}" \
+            --iters "${STAGE_PROFILE_ITERS}" \
+            2>&1 | tee "${PROFILE_OUT_FILE}"
+
+        cat "${PROFILE_OUT_FILE}" >> "${SUMMARY_LOG}"
+    fi
 done
 
 echo "" | tee -a "${SUMMARY_LOG}"

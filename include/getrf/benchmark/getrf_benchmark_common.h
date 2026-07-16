@@ -5,6 +5,7 @@
 
 #include <rocblas/rocblas.h>
 
+#include "getrf/double_blocked_getrf.h"
 #include "utils/benchmark/benchmark_result.h"
 #include "utils/benchmark/benchmark_runner.h"
 #include "utils/benchmark/error_mode.h"
@@ -17,6 +18,8 @@ struct GetrfBenchmarkOptions {
     ErrorMode error_mode = ErrorMode::None;
     bool pivoting = false;
     int trsm_leaf = 512;
+    int pivot_column_tile = 2048;
+    int inner_gemm_m_tile = 8192;
     std::vector<int> nbs;
     std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
@@ -32,6 +35,9 @@ struct GetrfBenchmarkContext {
     int lda;
     bool pivoting;
     int trsm_leaf;
+    int pivot_column_tile;
+    int inner_gemm_m_tile;
+    getrf_batched_pivot_workspace* batched_pivot_workspace;
     const std::vector<int>& nbs;
     const std::vector<int>& double_nbs;
     const std::vector<int>& micro_blocks;

@@ -9,7 +9,9 @@ enum class BlockParameter {
     Nb,
     DoubleNb,
     MicroBlock,
-    TrsmLeaf
+    TrsmLeaf,
+    PivotTile,
+    InnerGemmMTile
 };
 
 } // namespace
@@ -51,6 +53,14 @@ int main(int argc, char** argv)
             parameter = BlockParameter::TrsmLeaf;
             continue;
         }
+        if (std::strcmp(argv[i], "--pivot-tile") == 0) {
+            parameter = BlockParameter::PivotTile;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--inner-gemm-m-tile") == 0) {
+            parameter = BlockParameter::InnerGemmMTile;
+            continue;
+        }
 
         const int value = std::atoi(argv[i]);
         if (parameter == BlockParameter::DoubleNb) {
@@ -59,6 +69,12 @@ int main(int argc, char** argv)
             options.micro_blocks.push_back(value);
         } else if (parameter == BlockParameter::TrsmLeaf) {
             options.trsm_leaf = value;
+            parameter = BlockParameter::Nb;
+        } else if (parameter == BlockParameter::PivotTile) {
+            options.pivot_column_tile = value;
+            parameter = BlockParameter::Nb;
+        } else if (parameter == BlockParameter::InnerGemmMTile) {
+            options.inner_gemm_m_tile = value;
             parameter = BlockParameter::Nb;
         } else {
             options.nbs.push_back(value);
