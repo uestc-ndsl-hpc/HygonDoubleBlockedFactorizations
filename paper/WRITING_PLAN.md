@@ -102,9 +102,9 @@ levels.
 - [ ] Select one source commit for all reported experiments.
 - [ ] Record the DTK, compiler, rocBLAS, rocSOLVER, driver, and device versions.
 - [ ] Freeze the parameter-selection policy before the scaling run.
-- [ ] Audit the benchmark timer and error-verification paths.
-- [ ] Decide whether the paper reports mean, median, minimum, and variability.
-- [ ] Create one script that reproduces every reported experiment.
+- [x] Audit the benchmark timer and error-verification paths.
+- [x] Report mean, median, sample standard deviation, minimum, and maximum.
+- [x] Create one script that reproduces every reported experiment.
 
 ### Phase C: Unified evaluation
 
@@ -148,9 +148,8 @@ The following protocol is provisional until Phase B is complete.
 - Inputs: the same generated matrix is restored before every timed method.
 - Timing: GPU execution only, measured with HIP events on the execution stream.
 - Correctness: performed outside the timed region.
-- Residual policy: sampled residuals used during development must be audited;
-  the final paper must document the sampling rule or add a full residual test
-  at representative sizes.
+- Residual policy: deterministic 4096-entry sampling during scaling, plus full
+  Frobenius residuals at 4096 and a non-power-of-two representative size.
 - External baseline: official rocSOLVER only.
 - Large unsupported rocSOLVER cases are excluded rather than counted as wins.
 

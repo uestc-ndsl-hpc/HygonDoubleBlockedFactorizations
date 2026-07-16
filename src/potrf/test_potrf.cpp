@@ -1,5 +1,8 @@
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "potrf/benchmark/potrf_benchmark_common.h"
@@ -9,6 +12,57 @@ namespace {
 bool is_bool_flag(const char* arg)
 {
     return std::strcmp(arg, "0") == 0 || std::strcmp(arg, "1") == 0;
+}
+
+bool parse_methods(const char* value,
+                   potrf_benchmark::PotrfBenchmarkOptions& options)
+{
+    options.test_rocsolver = false;
+    options.test_blocked = false;
+    options.test_recursive = false;
+    options.test_double_basic = false;
+    options.test_double_dbtrsm = false;
+    options.test_double_kbsyrk = false;
+    options.test_double_mgemm = false;
+
+    std::stringstream input(value);
+    std::string method;
+    bool found = false;
+    while (std::getline(input, method, ',')) {
+        if (method == "all") {
+            options.test_rocsolver = true;
+            options.test_blocked = true;
+            options.test_recursive = true;
+            options.test_double_basic = true;
+            options.test_double_dbtrsm = true;
+            options.test_double_kbsyrk = true;
+            options.test_double_mgemm = true;
+        } else if (method == "rocsolver") {
+            options.test_rocsolver = true;
+        } else if (method == "blocked") {
+            options.test_blocked = true;
+        } else if (method == "recursive") {
+            options.test_recursive = true;
+        } else if (method == "double" || method == "basic") {
+            options.test_double_basic = true;
+        } else if (method == "dbtrsm") {
+            options.test_double_dbtrsm = true;
+        } else if (method == "kbsyrk") {
+            options.test_double_kbsyrk = true;
+        } else if (method == "mgemm") {
+            options.test_double_mgemm = true;
+        } else {
+            return false;
+        }
+        found = true;
+    }
+
+    options.test_double_blocked = options.test_double_basic
+        || options.test_double_dbtrsm
+        || options.test_double_kbsyrk
+        || options.test_double_mgemm;
+
+    return found;
 }
 
 } // namespace
@@ -61,7 +115,56 @@ int main(int argc, char** argv)
     };
 
     BlockParameter block_parameter = BlockParameter::Nb;
+    bool methods_explicit = false;
     for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--full-residual") == 0) {
+            options.full_residual = true;
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--full-residual-max-n") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after --full-residual-max-n.\n";
+                return EXIT_FAILURE;
+            }
+            options.full_residual_max_n = std::atoi(argv[++i]);
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--methods") == 0) {
+            if (i + 1 >= argc || !parse_methods(argv[++i], options)) {
+                std::cerr << "Invalid --methods value. Use a comma-separated "
+                             "subset of rocsolver,blocked,recursive,double,"
+                             "dbtrsm,kbsyrk,mgemm.\n";
+                return EXIT_FAILURE;
+            }
+            methods_explicit = true;
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--syrk-k-tile") == 0
+            || std::strcmp(argv[i], "--gemm-m-tile") == 0
+            || std::strcmp(argv[i], "--gemm-m-threshold") == 0
+            || std::strcmp(argv[i], "--gemm-k-threshold") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after " << argv[i] << ".\n";
+                return EXIT_FAILURE;
+            }
+
+            const std::string option = argv[i];
+            const int value = std::atoi(argv[++i]);
+            if (option == "--syrk-k-tile") {
+                options.syrk_k_tile = value;
+            } else if (option == "--gemm-m-tile") {
+                options.gemm_m_tile = value;
+            } else if (option == "--gemm-m-threshold") {
+                options.gemm_m_threshold = value;
+            } else {
+                options.gemm_k_threshold = value;
+            }
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
         if (std::strcmp(argv[i], "--double-nb") == 0) {
             block_parameter = BlockParameter::DoubleNb;
             continue;
@@ -84,7 +187,34 @@ int main(int argc, char** argv)
         options.nbs.push_back(256);
     }
 
+    if (!methods_explicit && !options.test_double_blocked) {
+        options.test_double_basic = false;
+        options.test_double_dbtrsm = false;
+        options.test_double_kbsyrk = false;
+        options.test_double_mgemm = false;
+    }
+    if (options.syrk_k_tile < 0 || options.gemm_m_tile < 0
+        || options.gemm_m_threshold < 0 || options.gemm_k_threshold < 0) {
+        std::cerr << "POTRF tile and threshold values must be non-negative.\n";
+        return EXIT_FAILURE;
+    }
+
     options.error_mode = parse_benchmark_error_mode(error_input);
+    if (options.full_residual) {
+        if (options.full_residual_max_n <= 0
+            || options.n > options.full_residual_max_n) {
+            std::cerr << "Full residual requested for N=" << options.n
+                      << ", but --full-residual-max-n="
+                      << options.full_residual_max_n << ".\n";
+            return EXIT_FAILURE;
+        }
+        if (options.error_mode == ErrorMode::None
+            || options.error_mode == ErrorMode::Forward) {
+            options.error_mode = options.error_mode == ErrorMode::Forward
+                ? ErrorMode::Both
+                : ErrorMode::Backward;
+        }
+    }
     potrf_benchmark::run_potrf_benchmarks(options);
 
     return 0;

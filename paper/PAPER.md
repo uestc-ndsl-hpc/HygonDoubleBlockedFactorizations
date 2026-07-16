@@ -694,13 +694,20 @@ the timed factorization.
 ### C. Measurement and Numerical Validation
 
 End-to-end timing uses HIP events on the execution stream. Before every timed
-method, the same input matrix is restored on the device. GETRF throughput uses
-$2n^3/3$ operations and POTRF throughput uses $n^3/3$ operations.
+method, the same deterministically generated input matrix is restored on the
+device. All individual iteration times are retained; the evaluation reports
+the arithmetic mean, median, sample standard deviation, minimum, and maximum.
+GETRF throughput uses $2n^3/3$ operations and POTRF throughput uses $n^3/3$
+operations.
 
-Numerical validation reconstructs sampled entries of $PA-LU$ and $A-LL^T$.
-The final evaluation will document the sampling rule and include full residual
-checks at representative sizes. Validation is performed outside the timed
-region.
+Numerical validation is performed outside the timed region. Scaling runs use
+a deterministic set of 4096 entries to estimate the relative residuals of
+$PA-LU$ and $A-LL^T$. Separate correctness runs explicitly form $L$ and $U$
+or $L$ and reconstruct the complete product with FP64 rocBLAS GEMM. They
+report the full Frobenius residual at representative power-of-two and
+non-power-of-two sizes. The final evaluation records both policies and does
+not compare a full residual from one method with a sampled residual from
+another.
 
 ## VII. Experimental Evaluation
 

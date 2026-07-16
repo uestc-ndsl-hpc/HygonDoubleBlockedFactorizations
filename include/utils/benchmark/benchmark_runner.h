@@ -1,7 +1,10 @@
 #pragma once
+#include <cmath>
 #include <cstdlib>
 #include <hip/hip_runtime.h>
 #include <string>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 #include <numeric>
 #include <algorithm>
@@ -34,21 +37,40 @@ public:
 
         const int profile_iters = read_iteration_count(
             "BENCHMARK_PROFILE_ITERS", 10, 1);
-        std::vector<float> iter_times(profile_iters);
+        std::vector<double> iter_times(profile_iters);
 
         GPUTimer timer;
         for (int i = 0; i < profile_iters; ++i) {
             reset();
             HIP_CHECK(hipDeviceSynchronize());
             
-            iter_times[i] = timer.measure(stream_, [&]() {
+            iter_times[i] = static_cast<double>(timer.measure(stream_, [&]() {
                 target();
-            });
+            }));
         }
         HIP_CHECK(hipDeviceSynchronize());
 
-        float total_ms = std::accumulate(iter_times.begin(), iter_times.end(), 0.0f);
-        double ms = static_cast<double>(total_ms / profile_iters);
+        const double total_ms = std::accumulate(
+            iter_times.begin(), iter_times.end(), 0.0);
+        const double ms = total_ms / static_cast<double>(profile_iters);
+
+        std::vector<double> sorted_times = iter_times;
+        std::sort(sorted_times.begin(), sorted_times.end());
+        const size_t middle = sorted_times.size() / 2;
+        const double median_ms = sorted_times.size() % 2 == 0
+            ? (sorted_times[middle - 1] + sorted_times[middle]) / 2.0
+            : sorted_times[middle];
+        const double min_ms = sorted_times.front();
+        const double max_ms = sorted_times.back();
+
+        double variance = 0.0;
+        for (double value : iter_times) {
+            const double delta = value - ms;
+            variance += delta * delta;
+        }
+        const double stddev_ms = iter_times.size() > 1
+            ? std::sqrt(variance / static_cast<double>(iter_times.size() - 1))
+            : 0.0;
 
         double gflops = calc_gflops(ms);
         double forward_error = -1.0;
@@ -60,6 +82,19 @@ public:
         HIP_CHECK(hipDeviceSynchronize());
         verify(forward_error, backward_error);
 
+        const double backward_error_limit = read_optional_double(
+            "BENCHMARK_MAX_BACKWARD_ERROR", -1.0);
+        if (backward_error_limit >= 0.0
+            && (backward_error < 0.0
+                || !std::isfinite(backward_error)
+                || backward_error > backward_error_limit)) {
+            throw std::runtime_error(
+                name + " backward residual "
+                + std::to_string(backward_error)
+                + " exceeds BENCHMARK_MAX_BACKWARD_ERROR="
+                + std::to_string(backward_error_limit));
+        }
+
         if (name.find("rocBLAS") != std::string::npos) {
             baseline_time_ = ms;
         }
@@ -69,10 +104,15 @@ public:
             name,
             nb_str,
             ms,
+            median_ms,
+            stddev_ms,
+            min_ms,
+            max_ms,
             gflops,
             speedup,
             forward_error,
-            backward_error
+            backward_error,
+            std::move(iter_times)
         });
 
         return ms;
@@ -96,6 +136,22 @@ private:
         }
 
         return static_cast<int>(parsed);
+    }
+
+    static double read_optional_double(const char* variable, double fallback)
+    {
+        const char* value = std::getenv(variable);
+        if (value == nullptr || *value == '\0') {
+            return fallback;
+        }
+
+        char* end = nullptr;
+        const double parsed = std::strtod(value, &end);
+        if (end == value || *end != '\0' || !std::isfinite(parsed)) {
+            return fallback;
+        }
+
+        return parsed;
     }
 
     hipStream_t stream_;

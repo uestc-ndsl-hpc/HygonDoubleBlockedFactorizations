@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -46,6 +47,117 @@ void generate_dense_matrix(std::vector<T>& A, int n, bool pivoting)
     return;
 }
 
+bool build_row_permutation(const int* pivots,
+                           int n,
+                           bool pivoting,
+                           std::vector<int>& permutation)
+{
+    permutation.resize(n);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    if (pivoting) {
+        for (int row = 0; row < n; ++row) {
+            const int pivot_row = pivots[row] - 1;
+            if (pivot_row < row || pivot_row >= n) {
+                return false;
+            }
+            std::swap(permutation[row], permutation[pivot_row]);
+        }
+    }
+
+    return true;
+}
+
+void gemm_nn(rocblas_handle handle,
+             int n,
+             const double* left,
+             const double* right,
+             double* product)
+{
+    const double one = 1.0;
+    const double zero = 0.0;
+
+    ROCBLAS_CHECK(rocblas_dgemm(
+        handle,
+        rocblas_operation_none,
+        rocblas_operation_none,
+        n,
+        n,
+        n,
+        &one,
+        left,
+        n,
+        right,
+        n,
+        &zero,
+        product,
+        n));
+}
+
+template <typename T>
+double verify_backward_error_full(rocblas_handle handle,
+                                  const T* packed_lu,
+                                  const T* original,
+                                  const int* pivots,
+                                  int n,
+                                  int lda,
+                                  bool pivoting,
+                                  double* device_l,
+                                  double* device_u,
+                                  double* device_product)
+{
+    std::vector<int> permutation;
+    if (!build_row_permutation(
+            pivots, n, pivoting, permutation)) {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    const size_t element_count = static_cast<size_t>(n) * n;
+    const size_t bytes = element_count * sizeof(double);
+    std::vector<double> lower(element_count, 0.0);
+    std::vector<double> upper(element_count, 0.0);
+
+    for (int column = 0; column < n; ++column) {
+        for (int row = 0; row < n; ++row) {
+            const size_t index = static_cast<size_t>(column) * lda + row;
+            if (row > column) {
+                lower[index] = static_cast<double>(packed_lu[index]);
+            } else if (row == column) {
+                lower[index] = 1.0;
+                upper[index] = static_cast<double>(packed_lu[index]);
+            } else {
+                upper[index] = static_cast<double>(packed_lu[index]);
+            }
+        }
+    }
+
+    HIP_CHECK(hipMemcpy(
+        device_l, lower.data(), bytes, hipMemcpyHostToDevice));
+    HIP_CHECK(hipMemcpy(
+        device_u, upper.data(), bytes, hipMemcpyHostToDevice));
+    gemm_nn(handle, n, device_l, device_u, device_product);
+
+    std::vector<double> product(element_count);
+    HIP_CHECK(hipMemcpy(
+        product.data(), device_product, bytes, hipMemcpyDeviceToHost));
+
+    double residual_norm_sq = 0.0;
+    double original_norm_sq = 0.0;
+    for (int column = 0; column < n; ++column) {
+        for (int row = 0; row < n; ++row) {
+            const size_t index = static_cast<size_t>(column) * lda + row;
+            const double pa_value = static_cast<double>(
+                original[static_cast<size_t>(column) * lda
+                    + permutation[row]]);
+            const double residual = product[index] - pa_value;
+            residual_norm_sq += residual * residual;
+            original_norm_sq += pa_value * pa_value;
+        }
+    }
+
+    return std::sqrt(residual_norm_sq)
+        / (std::sqrt(original_norm_sq) + 1e-30);
+}
+
 template <typename T>
 double verify_backward_error_sampled(const T* packed_lu,
                                      const T* original,
@@ -62,18 +174,10 @@ double verify_backward_error_sampled(const T* packed_lu,
     std::mt19937 gen(20260715u);
     std::uniform_int_distribution<int> index_dist(0, n - 1);
 
-    std::vector<int> permutation(n);
-    for (int row = 0; row < n; ++row) {
-        permutation[row] = row;
-    }
-    if (pivoting) {
-        for (int row = 0; row < n; ++row) {
-            const int pivot_row = pivots[row] - 1;
-            if (pivot_row < row || pivot_row >= n) {
-                return std::numeric_limits<double>::infinity();
-            }
-            std::swap(permutation[row], permutation[pivot_row]);
-        }
+    std::vector<int> permutation;
+    if (!build_row_permutation(
+            pivots, n, pivoting, permutation)) {
+        return std::numeric_limits<double>::infinity();
     }
 
     double residual_norm_sq = 0.0;
@@ -132,6 +236,12 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     DeviceBuffer<T> d_A(element_count);
     DeviceBuffer<int> d_ipiv(n);
     DeviceBuffer<int> d_info(1);
+    DeviceBuffer<double> d_residual_lhs(
+        options.full_residual ? element_count : 0);
+    DeviceBuffer<double> d_residual_rhs(
+        options.full_residual ? element_count : 0);
+    DeviceBuffer<double> d_residual_product(
+        options.full_residual ? element_count : 0);
 
     const int pivot_column_tile = std::min(
         n, std::max(1, options.pivot_column_tile));
@@ -204,13 +314,27 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
                 hipMemcpyDeviceToHost));
         }
 
-        backward_error = verify_backward_error_sampled(
-            h_lu.data(),
-            h_A_original.data(),
-            options.pivoting ? h_ipiv.data() : nullptr,
-            n,
-            n,
-            options.pivoting);
+        if (options.full_residual) {
+            backward_error = verify_backward_error_full(
+                handle,
+                h_lu.data(),
+                h_A_original.data(),
+                options.pivoting ? h_ipiv.data() : nullptr,
+                n,
+                n,
+                options.pivoting,
+                d_residual_lhs.get(),
+                d_residual_rhs.get(),
+                d_residual_product.get());
+        } else {
+            backward_error = verify_backward_error_sampled(
+                h_lu.data(),
+                h_A_original.data(),
+                options.pivoting ? h_ipiv.data() : nullptr,
+                n,
+                n,
+                options.pivoting);
+        }
     };
 
     auto calc_gflops = [n](double time_ms) {
@@ -225,6 +349,9 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         n,
         n,
         options.pivoting,
+        options.test_double_basic,
+        options.test_batched_pivot,
+        options.test_mgemm,
         options.trsm_leaf,
         pivot_column_tile,
         options.inner_gemm_m_tile,
@@ -242,9 +369,22 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
 
     const std::string mode = options.pivoting ? "GETRF" : "GETRF-NPVT";
     std::cout << ">>> Running " << mode << " Benchmarks...\n";
-    run_rocsolver_case(context);
-    run_blocked_cases(context);
-    run_double_blocked_cases(context);
+    if (options.error_mode != ErrorMode::None) {
+        std::cout << ">>> Backward residual: "
+                  << (options.full_residual ? "full Frobenius" : "4096 samples")
+                  << "\n";
+    }
+    if (options.test_rocsolver) {
+        run_rocsolver_case(context);
+    }
+    if (options.test_blocked) {
+        run_blocked_cases(context);
+    }
+    if (options.test_double_basic
+        || (options.pivoting
+            && (options.test_batched_pivot || options.test_mgemm))) {
+        run_double_blocked_cases(context);
+    }
 
     print_benchmark_results(
         mode + " Benchmark Summary (N = " + std::to_string(n) + ")",

@@ -111,35 +111,15 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                 + (context.pivoting
                     ? "/" + std::to_string(context.trsm_leaf)
                     : "");
-            context.runner.execute(
-                context.pivoting ? "DoubleBlock-LU" : "DoubleBlock-LU-NPVT",
-                parameters,
-                context.reset,
-                [&]() {
-                    call_double_blocked_getrf(
-                        context.handle,
-                        context.d_A,
-                        context.lda,
-                        context.n,
-                        nb,
-                        b,
-                        context.trsm_leaf,
-                        context.pivoting,
-                        context.d_ipiv,
-                        context.d_info);
-                },
-                context.verify,
-                context.calc_gflops);
-
-            if (context.pivoting) {
-                const std::string batched_parameters = parameters + "/"
-                    + std::to_string(context.pivot_column_tile);
+            if (context.test_double_basic) {
                 context.runner.execute(
-                    "DoubleBlock-LU+BatchedPivot",
-                    batched_parameters,
+                    context.pivoting
+                        ? "DoubleBlock-LU"
+                        : "DoubleBlock-LU-NPVT",
+                    parameters,
                     context.reset,
                     [&]() {
-                        call_double_blocked_getrf_batched_pivot(
+                        call_double_blocked_getrf(
                             context.handle,
                             context.d_A,
                             context.lda,
@@ -147,15 +127,41 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                             nb,
                             b,
                             context.trsm_leaf,
-                            0,
+                            context.pivoting,
                             context.d_ipiv,
-                            context.d_info,
-                            context.batched_pivot_workspace);
+                            context.d_info);
                     },
                     context.verify,
                     context.calc_gflops);
+            }
 
-                if (context.inner_gemm_m_tile > 0) {
+            if (context.pivoting) {
+                const std::string batched_parameters = parameters + "/"
+                    + std::to_string(context.pivot_column_tile);
+                if (context.test_batched_pivot) {
+                    context.runner.execute(
+                        "DoubleBlock-LU+BatchedPivot",
+                        batched_parameters,
+                        context.reset,
+                        [&]() {
+                            call_double_blocked_getrf_batched_pivot(
+                                context.handle,
+                                context.d_A,
+                                context.lda,
+                                context.n,
+                                nb,
+                                b,
+                                context.trsm_leaf,
+                                0,
+                                context.d_ipiv,
+                                context.d_info,
+                                context.batched_pivot_workspace);
+                        },
+                        context.verify,
+                        context.calc_gflops);
+                }
+
+                if (context.test_mgemm && context.inner_gemm_m_tile > 0) {
                     const std::string tiled_parameters = batched_parameters
                         + "/" + std::to_string(context.inner_gemm_m_tile);
                     context.runner.execute(

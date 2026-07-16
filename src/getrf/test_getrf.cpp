@@ -1,5 +1,8 @@
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 #include "getrf/benchmark/getrf_benchmark_common.h"
 
@@ -13,6 +16,44 @@ enum class BlockParameter {
     PivotTile,
     InnerGemmMTile
 };
+
+bool parse_methods(const char* value,
+                   getrf_benchmark::GetrfBenchmarkOptions& options)
+{
+    options.test_rocsolver = false;
+    options.test_blocked = false;
+    options.test_double_basic = false;
+    options.test_batched_pivot = false;
+    options.test_mgemm = false;
+
+    std::stringstream input(value);
+    std::string method;
+    bool found = false;
+    while (std::getline(input, method, ',')) {
+        if (method == "all") {
+            options.test_rocsolver = true;
+            options.test_blocked = true;
+            options.test_double_basic = true;
+            options.test_batched_pivot = true;
+            options.test_mgemm = true;
+        } else if (method == "rocsolver") {
+            options.test_rocsolver = true;
+        } else if (method == "blocked") {
+            options.test_blocked = true;
+        } else if (method == "double" || method == "basic") {
+            options.test_double_basic = true;
+        } else if (method == "batched") {
+            options.test_batched_pivot = true;
+        } else if (method == "mgemm") {
+            options.test_mgemm = true;
+        } else {
+            return false;
+        }
+        found = true;
+    }
+
+    return found;
+}
 
 } // namespace
 
@@ -31,6 +72,7 @@ int main(int argc, char** argv)
     }
 
     BlockParameter parameter = BlockParameter::Nb;
+    bool methods_explicit = false;
     for (int i = 4; i < argc; ++i) {
         if (std::strcmp(argv[i], "--pivot") == 0
             || std::strcmp(argv[i], "-p") == 0) {
@@ -39,6 +81,29 @@ int main(int argc, char** argv)
         }
         if (std::strcmp(argv[i], "--npvt") == 0) {
             options.pivoting = false;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--full-residual") == 0) {
+            options.full_residual = true;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--full-residual-max-n") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after --full-residual-max-n.\n";
+                return EXIT_FAILURE;
+            }
+            options.full_residual_max_n = std::atoi(argv[++i]);
+            parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--methods") == 0) {
+            if (i + 1 >= argc || !parse_methods(argv[++i], options)) {
+                std::cerr << "Invalid --methods value. Use a comma-separated "
+                             "subset of rocsolver,blocked,double,batched,mgemm.\n";
+                return EXIT_FAILURE;
+            }
+            methods_explicit = true;
+            parameter = BlockParameter::Nb;
             continue;
         }
         if (std::strcmp(argv[i], "--double-nb") == 0) {
@@ -83,6 +148,26 @@ int main(int argc, char** argv)
 
     if (options.nbs.empty()) {
         options.nbs.push_back(2048);
+    }
+
+    if (!options.pivoting) {
+        if (methods_explicit
+            && (options.test_batched_pivot || options.test_mgemm)) {
+            std::cerr << "batched and mgemm require --pivot.\n";
+            return EXIT_FAILURE;
+        }
+        options.test_batched_pivot = false;
+        options.test_mgemm = false;
+    }
+    if (options.full_residual) {
+        if (options.full_residual_max_n <= 0
+            || options.n > options.full_residual_max_n) {
+            std::cerr << "Full residual requested for N=" << options.n
+                      << ", but --full-residual-max-n="
+                      << options.full_residual_max_n << ".\n";
+            return EXIT_FAILURE;
+        }
+        options.error_mode = ErrorMode::Backward;
     }
 
     getrf_benchmark::run_getrf_benchmarks(options);

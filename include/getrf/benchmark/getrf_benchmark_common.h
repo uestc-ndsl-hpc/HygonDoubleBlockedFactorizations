@@ -17,6 +17,13 @@ struct GetrfBenchmarkOptions {
     int precision_type = 0;
     ErrorMode error_mode = ErrorMode::None;
     bool pivoting = false;
+    bool test_rocsolver = true;
+    bool test_blocked = true;
+    bool test_double_basic = true;
+    bool test_batched_pivot = true;
+    bool test_mgemm = true;
+    bool full_residual = false;
+    int full_residual_max_n = 8192;
     int trsm_leaf = 512;
     int pivot_column_tile = 2048;
     int inner_gemm_m_tile = 8192;
@@ -34,6 +41,9 @@ struct GetrfBenchmarkContext {
     int n;
     int lda;
     bool pivoting;
+    bool test_double_basic;
+    bool test_batched_pivot;
+    bool test_mgemm;
     int trsm_leaf;
     int pivot_column_tile;
     int inner_gemm_m_tile;

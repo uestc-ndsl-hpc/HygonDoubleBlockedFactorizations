@@ -16,13 +16,26 @@ setup_dtk_environment() {
 
 log_toolchain() {
     local summary_log=$1
+    local root_dir=${2:-$(pwd)}
 
+    echo "Timestamp          : $(date --iso-8601=seconds 2>/dev/null || date)" | tee -a "${summary_log}"
+    echo "Hostname           : $(hostname 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
+    echo "Kernel             : $(uname -srmo 2>/dev/null || uname -a 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
+    echo "Git commit         : $(git -C "${root_dir}" rev-parse HEAD 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
+    echo "Git describe       : $(git -C "${root_dir}" describe --always --dirty 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
     echo "DTK Environment    : ${ROCM_PATH}" | tee -a "${summary_log}"
     echo "HIP device         : ${HIP_VISIBLE_DEVICES}" | tee -a "${summary_log}"
     echo "Warmup iterations  : ${BENCHMARK_WARMUP_ITERS}" | tee -a "${summary_log}"
     echo "Profile iterations : ${BENCHMARK_PROFILE_ITERS}" | tee -a "${summary_log}"
     echo "hipcc path         : $(command -v hipcc 2>/dev/null || echo unavailable)" | tee -a "${summary_log}"
     echo "hipcc version      : $(hipcc --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a "${summary_log}"
+    echo "cmake version      : $(cmake --version 2>/dev/null | head -n 1 || echo unavailable)" | tee -a "${summary_log}"
+
+    if command -v rocm-smi >/dev/null 2>&1; then
+        echo "ROCm device state:" | tee -a "${summary_log}"
+        rocm-smi --showproductname --showuse --showmemuse --showpids \
+            2>&1 | tee -a "${summary_log}" || true
+    fi
 
     return 0
 }

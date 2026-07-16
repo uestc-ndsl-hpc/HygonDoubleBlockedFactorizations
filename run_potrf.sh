@@ -27,6 +27,39 @@ TEST_ROCSOLVER=${POTRF_TEST_ROCSOLVER:-1}
 TEST_RECURSIVE=${POTRF_TEST_RECURSIVE:-1}
 TEST_BLOCKED=${POTRF_TEST_BLOCKED:-1}
 TEST_DOUBLE_BLOCKED=${POTRF_TEST_DOUBLE_BLOCKED:-1}
+METHODS=${POTRF_METHODS:-}
+if [[ -z "${METHODS}" ]]; then
+    if [[ "${TEST_ROCSOLVER}" == "1" ]]; then
+        METHODS=rocsolver
+    fi
+    if [[ "${TEST_BLOCKED}" == "1" ]]; then
+        METHODS=${METHODS:+${METHODS},}blocked
+    fi
+    if [[ "${TEST_RECURSIVE}" == "1" ]]; then
+        METHODS=${METHODS:+${METHODS},}recursive
+    fi
+    if [[ "${TEST_DOUBLE_BLOCKED}" == "1" ]]; then
+        METHODS=${METHODS:+${METHODS},}double,dbtrsm,kbsyrk,mgemm
+    fi
+fi
+METHOD_ARGS=()
+if [[ -n "${METHODS}" ]]; then
+    METHOD_ARGS+=(--methods "${METHODS}")
+fi
+SYRK_K_TILE=${POTRF_SYRK_K_TILE:-8192}
+GEMM_M_TILE=${POTRF_GEMM_M_TILE:-8192}
+GEMM_M_THRESHOLD=${POTRF_GEMM_M_THRESHOLD:-32768}
+GEMM_K_THRESHOLD=${POTRF_GEMM_K_THRESHOLD:-5632}
+FULL_RESIDUAL=${POTRF_FULL_RESIDUAL:-0}
+FULL_RESIDUAL_MAX_N=${POTRF_FULL_RESIDUAL_MAX_N:-8192}
+
+FULL_RESIDUAL_ARGS=()
+if [[ "${FULL_RESIDUAL}" == "1" ]]; then
+    FULL_RESIDUAL_ARGS+=(
+        --full-residual
+        --full-residual-max-n "${FULL_RESIDUAL_MAX_N}"
+    )
+fi
 
 mkdir -p "${RESULT_DIR}"
 rm -f "${SUMMARY_LOG}"
@@ -42,12 +75,17 @@ rm -f "${SUMMARY_LOG}"
     echo "Baseline NBs       : ${BASELINE_NBS[*]}"
     echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]} / ${MICRO_BLOCKS[*]}"
     echo "DoubleBlock methods: base, DBTRSM, KBSYRK, KBSYRK+MGEMM"
+    echo "Selected methods   : ${METHODS}"
+    echo "SYRK K tile        : ${SYRK_K_TILE}"
+    echo "GEMM M tile        : ${GEMM_M_TILE}"
+    echo "GEMM thresholds    : M>${GEMM_M_THRESHOLD}, K>=${GEMM_K_THRESHOLD}"
+    echo "Full residual      : ${FULL_RESIDUAL} (max N=${FULL_RESIDUAL_MAX_N})"
     echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"
     echo "Test Blocked-RL    : ${TEST_BLOCKED}"
     echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"
     echo "Test Recursive     : ${TEST_RECURSIVE}"
 } | tee -a "${SUMMARY_LOG}"
-log_toolchain "${SUMMARY_LOG}"
+log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
 
 check_benchmark_binary \
@@ -61,8 +99,10 @@ for N in "${NS[@]}"; do
     echo ">>> Running POTRF Benchmark: N=${N}" | tee -a "${SUMMARY_LOG}"
 
     OUT_FILE=${RESULT_DIR}/potrf_N${N}.log
+    CSV_FILE=${RESULT_DIR}/potrf_N${N}_timings.csv
     echo "Output detail      : ${OUT_FILE}" | tee -a "${SUMMARY_LOG}"
 
+    BENCHMARK_CSV_PATH="${CSV_FILE}" \
     "${LAUNCH_PREFIX[@]}" "${EXEC}" \
         "${N}" \
         "${TEST_ROCSOLVER}" \
@@ -72,8 +112,14 @@ for N in "${NS[@]}"; do
         "${TEST_BLOCKED}" \
         "${TEST_DOUBLE_BLOCKED}" \
         "${BASELINE_NBS[@]}" \
+        "${METHOD_ARGS[@]}" \
         --double-nb "${DOUBLE_NBS[@]}" \
         --b "${MICRO_BLOCKS[@]}" \
+        --syrk-k-tile "${SYRK_K_TILE}" \
+        --gemm-m-tile "${GEMM_M_TILE}" \
+        --gemm-m-threshold "${GEMM_M_THRESHOLD}" \
+        --gemm-k-threshold "${GEMM_K_THRESHOLD}" \
+        "${FULL_RESIDUAL_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

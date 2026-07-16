@@ -43,7 +43,7 @@ rm -f "${SUMMARY_LOG}" "${BLOCKED_LOG}" "${DOUBLE_LOG}"
     echo "GEMM thresholds    : M>${GEMM_M_THRESHOLD}, K>=${GEMM_K_THRESHOLD}"
     echo "Warmup/iterations  : ${WARMUP}/${ITERS}"
 } | tee -a "${SUMMARY_LOG}"
-log_toolchain "${SUMMARY_LOG}"
+log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
 
 check_benchmark_binary \

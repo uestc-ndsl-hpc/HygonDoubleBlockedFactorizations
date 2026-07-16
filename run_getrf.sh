@@ -18,9 +18,11 @@ PIVOTING=${GETRF_PIVOTING:-1}
 if [[ "${PIVOTING}" == "1" ]]; then
     MODE_NAME=GETRF
     DEFAULT_RESULT_SUBDIR=getrf_pivoted
+    DEFAULT_METHODS=rocsolver,blocked,double,batched,mgemm
 else
     MODE_NAME=GETRF-NPVT
     DEFAULT_RESULT_SUBDIR=getrf_npvt
+    DEFAULT_METHODS=rocsolver,blocked,double
 fi
 
 RESULT_DIR=${GETRF_RESULT_DIR:-${ROOT_DIR}/results/fp32/${DEFAULT_RESULT_SUBDIR}}
@@ -42,6 +44,9 @@ VERIFY=${GETRF_VERIFY:-0}
 TRSM_LEAF=${GETRF_TRSM_LEAF:-512}
 PIVOT_COLUMN_TILE=${GETRF_PIVOT_COLUMN_TILE:-2048}
 INNER_GEMM_M_TILE=${GETRF_INNER_GEMM_M_TILE:-8192}
+METHODS=${GETRF_METHODS:-${DEFAULT_METHODS}}
+FULL_RESIDUAL=${GETRF_FULL_RESIDUAL:-0}
+FULL_RESIDUAL_MAX_N=${GETRF_FULL_RESIDUAL_MAX_N:-8192}
 RUN_STAGE_PROFILE=${GETRF_RUN_STAGE_PROFILE:-0}
 STAGE_PROFILE_WARMUP=${GETRF_STAGE_PROFILE_WARMUP:-1}
 STAGE_PROFILE_ITERS=${GETRF_STAGE_PROFILE_ITERS:-3}
@@ -61,12 +66,12 @@ if [[ "${PIVOTING}" == "1" ]]; then
     PIVOT_ARGS+=(--pivot)
 fi
 
-DOUBLE_BLOCK_ARGS=()
-if (( ${#DOUBLE_NBS[@]} > 0 )); then
-    DOUBLE_BLOCK_ARGS+=(--double-nb "${DOUBLE_NBS[@]}")
-fi
-if (( ${#MICRO_BLOCKS[@]} > 0 )); then
-    DOUBLE_BLOCK_ARGS+=(--b "${MICRO_BLOCKS[@]}")
+FULL_RESIDUAL_ARGS=()
+if [[ "${FULL_RESIDUAL}" == "1" ]]; then
+    FULL_RESIDUAL_ARGS+=(
+        --full-residual
+        --full-residual-max-n "${FULL_RESIDUAL_MAX_N}"
+    )
 fi
 
 mkdir -p "${RESULT_DIR}"
@@ -81,22 +86,24 @@ rm -f "${SUMMARY_LOG}"
     echo "Precision mode     : ${PRECISION} (0=FP32, 1=FP64)"
     echo "Backward verify    : ${VERIFY}"
     echo "Pivoting            : ${PIVOTING}"
+    echo "Methods             : ${METHODS}"
     echo "Blocked-RL NBs     : ${BASELINE_NBS[*]}"
     if (( ${#DOUBLE_NBS[@]} == 0 && ${#MICRO_BLOCKS[@]} == 0 )); then
-        echo "DoubleBlock NB/B   : N/2 / N/4 (reference defaults)"
+        echo "DoubleBlock NB/B   : N/2 / min(N/4,4096)"
     else
         echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]:-N/2} / ${MICRO_BLOCKS[*]:-N/4}"
     fi
     echo "Recursive TRSM leaf: ${TRSM_LEAF}"
     echo "Pivot column tile  : ${PIVOT_COLUMN_TILE}"
     echo "Inner GEMM M tile  : ${INNER_GEMM_M_TILE}"
+    echo "Full residual      : ${FULL_RESIDUAL} (max N=${FULL_RESIDUAL_MAX_N})"
     echo "Run stage profile   : ${RUN_STAGE_PROFILE}"
     if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
         echo "Stage warmup/iters : ${STAGE_PROFILE_WARMUP}/${STAGE_PROFILE_ITERS}"
         echo "Stage pivot mode   : ${STAGE_PROFILE_PIVOT_MODE}"
     fi
 } | tee -a "${SUMMARY_LOG}"
-log_toolchain "${SUMMARY_LOG}"
+log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
 
 check_benchmark_binary \
@@ -116,23 +123,42 @@ for N in "${NS[@]}"; do
     echo ">>> Running ${MODE_NAME} benchmark: N=${N}" | tee -a "${SUMMARY_LOG}"
 
     OUT_FILE=${RESULT_DIR}/getrf_N${N}.log
+    CSV_FILE=${RESULT_DIR}/getrf_N${N}_timings.csv
+
+    RUN_DOUBLE_NBS=("${DOUBLE_NBS[@]}")
+    RUN_MICRO_BLOCKS=("${MICRO_BLOCKS[@]}")
+    if (( ${#RUN_DOUBLE_NBS[@]} == 0 )); then
+        RUN_DOUBLE_NBS=($((N / 2)))
+    fi
+    if (( ${#RUN_MICRO_BLOCKS[@]} == 0 )); then
+        DEFAULT_B=$((N / 4))
+        if (( DEFAULT_B > 4096 )); then
+            DEFAULT_B=4096
+        fi
+        RUN_MICRO_BLOCKS=("${DEFAULT_B}")
+    fi
+
+    BENCHMARK_CSV_PATH="${CSV_FILE}" \
     "${LAUNCH_PREFIX[@]}" "${EXEC}" \
         "${N}" \
         "${PRECISION}" \
         "${VERIFY}" \
         "${BASELINE_NBS[@]}" \
         "${PIVOT_ARGS[@]}" \
-        "${DOUBLE_BLOCK_ARGS[@]}" \
+        --methods "${METHODS}" \
+        --double-nb "${RUN_DOUBLE_NBS[@]}" \
+        --b "${RUN_MICRO_BLOCKS[@]}" \
         --trsm-leaf "${TRSM_LEAF}" \
         --pivot-tile "${PIVOT_COLUMN_TILE}" \
         --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
+        "${FULL_RESIDUAL_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"
 
     if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
-        PROFILE_OUTER_NB=${GETRF_PROFILE_OUTER_NB:-$((N / 2))}
-        PROFILE_INNER_NB=${GETRF_PROFILE_INNER_NB:-$((PROFILE_OUTER_NB / 2))}
+        PROFILE_OUTER_NB=${GETRF_PROFILE_OUTER_NB:-${RUN_DOUBLE_NBS[0]}}
+        PROFILE_INNER_NB=${GETRF_PROFILE_INNER_NB:-${RUN_MICRO_BLOCKS[0]}}
         PROFILE_OUT_FILE=${RESULT_DIR}/getrf_profile_N${N}.log
 
         echo ">>> Profiling DoubleBlock GETRF: N=${N}, NB/B=${PROFILE_OUTER_NB}/${PROFILE_INNER_NB}" \

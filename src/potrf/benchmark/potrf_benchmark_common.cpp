@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include <hip/hip_runtime.h>
@@ -69,8 +69,7 @@ double verify_backward_error_sampled(
     double diff_norm_sq = 0.0;
     double a_norm_sq = 0.0;
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    std::mt19937 gen(20260716u);
     std::uniform_int_distribution<int> dist_row(0, n - 1);
     std::uniform_int_distribution<int> dist_col(0, n - 1);
 
@@ -109,6 +108,72 @@ double verify_backward_error_sampled(
     return std::sqrt(diff_norm_sq) / (std::sqrt(a_norm_sq) + 1e-12);
 }
 
+void gemm_nt(rocblas_handle handle,
+             int n,
+             const double* lower,
+             double* product)
+{
+    const double one = 1.0;
+    const double zero = 0.0;
+
+    ROCBLAS_CHECK(rocblas_dgemm(
+        handle,
+        rocblas_operation_none,
+        rocblas_operation_transpose,
+        n,
+        n,
+        n,
+        &one,
+        lower,
+        n,
+        lower,
+        n,
+        &zero,
+        product,
+        n));
+}
+
+template <typename T>
+double verify_backward_error_full(rocblas_handle handle,
+                                  const T* packed_lower,
+                                  const T* original,
+                                  int n,
+                                  int lda,
+                                  double* device_lower,
+                                  double* device_product)
+{
+    const size_t element_count = static_cast<size_t>(n) * n;
+    const size_t bytes = element_count * sizeof(double);
+    std::vector<double> lower(element_count, 0.0);
+
+    for (int column = 0; column < n; ++column) {
+        for (int row = column; row < n; ++row) {
+            const size_t index = static_cast<size_t>(column) * lda + row;
+            lower[index] = static_cast<double>(packed_lower[index]);
+        }
+    }
+
+    HIP_CHECK(hipMemcpy(
+        device_lower, lower.data(), bytes, hipMemcpyHostToDevice));
+    gemm_nt(handle, n, device_lower, device_product);
+
+    std::vector<double> product(element_count);
+    HIP_CHECK(hipMemcpy(
+        product.data(), device_product, bytes, hipMemcpyDeviceToHost));
+
+    double residual_norm_sq = 0.0;
+    double original_norm_sq = 0.0;
+    for (size_t index = 0; index < element_count; ++index) {
+        const double original_value = static_cast<double>(original[index]);
+        const double residual = product[index] - original_value;
+        residual_norm_sq += residual * residual;
+        original_norm_sq += original_value * original_value;
+    }
+
+    return std::sqrt(residual_norm_sq)
+        / (std::sqrt(original_norm_sq) + 1e-30);
+}
+
 template <typename T>
 void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 {
@@ -126,8 +191,12 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     DeviceBuffer<int> d_info(1);
     DeviceBuffer<T> d_A_orig(num_elements);
+    DeviceBuffer<double> d_residual_lower(
+        options.full_residual ? num_elements : 0);
+    DeviceBuffer<double> d_residual_product(
+        options.full_residual ? num_elements : 0);
 
-    generate_spd_matrix<T>(handle, d_A_orig, n, n);
+    generate_spd_matrix<T>(handle, d_A_orig, n, n, 20260716u);
 
     std::vector<T> h_A(num_elements);
     HIP_CHECK(hipMemcpy(h_A.data(), d_A_orig, bytes, hipMemcpyDeviceToHost));
@@ -174,6 +243,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     auto reset_a = [&]() {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
+        HIP_CHECK(hipMemset(d_info, 0, sizeof(int)));
     };
 
     auto calc_gflops_potrf = [n](double ms) {
@@ -182,6 +252,15 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     auto verify_potrf = [&] (double& f_err, double& b_err) {
         if (options.error_mode == ErrorMode::None) {
+            return;
+        }
+
+        int info = 0;
+        HIP_CHECK(hipMemcpy(
+            &info, d_info, sizeof(int), hipMemcpyDeviceToHost));
+        if (info != 0) {
+            f_err = std::numeric_limits<double>::infinity();
+            b_err = std::numeric_limits<double>::infinity();
             return;
         }
 
@@ -197,12 +276,23 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         }
 
         if (options.error_mode == ErrorMode::Backward || options.error_mode == ErrorMode::Both) {
-            b_err = verify_backward_error_sampled(
-                h_res.data(),
-                h_A.data(),
-                n,
-                n,
-                4096);
+            if (options.full_residual) {
+                b_err = verify_backward_error_full(
+                    handle,
+                    h_res.data(),
+                    h_A.data(),
+                    n,
+                    n,
+                    d_residual_lower.get(),
+                    d_residual_product.get());
+            } else {
+                b_err = verify_backward_error_sampled(
+                    h_res.data(),
+                    h_A.data(),
+                    n,
+                    n,
+                    4096);
+            }
         }
     };
 
@@ -217,6 +307,14 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         options.double_nbs,
         options.micro_blocks,
         options.precision_type,
+        options.test_double_basic,
+        options.test_double_dbtrsm,
+        options.test_double_kbsyrk,
+        options.test_double_mgemm,
+        options.syrk_k_tile,
+        options.gemm_m_tile,
+        options.gemm_m_threshold,
+        options.gemm_k_threshold,
         runner,
         results,
         baseline_time,
@@ -226,6 +324,12 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
     };
 
     std::cout << ">>> Running Benchmarks...\n";
+    if (options.error_mode == ErrorMode::Backward
+        || options.error_mode == ErrorMode::Both) {
+        std::cout << ">>> Backward residual: "
+                  << (options.full_residual ? "full Frobenius" : "4096 samples")
+                  << "\n";
+    }
 
     if (options.test_rocsolver) {
         run_rocsolver_case(context);
@@ -235,7 +339,11 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         run_blocked_cases(context);
     }
 
-    if (options.test_double_blocked) {
+    if (options.test_double_blocked
+        && (options.test_double_basic
+            || options.test_double_dbtrsm
+            || options.test_double_kbsyrk
+            || options.test_double_mgemm)) {
         run_double_blocked_cases(context);
     }
 

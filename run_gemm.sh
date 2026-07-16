@@ -22,7 +22,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Result directory   : ${RESULT_DIR}"
     echo "Total matrix size  : 32768"
 } | tee -a "${SUMMARY_LOG}"
-log_toolchain "${SUMMARY_LOG}"
+log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
 
 check_benchmark_binary \
