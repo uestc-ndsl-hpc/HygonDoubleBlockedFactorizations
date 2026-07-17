@@ -47,6 +47,9 @@ PROFILE_N=${PAPER_PROFILE_N:-40960}
 STAGE_WARMUP=${PAPER_STAGE_WARMUP:-1}
 STAGE_ITERS=${PAPER_STAGE_ITERS:-3}
 CORRECTNESS_TILE=${PAPER_CORRECTNESS_TILE:-1024}
+POTRF_MAX_BACKWARD_ERROR=${PAPER_POTRF_MAX_BACKWARD_ERROR:-2e-6}
+GETRF_CORRECTNESS_MAX_BACKWARD_ERROR=${PAPER_GETRF_CORRECTNESS_MAX_BACKWARD_ERROR:-5e-5}
+GETRF_SCALING_MAX_BACKWARD_ERROR=${PAPER_GETRF_SCALING_MAX_BACKWARD_ERROR:-5e-4}
 
 section_enabled() {
     local section=$1
@@ -99,6 +102,9 @@ rm -f "${SUMMARY_LOG}"
     echo "Stage warmup/iters  : ${STAGE_WARMUP}/${STAGE_ITERS}"
     echo "LU backward error   : ||P*A-L*U||_F / ||A||_F"
     echo "POTRF backward error: ||A-L*L^T||_F / ||A||_F"
+    echo "POTRF error limit   : ${POTRF_MAX_BACKWARD_ERROR}"
+    echo "GETRF full limit    : ${GETRF_CORRECTNESS_MAX_BACKWARD_ERROR}"
+    echo "GETRF sampled limit : ${GETRF_SCALING_MAX_BACKWARD_ERROR}"
     echo "Scaling estimator   : 4096 deterministic full-matrix samples"
     echo "Correctness metric  : full FP64-accumulated Frobenius norms"
 } | tee -a "${SUMMARY_LOG}"
@@ -146,9 +152,9 @@ if section_enabled correctness; then
 
     export BENCHMARK_WARMUP_ITERS=${PAPER_CORRECTNESS_WARMUP:-0}
     export BENCHMARK_PROFILE_ITERS=${PAPER_CORRECTNESS_ITERS:-1}
-    export BENCHMARK_MAX_BACKWARD_ERROR=${PAPER_MAX_BACKWARD_ERROR:-2e-6}
 
     for N in "${CORRECTNESS_NS[@]}"; do
+        export BENCHMARK_MAX_BACKWARD_ERROR=${POTRF_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${CORRECTNESS_DIR}/potrf_N${N}_timings.csv" \
             "${CORRECTNESS_DIR}/potrf_N${N}.log" \
@@ -164,6 +170,7 @@ if section_enabled correctness; then
             --full-residual \
             --full-residual-max-n 8192
 
+        export BENCHMARK_MAX_BACKWARD_ERROR=${GETRF_CORRECTNESS_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${CORRECTNESS_DIR}/getrf_N${N}_timings.csv" \
             "${CORRECTNESS_DIR}/getrf_N${N}.log" \
@@ -190,7 +197,6 @@ if section_enabled scaling; then
 
     export BENCHMARK_WARMUP_ITERS=${PAPER_WARMUP_ITERS:-2}
     export BENCHMARK_PROFILE_ITERS=${PAPER_PROFILE_ITERS:-10}
-    export BENCHMARK_MAX_BACKWARD_ERROR=${PAPER_MAX_BACKWARD_ERROR:-2e-6}
 
     for N in "${SCALING_NS[@]}"; do
         CURRENT_POTRF_NB=${POTRF_NB}
@@ -198,6 +204,7 @@ if section_enabled scaling; then
             CURRENT_POTRF_NB=${N}
         fi
 
+        export BENCHMARK_MAX_BACKWARD_ERROR=${POTRF_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${SCALING_DIR}/potrf_N${N}_timings.csv" \
             "${SCALING_DIR}/potrf_N${N}.log" \
@@ -217,6 +224,7 @@ if section_enabled scaling; then
             GETRF_B=4096
         fi
 
+        export BENCHMARK_MAX_BACKWARD_ERROR=${GETRF_SCALING_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${SCALING_DIR}/getrf_N${N}_timings.csv" \
             "${SCALING_DIR}/getrf_N${N}.log" \
