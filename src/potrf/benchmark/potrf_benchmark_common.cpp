@@ -4,7 +4,6 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -13,6 +12,7 @@
 
 #include "utils/common/error_check.h"
 #include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/residual_sampling.h"
 #include "utils/matrix/matrix_generator.h"
 #include "utils/memory/device_buffer.h"
 
@@ -63,46 +63,38 @@ double verify_backward_error_sampled(
     int lda,
     int sample_count = 4096)
 {
-    long long total = static_cast<long long>(n) * (n + 1) / 2;
-    sample_count = std::min(static_cast<long long>(sample_count), total);
+    const std::uint64_t total
+        = static_cast<std::uint64_t>(n) * static_cast<std::uint64_t>(n);
+    sample_count = static_cast<int>(
+        std::min<std::uint64_t>(sample_count, total));
+    benchmark_residual::DeterministicIndexSampler sampler(total);
 
     double diff_norm_sq = 0.0;
     double a_norm_sq = 0.0;
+    const size_t lda_s = static_cast<size_t>(lda);
 
-    std::mt19937 gen(20260716u);
-    std::uniform_int_distribution<int> dist_row(0, n - 1);
-    std::uniform_int_distribution<int> dist_col(0, n - 1);
-
-    size_t lda_s = static_cast<size_t>(lda);
-
-    for (int s = 0; s < sample_count;) {
-        int row = dist_row(gen);
-        int col = dist_col(gen);
-
-        if (row < col) {
-            continue;
-        }
+    for (int sample = 0; sample < sample_count; ++sample) {
+        const std::uint64_t index = sampler.next();
+        const int row = static_cast<int>(index % n);
+        const int col = static_cast<int>(index / n);
 
         double reconstructed = 0.0;
+        const int k_end = std::min(row, col);
+        for (int k = 0; k <= k_end; ++k) {
+            const size_t idx_ik = static_cast<size_t>(k) * lda_s + row;
+            const size_t idx_jk = static_cast<size_t>(k) * lda_s + col;
 
-        for (int k = 0; k <= col; ++k) {
-            size_t idx_ik = static_cast<size_t>(k) * lda_s + row;
-            size_t idx_jk = static_cast<size_t>(k) * lda_s + col;
-
-            double Lik = static_cast<double>(L_res[idx_ik]);
-            double Ljk = static_cast<double>(L_res[idx_jk]);
+            const double Lik = static_cast<double>(L_res[idx_ik]);
+            const double Ljk = static_cast<double>(L_res[idx_jk]);
             reconstructed += Lik * Ljk;
         }
 
-        size_t idx_A = static_cast<size_t>(col) * lda_s + row;
-        double a_val = static_cast<double>(A_orig[idx_A]);
-        double diff = a_val - reconstructed;
-        double factor = (row == col) ? 1.0 : 2.0;
+        const size_t idx_A = static_cast<size_t>(col) * lda_s + row;
+        const double a_val = static_cast<double>(A_orig[idx_A]);
+        const double diff = a_val - reconstructed;
 
-        diff_norm_sq += factor * diff * diff;
-        a_norm_sq += factor * a_val * a_val;
-
-        ++s;
+        diff_norm_sq += diff * diff;
+        a_norm_sq += a_val * a_val;
     }
 
     return std::sqrt(diff_norm_sq) / (std::sqrt(a_norm_sq) + 1e-12);
@@ -148,8 +140,12 @@ double verify_backward_error_full(rocblas_handle handle,
 
     for (int column = 0; column < n; ++column) {
         for (int row = column; row < n; ++row) {
-            const size_t index = static_cast<size_t>(column) * lda + row;
-            lower[index] = static_cast<double>(packed_lower[index]);
+            const size_t source_index
+                = static_cast<size_t>(column) * lda + row;
+            const size_t dense_index
+                = static_cast<size_t>(column) * n + row;
+            lower[dense_index]
+                = static_cast<double>(packed_lower[source_index]);
         }
     }
 
@@ -163,11 +159,18 @@ double verify_backward_error_full(rocblas_handle handle,
 
     double residual_norm_sq = 0.0;
     double original_norm_sq = 0.0;
-    for (size_t index = 0; index < element_count; ++index) {
-        const double original_value = static_cast<double>(original[index]);
-        const double residual = product[index] - original_value;
-        residual_norm_sq += residual * residual;
-        original_norm_sq += original_value * original_value;
+    for (int column = 0; column < n; ++column) {
+        for (int row = 0; row < n; ++row) {
+            const size_t source_index
+                = static_cast<size_t>(column) * lda + row;
+            const size_t dense_index
+                = static_cast<size_t>(column) * n + row;
+            const double original_value
+                = static_cast<double>(original[source_index]);
+            const double residual = product[dense_index] - original_value;
+            residual_norm_sq += residual * residual;
+            original_norm_sq += original_value * original_value;
+        }
     }
 
     return std::sqrt(residual_norm_sq)
@@ -326,8 +329,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
     std::cout << ">>> Running Benchmarks...\n";
     if (options.error_mode == ErrorMode::Backward
         || options.error_mode == ErrorMode::Both) {
-        std::cout << ">>> Backward residual: "
-                  << (options.full_residual ? "full Frobenius" : "4096 samples")
+        std::cout << ">>> Backward error ||A-L*L^T||_F/||A||_F: "
+                  << (options.full_residual
+                          ? "full Frobenius"
+                          : "4096 full-matrix samples")
                   << "\n";
     }
 

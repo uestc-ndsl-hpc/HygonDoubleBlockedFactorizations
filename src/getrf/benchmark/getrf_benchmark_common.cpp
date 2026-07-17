@@ -12,6 +12,7 @@
 #include <hip/hip_runtime.h>
 
 #include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/residual_sampling.h"
 #include "utils/common/error_check.h"
 #include "utils/memory/device_buffer.h"
 
@@ -118,14 +119,20 @@ double verify_backward_error_full(rocblas_handle handle,
 
     for (int column = 0; column < n; ++column) {
         for (int row = 0; row < n; ++row) {
-            const size_t index = static_cast<size_t>(column) * lda + row;
+            const size_t source_index
+                = static_cast<size_t>(column) * lda + row;
+            const size_t dense_index
+                = static_cast<size_t>(column) * n + row;
             if (row > column) {
-                lower[index] = static_cast<double>(packed_lu[index]);
+                lower[dense_index]
+                    = static_cast<double>(packed_lu[source_index]);
             } else if (row == column) {
-                lower[index] = 1.0;
-                upper[index] = static_cast<double>(packed_lu[index]);
+                lower[dense_index] = 1.0;
+                upper[dense_index]
+                    = static_cast<double>(packed_lu[source_index]);
             } else {
-                upper[index] = static_cast<double>(packed_lu[index]);
+                upper[dense_index]
+                    = static_cast<double>(packed_lu[source_index]);
             }
         }
     }
@@ -144,11 +151,12 @@ double verify_backward_error_full(rocblas_handle handle,
     double original_norm_sq = 0.0;
     for (int column = 0; column < n; ++column) {
         for (int row = 0; row < n; ++row) {
-            const size_t index = static_cast<size_t>(column) * lda + row;
+            const size_t dense_index
+                = static_cast<size_t>(column) * n + row;
             const double pa_value = static_cast<double>(
                 original[static_cast<size_t>(column) * lda
                     + permutation[row]]);
-            const double residual = product[index] - pa_value;
+            const double residual = product[dense_index] - pa_value;
             residual_norm_sq += residual * residual;
             original_norm_sq += pa_value * pa_value;
         }
@@ -167,12 +175,11 @@ double verify_backward_error_sampled(const T* packed_lu,
                                      bool pivoting,
                                      int sample_count = 4096)
 {
-    const long long total = static_cast<long long>(n) * n;
+    const std::uint64_t total
+        = static_cast<std::uint64_t>(n) * static_cast<std::uint64_t>(n);
     sample_count = static_cast<int>(
-        std::min<long long>(sample_count, total));
-
-    std::mt19937 gen(20260715u);
-    std::uniform_int_distribution<int> index_dist(0, n - 1);
+        std::min<std::uint64_t>(sample_count, total));
+    benchmark_residual::DeterministicIndexSampler sampler(total);
 
     std::vector<int> permutation;
     if (!build_row_permutation(
@@ -184,13 +191,9 @@ double verify_backward_error_sampled(const T* packed_lu,
     double original_norm_sq = 0.0;
 
     for (int sample = 0; sample < sample_count; ++sample) {
-        int row = index_dist(gen);
-        int col = index_dist(gen);
-
-        if (sample % 8 == 0) {
-            row = (sample / 8) % n;
-            col = row;
-        }
+        const std::uint64_t index = sampler.next();
+        const int row = static_cast<int>(index % n);
+        const int col = static_cast<int>(index / n);
 
         double reconstructed = 0.0;
         const int k_end = std::min(row, col);
@@ -371,8 +374,10 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     const std::string mode = options.pivoting ? "GETRF" : "GETRF-NPVT";
     std::cout << ">>> Running " << mode << " Benchmarks...\n";
     if (options.error_mode != ErrorMode::None) {
-        std::cout << ">>> Backward residual: "
-                  << (options.full_residual ? "full Frobenius" : "4096 samples")
+        std::cout << ">>> Backward error ||P*A-L*U||_F/||A||_F: "
+                  << (options.full_residual
+                          ? "full Frobenius"
+                          : "4096 full-matrix samples")
                   << "\n";
     }
     if (options.test_rocsolver) {

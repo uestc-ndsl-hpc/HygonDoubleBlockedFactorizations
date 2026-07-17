@@ -97,6 +97,10 @@ rm -f "${SUMMARY_LOG}"
     echo "Scaling warmup/iters: ${PAPER_WARMUP_ITERS:-2}/${PAPER_PROFILE_ITERS:-10}"
     echo "Correct warmup/iters: ${PAPER_CORRECTNESS_WARMUP:-0}/${PAPER_CORRECTNESS_ITERS:-1}"
     echo "Stage warmup/iters  : ${STAGE_WARMUP}/${STAGE_ITERS}"
+    echo "LU backward error   : ||P*A-L*U||_F / ||A||_F"
+    echo "POTRF backward error: ||A-L*L^T||_F / ||A||_F"
+    echo "Scaling estimator   : 4096 deterministic full-matrix samples"
+    echo "Correctness metric  : full FP64-accumulated Frobenius norms"
 } | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
@@ -186,6 +190,7 @@ if section_enabled scaling; then
 
     export BENCHMARK_WARMUP_ITERS=${PAPER_WARMUP_ITERS:-2}
     export BENCHMARK_PROFILE_ITERS=${PAPER_PROFILE_ITERS:-10}
+    export BENCHMARK_MAX_BACKWARD_ERROR=${PAPER_MAX_BACKWARD_ERROR:-2e-6}
 
     for N in "${SCALING_NS[@]}"; do
         CURRENT_POTRF_NB=${POTRF_NB}
@@ -226,6 +231,8 @@ if section_enabled scaling; then
             --pivot-tile "${GETRF_PIVOT_TILE}" \
             --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
     done
+
+    unset BENCHMARK_MAX_BACKWARD_ERROR
 fi
 
 if section_enabled profiles; then
@@ -237,6 +244,28 @@ if section_enabled profiles; then
     if (( PROFILE_GETRF_B > 4096 )); then
         PROFILE_GETRF_B=4096
     fi
+
+    run_profile \
+        "${PROFILE_DIR}/potrf_basic_N${PROFILE_N}.log" \
+        "${POTRF_PROFILE_EXEC}" \
+        --n "${PROFILE_N}" \
+        --nb "${POTRF_NB}" \
+        --b "${POTRF_B}" \
+        --syrk-k-tile 0 \
+        --inner-gemm-m-tile 0 \
+        --warmup "${STAGE_WARMUP}" \
+        --iters "${STAGE_ITERS}"
+
+    run_profile \
+        "${PROFILE_DIR}/potrf_kbsyrk_N${PROFILE_N}.log" \
+        "${POTRF_PROFILE_EXEC}" \
+        --n "${PROFILE_N}" \
+        --nb "${POTRF_NB}" \
+        --b "${POTRF_B}" \
+        --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+        --inner-gemm-m-tile 0 \
+        --warmup "${STAGE_WARMUP}" \
+        --iters "${STAGE_ITERS}"
 
     run_profile \
         "${PROFILE_DIR}/potrf_final_N${PROFILE_N}.log" \
@@ -262,6 +291,20 @@ if section_enabled profiles; then
         --pivot-tile "${GETRF_PIVOT_TILE}" \
         --inner-gemm-m-tile 0 \
         --pivot-mode immediate \
+        --warmup "${STAGE_WARMUP}" \
+        --iters "${STAGE_ITERS}"
+
+    run_profile \
+        "${PROFILE_DIR}/getrf_batched_untiled_N${PROFILE_N}.log" \
+        "${GETRF_PROFILE_EXEC}" \
+        --n "${PROFILE_N}" \
+        --outer-nb "${PROFILE_GETRF_NB}" \
+        --inner-nb "${PROFILE_GETRF_B}" \
+        --outer-trsm "${GETRF_OUTER_TRSM}" \
+        --trsm-block "${GETRF_TRSM_BLOCK}" \
+        --pivot-tile "${GETRF_PIVOT_TILE}" \
+        --inner-gemm-m-tile 0 \
+        --pivot-mode batched \
         --warmup "${STAGE_WARMUP}" \
         --iters "${STAGE_ITERS}"
 
