@@ -385,7 +385,6 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         options.trsm_block,
         pivot_column_tile,
         options.inner_gemm_m_tile,
-        options.outer_gemm_m_tile,
         options.pivoting ? &batched_pivot_workspace : nullptr,
         options.nbs,
         options.double_nbs,

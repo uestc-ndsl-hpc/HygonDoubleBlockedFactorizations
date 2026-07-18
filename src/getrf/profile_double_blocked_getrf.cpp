@@ -180,8 +180,7 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
                                        int next_outer,
                                        int outer_nb,
                                        getrf_outer_trsm_mode outer_trsm_mode,
-                                       int trsm_block,
-                                       int outer_gemm_m_tile)
+                                       int trsm_block)
 {
     if (next_outer >= n) {
         return;
@@ -223,24 +222,17 @@ void prepare_next_outer_panel_profiled(rocblas_handle handle,
         "Outer GEMM",
         gemm_work(n - next_outer, next_size, next_outer),
         [&]() {
-            const int rows = n - next_outer;
-            const int tile = outer_gemm_m_tile > 0
-                ? std::min(outer_gemm_m_tile, rows)
-                : rows;
-            for (int row = 0; row < rows; row += tile) {
-                const int tile_rows = std::min(tile, rows - row);
-                gemm_nn_update(
-                    handle,
-                    tile_rows,
-                    next_size,
-                    next_outer,
-                    block_ptr(A, lda, next_outer + row, 0),
-                    lda,
-                    block_ptr(A, lda, 0, next_outer),
-                    lda,
-                    block_ptr(A, lda, next_outer + row, next_outer),
-                    lda);
-            }
+            gemm_nn_update(
+                handle,
+                n - next_outer,
+                next_size,
+                next_outer,
+                block_ptr(A, lda, next_outer, 0),
+                lda,
+                block_ptr(A, lda, 0, next_outer),
+                lda,
+                block_ptr(A, lda, next_outer, next_outer),
+                lda);
         });
 
     return;
@@ -257,7 +249,6 @@ void double_blocked_getrf_profiled(rocblas_handle handle,
                                    int inner_nb,
                                    getrf_outer_trsm_mode outer_trsm_mode,
                                    int trsm_block,
-                                   int outer_gemm_m_tile,
                                    int* ipiv,
                                    int* info)
 {
@@ -322,8 +313,7 @@ void double_blocked_getrf_profiled(rocblas_handle handle,
             outer_end,
             outer_nb,
             outer_trsm_mode,
-            trsm_block,
-            outer_gemm_m_tile);
+            trsm_block);
     }
 
     return;
@@ -397,8 +387,6 @@ int main(int argc, char** argv)
         argc, argv, "--pivot-tile", 2048);
     const int inner_gemm_m_tile = read_int_arg(
         argc, argv, "--inner-gemm-m-tile", 0);
-    const int outer_gemm_m_tile = read_int_arg(
-        argc, argv, "--outer-gemm-m-tile", 0);
     const std::string pivot_mode = read_string_arg(
         argc, argv, "--pivot-mode", "immediate");
     const int warmup = read_int_arg(argc, argv, "--warmup", 1);
@@ -407,7 +395,6 @@ int main(int argc, char** argv)
     if (n <= 0 || outer_nb <= 0 || inner_nb <= 0 || inner_nb > outer_nb
         || trsm_block <= 0 || requested_pivot_column_tile <= 0
         || inner_gemm_m_tile < 0
-        || outer_gemm_m_tile < 0
         || (outer_trsm_name != "direct" && outer_trsm_name != "iterative")
         || (pivot_mode != "immediate" && pivot_mode != "batched")
         || warmup < 0 || iters <= 0) {
@@ -416,7 +403,6 @@ int main(int argc, char** argv)
                   << "[--outer-trsm direct|iterative] "
                   << "[--trsm-block BT] [--pivot-tile T] "
                   << "[--inner-gemm-m-tile TM] "
-                  << "[--outer-gemm-m-tile TM] "
                   << "[--pivot-mode immediate|batched] "
                   << "[--warmup W] [--iters I]\n";
         return EXIT_FAILURE;
@@ -476,7 +462,6 @@ int main(int argc, char** argv)
               << ", pivot_mode=" << pivot_mode
               << ", pivot_tile=" << pivot_column_tile
               << ", inner_gemm_m_tile=" << inner_gemm_m_tile
-              << ", outer_gemm_m_tile=" << outer_gemm_m_tile
               << ", warmup=" << warmup
               << ", iters=" << iters << "\n";
 
@@ -499,7 +484,6 @@ int main(int argc, char** argv)
                     outer_trsm_mode,
                     trsm_block,
                     inner_gemm_m_tile,
-                    outer_gemm_m_tile,
                     d_ipiv.get(),
                     d_info.get(),
                     batched_workspace)) {
@@ -518,7 +502,6 @@ int main(int argc, char** argv)
                 inner_nb,
                 outer_trsm_mode,
                 trsm_block,
-                outer_gemm_m_tile,
                 d_ipiv.get(),
                 d_info.get());
         }
@@ -543,7 +526,6 @@ int main(int argc, char** argv)
                     outer_trsm_mode,
                     trsm_block,
                     inner_gemm_m_tile,
-                    outer_gemm_m_tile,
                     d_ipiv.get(),
                     d_info.get(),
                     batched_workspace)) {
@@ -562,7 +544,6 @@ int main(int argc, char** argv)
                 inner_nb,
                 outer_trsm_mode,
                 trsm_block,
-                outer_gemm_m_tile,
                 d_ipiv.get(),
                 d_info.get());
         }
@@ -578,7 +559,6 @@ int main(int argc, char** argv)
         + ", pivot_mode=" + pivot_mode
         + ", pivot_tile=" + std::to_string(pivot_column_tile)
         + ", inner_gemm_m_tile=" + std::to_string(inner_gemm_m_tile)
-        + ", outer_gemm_m_tile=" + std::to_string(outer_gemm_m_tile)
         + ")",
         118);
 

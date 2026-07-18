@@ -71,7 +71,6 @@ void call_double_blocked_getrf_batched_pivot(
     getrf_outer_trsm_mode outer_trsm_mode,
     int trsm_block,
     int inner_gemm_m_tile,
-    int outer_gemm_m_tile,
     int* ipiv,
     int* info,
     getrf_batched_pivot_workspace* workspace)
@@ -87,7 +86,6 @@ void call_double_blocked_getrf_batched_pivot(
             outer_trsm_mode,
             trsm_block,
             inner_gemm_m_tile,
-            outer_gemm_m_tile,
             ipiv,
             info,
             workspace);
@@ -102,7 +100,6 @@ void call_double_blocked_getrf_batched_pivot(
             outer_trsm_mode,
             trsm_block,
             inner_gemm_m_tile,
-            outer_gemm_m_tile,
             ipiv,
             info,
             workspace);
@@ -185,7 +182,6 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                                 context.outer_trsm_mode,
                                 context.trsm_block,
                                 0,
-                                0,
                                 context.d_ipiv,
                                 context.d_info,
                                 context.batched_pivot_workspace);
@@ -194,15 +190,9 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                         context.calc_gflops);
                 }
 
-                if (context.test_mgemm
-                    && (context.inner_gemm_m_tile > 0
-                        || context.outer_gemm_m_tile > 0)) {
-                    std::string tiled_parameters = batched_parameters
+                if (context.test_mgemm && context.inner_gemm_m_tile > 0) {
+                    const std::string tiled_parameters = batched_parameters
                         + "/" + std::to_string(context.inner_gemm_m_tile);
-                    if (context.outer_gemm_m_tile > 0) {
-                        tiled_parameters += "/"
-                            + std::to_string(context.outer_gemm_m_tile);
-                    }
                     context.runner.execute(
                         "DoubleBlock-LU+BatchedPivot+MGEMM",
                         tiled_parameters,
@@ -218,7 +208,6 @@ void run_double_blocked_cases(GetrfBenchmarkContext<T>& context)
                                 context.outer_trsm_mode,
                                 context.trsm_block,
                                 context.inner_gemm_m_tile,
-                                context.outer_gemm_m_tile,
                                 context.d_ipiv,
                                 context.d_info,
                                 context.batched_pivot_workspace);

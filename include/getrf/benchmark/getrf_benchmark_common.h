@@ -28,7 +28,6 @@ struct GetrfBenchmarkOptions {
     int trsm_block = 2048;
     int pivot_column_tile = 2048;
     int inner_gemm_m_tile = 8192;
-    int outer_gemm_m_tile = 0;
     std::vector<int> nbs;
     std::vector<int> double_nbs;
     std::vector<int> micro_blocks;
@@ -50,7 +49,6 @@ struct GetrfBenchmarkContext {
     int trsm_block;
     int pivot_column_tile;
     int inner_gemm_m_tile;
-    int outer_gemm_m_tile;
     getrf_batched_pivot_workspace* batched_pivot_workspace;
     const std::vector<int>& nbs;
     const std::vector<int>& double_nbs;
