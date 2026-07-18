@@ -39,7 +39,7 @@ void write_timing_csv(const std::string& title,
 
     output << "benchmark,method,parameters,iteration,time_ms,mean_ms,"
               "median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,"
-              "forward_error,backward_error\n";
+              "forward_error,residual_metric,residual_value\n";
     output << std::setprecision(12);
 
     for (const auto& result : results) {
@@ -59,7 +59,8 @@ void write_timing_csv(const std::string& title,
                    << result.gflops << ','
                    << result.speedup << ','
                    << result.forward_error << ','
-                   << result.backward_error << '\n';
+                   << residual_metric_name(result.residual_metric) << ','
+                   << result.residual_value << '\n';
         }
     }
 
@@ -84,9 +85,20 @@ void print_benchmark_results(
             parameter_width,
             static_cast<int>(result.nb_str.size()));
     }
+    ResidualMetric residual_metric = ResidualMetric::None;
+    if (!results.empty()) {
+        residual_metric = results.front().residual_metric;
+    }
+    const bool show_forward_error
+        = error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both;
+    const bool show_residual
+        = error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both;
+    const int residual_width = 23;
     const int table_width = max(
         line_width,
-        method_width + parameter_width + 80);
+        method_width + parameter_width + 55
+            + (show_forward_error ? 17 : 0)
+            + (show_residual ? residual_width + 3 : 0));
 
     cout << "\n";
     cout << string(table_width, '=') << "\n";
@@ -98,10 +110,15 @@ void print_benchmark_results(
          << " | " << setw(parameter_width) << "Parameters"
          << " | " << setw(12) << "Time(ms)"
          << " | " << setw(12) << "GFLOPS"
-         << " | " << setw(10) << "Speedup"
-         << " | " << setw(14) << "Forward Error"
-         << " | " << setw(14) << "Backward Error"
-         << "\n";
+         << " | " << setw(10) << "Speedup";
+    if (show_forward_error) {
+        cout << " | " << setw(14) << "Forward Error";
+    }
+    if (show_residual) {
+        cout << " | " << setw(residual_width)
+             << residual_metric_heading(residual_metric);
+    }
+    cout << "\n";
 
     cout << string(table_width, '-') << "\n";
 
@@ -118,19 +135,19 @@ void print_benchmark_results(
         else
             cout << setw(9) << "N/A ";
 
-        cout << " | ";
-
-        if (error_mode == ErrorMode::Forward || error_mode == ErrorMode::Both)
+        if (show_forward_error) {
+            cout << " | ";
             cout << scientific << setprecision(2) << setw(12) << res.forward_error;
-        else
-            cout << setw(12) << "N/A";
-
-        cout << " | ";
-
-        if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both)
-            cout << scientific << setprecision(2) << setw(12) << res.backward_error;
-        else
-            cout << setw(12) << "N/A";
+        }
+        if (show_residual) {
+            cout << " | ";
+            if (res.residual_metric != ResidualMetric::None) {
+                cout << scientific << setprecision(2) << setw(residual_width)
+                     << res.residual_value;
+            } else {
+                cout << setw(residual_width) << "N/A";
+            }
+        }
 
         cout << "\n";
     }

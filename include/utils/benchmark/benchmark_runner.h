@@ -14,8 +14,16 @@
 
 class BenchmarkRunner {
 public:
-    BenchmarkRunner(hipStream_t stream, double& baseline_time, std::vector<BenchmarkResult>& results)
-        : stream_(stream), baseline_time_(baseline_time), results_(results) {}
+    BenchmarkRunner(hipStream_t stream,
+                    double& baseline_time,
+                    std::vector<BenchmarkResult>& results,
+                    ResidualMetric residual_metric)
+        : stream_(stream),
+          baseline_time_(baseline_time),
+          results_(results),
+          residual_metric_(residual_metric)
+    {
+    }
 
     template <typename ResetFunc, typename TargetFunc, typename VerifyFunc, typename GflopsFunc>
     double execute(
@@ -74,25 +82,28 @@ public:
 
         double gflops = calc_gflops(ms);
         double forward_error = -1.0;
-        double backward_error = -1.0;
+        double residual_value = -1.0;
 
         reset();
         HIP_CHECK(hipDeviceSynchronize());
         target();
         HIP_CHECK(hipDeviceSynchronize());
-        verify(forward_error, backward_error);
+        verify(forward_error, residual_value);
 
-        const double backward_error_limit = read_optional_double(
-            "BENCHMARK_MAX_BACKWARD_ERROR", -1.0);
-        if (backward_error_limit >= 0.0
-            && (backward_error < 0.0
-                || !std::isfinite(backward_error)
-                || backward_error > backward_error_limit)) {
+        const char* residual_limit_environment
+            = residual_metric_limit_environment(residual_metric_);
+        const double residual_limit = residual_limit_environment == nullptr
+            ? -1.0
+            : read_optional_double(residual_limit_environment, -1.0);
+        if (residual_limit >= 0.0
+            && (residual_value < 0.0
+                || !std::isfinite(residual_value)
+                || residual_value > residual_limit)) {
             throw std::runtime_error(
-                name + " backward residual "
-                + std::to_string(backward_error)
-                + " exceeds BENCHMARK_MAX_BACKWARD_ERROR="
-                + std::to_string(backward_error_limit));
+                name + " " + residual_metric_name(residual_metric_) + " "
+                + std::to_string(residual_value)
+                + " exceeds " + residual_limit_environment + "="
+                + std::to_string(residual_limit));
         }
 
         if (name.find("rocBLAS") != std::string::npos) {
@@ -111,7 +122,8 @@ public:
             gflops,
             speedup,
             forward_error,
-            backward_error,
+            residual_metric_,
+            residual_value,
             std::move(iter_times)
         });
 
@@ -157,4 +169,5 @@ private:
     hipStream_t stream_;
     double& baseline_time_;
     std::vector<BenchmarkResult>& results_;
+    ResidualMetric residual_metric_;
 };

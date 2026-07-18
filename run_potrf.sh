@@ -50,14 +50,14 @@ SYRK_K_TILE=${POTRF_SYRK_K_TILE:-8192}
 GEMM_M_TILE=${POTRF_GEMM_M_TILE:-8192}
 GEMM_M_THRESHOLD=${POTRF_GEMM_M_THRESHOLD:-32768}
 GEMM_K_THRESHOLD=${POTRF_GEMM_K_THRESHOLD:-5632}
-FULL_RESIDUAL=${POTRF_FULL_RESIDUAL:-0}
-FULL_RESIDUAL_MAX_N=${POTRF_FULL_RESIDUAL_MAX_N:-8192}
+FULL_BACKWARD_ERROR=${POTRF_FULL_BACKWARD_ERROR:-${POTRF_FULL_RESIDUAL:-0}}
+FULL_BACKWARD_ERROR_MAX_N=${POTRF_FULL_BACKWARD_ERROR_MAX_N:-${POTRF_FULL_RESIDUAL_MAX_N:-8192}}
 
-FULL_RESIDUAL_ARGS=()
-if [[ "${FULL_RESIDUAL}" == "1" ]]; then
-    FULL_RESIDUAL_ARGS+=(
-        --full-residual
-        --full-residual-max-n "${FULL_RESIDUAL_MAX_N}"
+FULL_BACKWARD_ERROR_ARGS=()
+if [[ "${FULL_BACKWARD_ERROR}" == "1" ]]; then
+    FULL_BACKWARD_ERROR_ARGS+=(
+        --full-backward-error
+        --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
     )
 fi
 
@@ -79,7 +79,7 @@ rm -f "${SUMMARY_LOG}"
     echo "SYRK K tile        : ${SYRK_K_TILE}"
     echo "GEMM M tile        : ${GEMM_M_TILE}"
     echo "GEMM thresholds    : M>${GEMM_M_THRESHOLD}, K>=${GEMM_K_THRESHOLD}"
-    echo "Full residual      : ${FULL_RESIDUAL} (max N=${FULL_RESIDUAL_MAX_N})"
+    echo "Full backward error: ${FULL_BACKWARD_ERROR} (max N=${FULL_BACKWARD_ERROR_MAX_N})"
     echo "Test rocSOLVER     : ${TEST_ROCSOLVER}"
     echo "Test Blocked-RL    : ${TEST_BLOCKED}"
     echo "Test DoubleBlock   : ${TEST_DOUBLE_BLOCKED}"
@@ -119,7 +119,7 @@ for N in "${NS[@]}"; do
         --gemm-m-tile "${GEMM_M_TILE}" \
         --gemm-m-threshold "${GEMM_M_THRESHOLD}" \
         --gemm-k-threshold "${GEMM_K_THRESHOLD}" \
-        "${FULL_RESIDUAL_ARGS[@]}" \
+        "${FULL_BACKWARD_ERROR_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

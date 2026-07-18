@@ -21,13 +21,13 @@ GETRF_EXEC=${BUILD_DIR}/benchmark_getrf
 POTRF_PROFILE_EXEC=${BUILD_DIR}/profile_double_blocked_potrf
 GETRF_PROFILE_EXEC=${BUILD_DIR}/profile_double_blocked_getrf
 
-PAPER_SECTIONS=${PAPER_SECTIONS:-correctness,scaling,profiles}
+PAPER_SECTIONS=${PAPER_SECTIONS:-accuracy,scaling,profiles}
 PAPER_RUN_ID=${PAPER_RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 RESULT_DIR=${PAPER_RESULT_DIR:-${ROOT_DIR}/results/fp32/paper_final/${PAPER_RUN_ID}}
 SUMMARY_LOG=${RESULT_DIR}/manifest.log
 
 read -r -a SCALING_NS <<< "${PAPER_NS:-8192 16384 24576 32768 40960 49152 57344 65536}"
-read -r -a CORRECTNESS_NS <<< "${PAPER_CORRECTNESS_NS:-4096 5000}"
+read -r -a ACCURACY_NS <<< "${PAPER_ACCURACY_NS:-${PAPER_CORRECTNESS_NS:-1024 2048 4096 8192 16384 24576}}"
 
 POTRF_NB=${PAPER_POTRF_NB:-8192}
 POTRF_B=${PAPER_POTRF_B:-1024}
@@ -49,11 +49,9 @@ ROCSOLVER_MAX_N=${PAPER_ROCSOLVER_MAX_N:-40960}
 PROFILE_N=${PAPER_PROFILE_N:-40960}
 STAGE_WARMUP=${PAPER_STAGE_WARMUP:-1}
 STAGE_ITERS=${PAPER_STAGE_ITERS:-3}
-CORRECTNESS_TILE=${PAPER_CORRECTNESS_TILE:-1024}
-POTRF_CORRECTNESS_MAX_BACKWARD_ERROR=${PAPER_POTRF_CORRECTNESS_MAX_BACKWARD_ERROR:-2e-6}
-POTRF_SCALING_MAX_BACKWARD_ERROR=${PAPER_POTRF_SCALING_MAX_BACKWARD_ERROR:-5e-6}
-GETRF_CORRECTNESS_MAX_BACKWARD_ERROR=${PAPER_GETRF_CORRECTNESS_MAX_BACKWARD_ERROR:-5e-5}
-GETRF_SCALING_MAX_BACKWARD_ERROR=${PAPER_GETRF_SCALING_MAX_BACKWARD_ERROR:-5e-4}
+ACCURACY_TILE=${PAPER_ACCURACY_TILE:-${PAPER_CORRECTNESS_TILE:-1024}}
+POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR=${PAPER_POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR:-${PAPER_POTRF_CORRECTNESS_MAX_NORMWISE_BACKWARD_ERROR:-1e-5}}
+GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR=${PAPER_GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR:-${PAPER_GETRF_CORRECTNESS_MAX_NORMWISE_BACKWARD_ERROR:-5e-4}}
 
 if [[ ",${POTRF_LARGE_METHODS}," == *",rocsolver,"* ]] \
     || [[ ",${GETRF_LARGE_METHODS}," == *",rocsolver,"* ]]; then
@@ -93,8 +91,8 @@ rm -f "${SUMMARY_LOG}"
     echo "Sections            : ${PAPER_SECTIONS}"
     echo "Result directory    : ${RESULT_DIR}"
     echo "Scaling sizes       : ${SCALING_NS[*]}"
-    echo "Correctness sizes   : ${CORRECTNESS_NS[*]}"
-    echo "Correctness tile    : ${CORRECTNESS_TILE}"
+    echo "Accuracy sizes      : ${ACCURACY_NS[*]}"
+    echo "Accuracy tile       : ${ACCURACY_TILE}"
     echo "POTRF input seed    : 20260716"
     echo "GETRF input seed    : 1234567890"
     echo "POTRF B/b           : ${POTRF_NB}/${POTRF_B}"
@@ -111,16 +109,15 @@ rm -f "${SUMMARY_LOG}"
     echo "rocSOLVER max N     : ${ROCSOLVER_MAX_N}"
     echo "Stage profile N     : ${PROFILE_N}"
     echo "Scaling warmup/iters: ${PAPER_WARMUP_ITERS:-2}/${PAPER_PROFILE_ITERS:-10}"
-    echo "Correct warmup/iters: ${PAPER_CORRECTNESS_WARMUP:-0}/${PAPER_CORRECTNESS_ITERS:-1}"
+    echo "Accuracy warm/iters : ${PAPER_ACCURACY_WARMUP:-${PAPER_CORRECTNESS_WARMUP:-0}}/${PAPER_ACCURACY_ITERS:-${PAPER_CORRECTNESS_ITERS:-1}}"
     echo "Stage warmup/iters  : ${STAGE_WARMUP}/${STAGE_ITERS}"
-    echo "LU backward error   : ||P*A-L*U||_F / ||A||_F"
-    echo "POTRF backward error: ||A-L*L^T||_F / ||A||_F"
-    echo "POTRF full limit    : ${POTRF_CORRECTNESS_MAX_BACKWARD_ERROR}"
-    echo "POTRF sampled limit : ${POTRF_SCALING_MAX_BACKWARD_ERROR}"
-    echo "GETRF full limit    : ${GETRF_CORRECTNESS_MAX_BACKWARD_ERROR}"
-    echo "GETRF sampled limit : ${GETRF_SCALING_MAX_BACKWARD_ERROR}"
-    echo "Scaling estimator   : 4096 deterministic full-matrix samples"
-    echo "Correctness metric  : full FP64-accumulated Frobenius norms"
+    echo "LU normwise backward error   : ||P*A-L*U||_F / ||A||_F"
+    echo "POTRF normwise backward error: ||A-L*L^T||_F / ||A||_F"
+    echo "POTRF backward-error limit   : ${POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}"
+    echo "GETRF backward-error limit   : ${GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}"
+    echo "Scaling metrics     : runtime, throughput, and timing variability only"
+    echo "Accuracy metric     : full-matrix normwise backward error"
+    echo "Residual product    : factorization precision; FP64 norm accumulation"
 } | tee -a "${SUMMARY_LOG}"
 log_toolchain "${SUMMARY_LOG}" "${ROOT_DIR}"
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
@@ -160,34 +157,34 @@ if section_enabled profiles; then
 fi
 configure_numa_launch_prefix "${SUMMARY_LOG}"
 
-if section_enabled correctness; then
-    CORRECTNESS_DIR=${RESULT_DIR}/correctness
-    mkdir -p "${CORRECTNESS_DIR}"
+if section_enabled accuracy || section_enabled correctness; then
+    ACCURACY_DIR=${RESULT_DIR}/accuracy
+    mkdir -p "${ACCURACY_DIR}"
 
-    export BENCHMARK_WARMUP_ITERS=${PAPER_CORRECTNESS_WARMUP:-0}
-    export BENCHMARK_PROFILE_ITERS=${PAPER_CORRECTNESS_ITERS:-1}
+    export BENCHMARK_WARMUP_ITERS=${PAPER_ACCURACY_WARMUP:-${PAPER_CORRECTNESS_WARMUP:-0}}
+    export BENCHMARK_PROFILE_ITERS=${PAPER_ACCURACY_ITERS:-${PAPER_CORRECTNESS_ITERS:-1}}
 
-    for N in "${CORRECTNESS_NS[@]}"; do
-        export BENCHMARK_MAX_BACKWARD_ERROR=${POTRF_CORRECTNESS_MAX_BACKWARD_ERROR}
+    for N in "${ACCURACY_NS[@]}"; do
+        export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
         run_benchmark \
-            "${CORRECTNESS_DIR}/potrf_N${N}_timings.csv" \
-            "${CORRECTNESS_DIR}/potrf_N${N}.log" \
+            "${ACCURACY_DIR}/potrf_N${N}_timings.csv" \
+            "${ACCURACY_DIR}/potrf_N${N}.log" \
             "${POTRF_EXEC}" \
             "${N}" 0 0 2 0 0 0 2048 \
             --methods "${POTRF_METHODS}" \
             --double-nb 2048 \
             --b 512 \
-            --syrk-k-tile "${CORRECTNESS_TILE}" \
-            --gemm-m-tile "${CORRECTNESS_TILE}" \
+            --syrk-k-tile "${ACCURACY_TILE}" \
+            --gemm-m-tile "${ACCURACY_TILE}" \
             --gemm-m-threshold 0 \
             --gemm-k-threshold 0 \
-            --full-residual \
-            --full-residual-max-n 8192
+            --full-backward-error \
+            --full-backward-error-max-n 24576
 
-        export BENCHMARK_MAX_BACKWARD_ERROR=${GETRF_CORRECTNESS_MAX_BACKWARD_ERROR}
+        export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
         run_benchmark \
-            "${CORRECTNESS_DIR}/getrf_N${N}_timings.csv" \
-            "${CORRECTNESS_DIR}/getrf_N${N}.log" \
+            "${ACCURACY_DIR}/getrf_N${N}_timings.csv" \
+            "${ACCURACY_DIR}/getrf_N${N}.log" \
             "${GETRF_EXEC}" \
             "${N}" 0 1 2048 \
             --pivot \
@@ -197,12 +194,12 @@ if section_enabled correctness; then
             --outer-trsm "${GETRF_OUTER_TRSM}" \
             --trsm-block "${GETRF_TRSM_BLOCK}" \
             --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${CORRECTNESS_TILE}" \
-            --full-residual \
-            --full-residual-max-n 8192
+            --inner-gemm-m-tile "${ACCURACY_TILE}" \
+            --full-backward-error \
+            --full-backward-error-max-n 24576
     done
 
-    unset BENCHMARK_MAX_BACKWARD_ERROR
+    unset BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR
 fi
 
 if section_enabled scaling; then
@@ -225,12 +222,11 @@ if section_enabled scaling; then
             CURRENT_POTRF_NB=${N}
         fi
 
-        export BENCHMARK_MAX_BACKWARD_ERROR=${POTRF_SCALING_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${SCALING_DIR}/potrf_N${N}_timings.csv" \
             "${SCALING_DIR}/potrf_N${N}.log" \
             "${POTRF_EXEC}" \
-            "${N}" 0 0 2 0 0 0 2048 \
+            "${N}" 0 0 0 0 0 0 2048 \
             --methods "${CURRENT_POTRF_METHODS}" \
             --double-nb "${CURRENT_POTRF_NB}" \
             --b "${POTRF_B}" \
@@ -245,12 +241,11 @@ if section_enabled scaling; then
             GETRF_B=4096
         fi
 
-        export BENCHMARK_MAX_BACKWARD_ERROR=${GETRF_SCALING_MAX_BACKWARD_ERROR}
         run_benchmark \
             "${SCALING_DIR}/getrf_N${N}_timings.csv" \
             "${SCALING_DIR}/getrf_N${N}.log" \
             "${GETRF_EXEC}" \
-            "${N}" 0 1 2048 \
+            "${N}" 0 0 2048 \
             --pivot \
             --methods "${CURRENT_GETRF_METHODS}" \
             --double-nb "${GETRF_NB}" \
@@ -261,7 +256,6 @@ if section_enabled scaling; then
             --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
     done
 
-    unset BENCHMARK_MAX_BACKWARD_ERROR
 fi
 
 if section_enabled profiles; then

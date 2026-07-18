@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <hip/hip_runtime.h>
@@ -56,7 +57,7 @@ double verify_potrf_against_double_ref(
 }
 
 template <typename T>
-double verify_backward_error_sampled(
+double verify_sampled_relative_residual(
     const T* L_res,
     const T* A_orig,
     int n,
@@ -100,43 +101,65 @@ double verify_backward_error_sampled(
     return std::sqrt(diff_norm_sq) / (std::sqrt(a_norm_sq) + 1e-12);
 }
 
+template <typename T>
 void gemm_nt(rocblas_handle handle,
              int n,
-             const double* lower,
-             double* product)
+             const T* lower,
+             T* product)
 {
-    const double one = 1.0;
-    const double zero = 0.0;
+    const T one = static_cast<T>(1);
+    const T zero = static_cast<T>(0);
 
-    ROCBLAS_CHECK(rocblas_dgemm(
-        handle,
-        rocblas_operation_none,
-        rocblas_operation_transpose,
-        n,
-        n,
-        n,
-        &one,
-        lower,
-        n,
-        lower,
-        n,
-        &zero,
-        product,
-        n));
+    if constexpr (std::is_same_v<T, float>) {
+        ROCBLAS_CHECK(rocblas_sgemm(
+            handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            n,
+            n,
+            n,
+            &one,
+            lower,
+            n,
+            lower,
+            n,
+            &zero,
+            product,
+            n));
+    } else {
+        ROCBLAS_CHECK(rocblas_dgemm(
+            handle,
+            rocblas_operation_none,
+            rocblas_operation_transpose,
+            n,
+            n,
+            n,
+            &one,
+            lower,
+            n,
+            lower,
+            n,
+            &zero,
+            product,
+            n));
+    }
 }
 
 template <typename T>
-double verify_backward_error_full(rocblas_handle handle,
-                                  const T* packed_lower,
-                                  const T* original,
-                                  int n,
-                                  int lda,
-                                  double* device_lower,
-                                  double* device_product)
+double verify_normwise_backward_error_full(rocblas_handle handle,
+                                           const T* packed_lower,
+                                           const T* original,
+                                           int n,
+                                           int lda,
+                                           T* device_lower,
+                                           T* device_product)
 {
+    // For fixed L, A + DeltaA = L*L^T uniquely determines
+    // DeltaA = L*L^T - A, so this full Frobenius ratio is the relative
+    // normwise backward error of the stored factor.
     const size_t element_count = static_cast<size_t>(n) * n;
-    const size_t bytes = element_count * sizeof(double);
-    std::vector<double> lower(element_count, 0.0);
+    const size_t bytes = element_count * sizeof(T);
+    std::vector<T> lower(element_count, static_cast<T>(0));
 
     for (int column = 0; column < n; ++column) {
         for (int row = column; row < n; ++row) {
@@ -144,16 +167,15 @@ double verify_backward_error_full(rocblas_handle handle,
                 = static_cast<size_t>(column) * lda + row;
             const size_t dense_index
                 = static_cast<size_t>(column) * n + row;
-            lower[dense_index]
-                = static_cast<double>(packed_lower[source_index]);
+            lower[dense_index] = packed_lower[source_index];
         }
     }
 
     HIP_CHECK(hipMemcpy(
         device_lower, lower.data(), bytes, hipMemcpyHostToDevice));
-    gemm_nt(handle, n, device_lower, device_product);
+    gemm_nt<T>(handle, n, device_lower, device_product);
 
-    std::vector<double> product(element_count);
+    std::vector<T> product(element_count);
     HIP_CHECK(hipMemcpy(
         product.data(), device_product, bytes, hipMemcpyDeviceToHost));
 
@@ -167,7 +189,8 @@ double verify_backward_error_full(rocblas_handle handle,
                 = static_cast<size_t>(column) * n + row;
             const double original_value
                 = static_cast<double>(original[source_index]);
-            const double residual = product[dense_index] - original_value;
+            const double residual
+                = static_cast<double>(product[dense_index]) - original_value;
             residual_norm_sq += residual * residual;
             original_norm_sq += original_value * original_value;
         }
@@ -194,10 +217,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     DeviceBuffer<int> d_info(1);
     DeviceBuffer<T> d_A_orig(num_elements);
-    DeviceBuffer<double> d_residual_lower(
-        options.full_residual ? num_elements : 0);
-    DeviceBuffer<double> d_residual_product(
-        options.full_residual ? num_elements : 0);
+    DeviceBuffer<T> d_residual_lower(
+        options.full_backward_error ? num_elements : 0);
+    DeviceBuffer<T> d_residual_product(
+        options.full_backward_error ? num_elements : 0);
 
     generate_spd_matrix<T>(handle, d_A_orig, n, n, 20260716u);
 
@@ -242,7 +265,16 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     std::vector<BenchmarkResult> results;
     double baseline_time = -1.0;
-    BenchmarkRunner runner(main_stream, baseline_time, results);
+    const bool residual_requested
+        = options.error_mode == ErrorMode::Backward
+        || options.error_mode == ErrorMode::Both;
+    const ResidualMetric residual_metric = residual_requested
+        ? (options.full_backward_error
+              ? ResidualMetric::NormwiseBackwardError
+              : ResidualMetric::SampledRelativeResidual)
+        : ResidualMetric::None;
+    BenchmarkRunner runner(
+        main_stream, baseline_time, results, residual_metric);
 
     auto reset_a = [&]() {
         HIP_CHECK(hipMemcpy(d_A, d_A_orig, bytes, hipMemcpyDeviceToDevice));
@@ -253,7 +285,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         return calculate_gflops(n, ms);
     };
 
-    auto verify_potrf = [&] (double& f_err, double& b_err) {
+    auto verify_potrf = [&] (double& f_err, double& residual_value) {
         if (options.error_mode == ErrorMode::None) {
             return;
         }
@@ -263,7 +295,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
             &info, d_info, sizeof(int), hipMemcpyDeviceToHost));
         if (info != 0) {
             f_err = std::numeric_limits<double>::infinity();
-            b_err = std::numeric_limits<double>::infinity();
+            residual_value = std::numeric_limits<double>::infinity();
             return;
         }
 
@@ -279,8 +311,8 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         }
 
         if (options.error_mode == ErrorMode::Backward || options.error_mode == ErrorMode::Both) {
-            if (options.full_residual) {
-                b_err = verify_backward_error_full(
+            if (options.full_backward_error) {
+                residual_value = verify_normwise_backward_error_full(
                     handle,
                     h_res.data(),
                     h_A.data(),
@@ -289,7 +321,7 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
                     d_residual_lower.get(),
                     d_residual_product.get());
             } else {
-                b_err = verify_backward_error_sampled(
+                residual_value = verify_sampled_relative_residual(
                     h_res.data(),
                     h_A.data(),
                     n,
@@ -329,11 +361,17 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
     std::cout << ">>> Running Benchmarks...\n";
     if (options.error_mode == ErrorMode::Backward
         || options.error_mode == ErrorMode::Both) {
-        std::cout << ">>> Backward error ||A-L*L^T||_F/||A||_F: "
-                  << (options.full_residual
-                          ? "full Frobenius"
-                          : "4096 full-matrix samples")
-                  << "\n";
+        if (options.full_backward_error) {
+            std::cout
+                << ">>> Normwise backward error "
+                   "eta_F=||A-L*L^T||_F/||A||_F: full matrix, "
+                   "factorization-precision product, FP64 norm accumulation\n";
+        } else {
+            std::cout
+                << ">>> Sampled relative residual "
+                   "sqrt(sum_S|A-L*L^T|^2)/sqrt(sum_S|A|^2): "
+                   "4096 deterministic entries\n";
+        }
     }
 
     if (options.test_rocsolver) {

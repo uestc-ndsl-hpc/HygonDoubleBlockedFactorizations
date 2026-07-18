@@ -59,7 +59,7 @@ double verify_relative_error(
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
 
-double verify_backward_error_sampled(
+double verify_sampled_relative_residual(
     const std::vector<float>& A,
     const std::vector<float>& B_original,
     const std::vector<float>& X_result,
@@ -215,7 +215,12 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
 
     std::vector<BenchmarkResult> results;
     double baseline_time = -1.0;
-    BenchmarkRunner runner(main_stream, baseline_time, results);
+    const ResidualMetric residual_metric
+        = error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both
+        ? ResidualMetric::SampledRelativeResidual
+        : ResidualMetric::None;
+    BenchmarkRunner runner(
+        main_stream, baseline_time, results, residual_metric);
 
     auto reset_b = [&]() {
         HIP_CHECK(hipMemcpy(d_B, h_B.data(), size_B, hipMemcpyHostToDevice));
@@ -225,7 +230,7 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         return calculate_gflops(n, m, ms);
     };
 
-    auto verify_trsm = [&] (double& f_err, double& b_err) {
+    auto verify_trsm = [&] (double& f_err, double& residual_value) {
         if (error_mode == ErrorMode::None) {
             return;
         }
@@ -241,7 +246,8 @@ void run_trsm_benchmarks(const TrsmBenchmarkOptions& options)
         }
 
         if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
-            b_err = verify_backward_error_sampled(h_A, h_B, h_X, n, m, lda, ldb, 4096);
+            residual_value = verify_sampled_relative_residual(
+                h_A, h_B, h_X, n, m, lda, ldb, 4096);
         }
     };
 

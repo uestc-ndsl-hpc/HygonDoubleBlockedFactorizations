@@ -22,8 +22,8 @@ struct PotrfBenchmarkOptions {
     bool test_double_dbtrsm = true;
     bool test_double_kbsyrk = true;
     bool test_double_mgemm = true;
-    bool full_residual = false;
-    int full_residual_max_n = 8192;
+    bool full_backward_error = false;
+    int full_backward_error_max_n = 8192;
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
     int syrk_k_tile = 0;

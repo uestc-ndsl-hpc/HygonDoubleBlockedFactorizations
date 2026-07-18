@@ -46,8 +46,8 @@ TRSM_BLOCK=${GETRF_TRSM_BLOCK:-${GETRF_TRSM_LEAF:-2048}}
 PIVOT_COLUMN_TILE=${GETRF_PIVOT_COLUMN_TILE:-2048}
 INNER_GEMM_M_TILE=${GETRF_INNER_GEMM_M_TILE:-8192}
 METHODS=${GETRF_METHODS:-${DEFAULT_METHODS}}
-FULL_RESIDUAL=${GETRF_FULL_RESIDUAL:-0}
-FULL_RESIDUAL_MAX_N=${GETRF_FULL_RESIDUAL_MAX_N:-8192}
+FULL_BACKWARD_ERROR=${GETRF_FULL_BACKWARD_ERROR:-${GETRF_FULL_RESIDUAL:-0}}
+FULL_BACKWARD_ERROR_MAX_N=${GETRF_FULL_BACKWARD_ERROR_MAX_N:-${GETRF_FULL_RESIDUAL_MAX_N:-8192}}
 RUN_STAGE_PROFILE=${GETRF_RUN_STAGE_PROFILE:-0}
 STAGE_PROFILE_WARMUP=${GETRF_STAGE_PROFILE_WARMUP:-1}
 STAGE_PROFILE_ITERS=${GETRF_STAGE_PROFILE_ITERS:-3}
@@ -67,11 +67,11 @@ if [[ "${PIVOTING}" == "1" ]]; then
     PIVOT_ARGS+=(--pivot)
 fi
 
-FULL_RESIDUAL_ARGS=()
-if [[ "${FULL_RESIDUAL}" == "1" ]]; then
-    FULL_RESIDUAL_ARGS+=(
-        --full-residual
-        --full-residual-max-n "${FULL_RESIDUAL_MAX_N}"
+FULL_BACKWARD_ERROR_ARGS=()
+if [[ "${FULL_BACKWARD_ERROR}" == "1" ]]; then
+    FULL_BACKWARD_ERROR_ARGS+=(
+        --full-backward-error
+        --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
     )
 fi
 
@@ -85,7 +85,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Result directory   : ${RESULT_DIR}"
     echo "Matrix sizes       : ${NS[*]}"
     echo "Precision mode     : ${PRECISION} (0=FP32, 1=FP64)"
-    echo "Backward verify    : ${VERIFY}"
+    echo "Residual verify    : ${VERIFY}"
     echo "Pivoting            : ${PIVOTING}"
     echo "Methods             : ${METHODS}"
     echo "Blocked-RL NBs     : ${BASELINE_NBS[*]}"
@@ -98,7 +98,7 @@ rm -f "${SUMMARY_LOG}"
     echo "TRSM block         : ${TRSM_BLOCK}"
     echo "Pivot column tile  : ${PIVOT_COLUMN_TILE}"
     echo "Inner GEMM M tile  : ${INNER_GEMM_M_TILE}"
-    echo "Full residual      : ${FULL_RESIDUAL} (max N=${FULL_RESIDUAL_MAX_N})"
+    echo "Full backward error: ${FULL_BACKWARD_ERROR} (max N=${FULL_BACKWARD_ERROR_MAX_N})"
     echo "Run stage profile   : ${RUN_STAGE_PROFILE}"
     if [[ "${RUN_STAGE_PROFILE}" == "1" ]]; then
         echo "Stage warmup/iters : ${STAGE_PROFILE_WARMUP}/${STAGE_PROFILE_ITERS}"
@@ -154,7 +154,7 @@ for N in "${NS[@]}"; do
         --trsm-block "${TRSM_BLOCK}" \
         --pivot-tile "${PIVOT_COLUMN_TILE}" \
         --inner-gemm-m-tile "${INNER_GEMM_M_TILE}" \
-        "${FULL_RESIDUAL_ARGS[@]}" \
+        "${FULL_BACKWARD_ERROR_ARGS[@]}" \
         2>&1 | tee "${OUT_FILE}"
 
     cat "${OUT_FILE}" >> "${SUMMARY_LOG}"

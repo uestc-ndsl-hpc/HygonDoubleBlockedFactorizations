@@ -117,17 +117,20 @@ int main(int argc, char** argv)
     BlockParameter block_parameter = BlockParameter::Nb;
     bool methods_explicit = false;
     for (int i = nb_start; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--full-residual") == 0) {
-            options.full_residual = true;
+        if (std::strcmp(argv[i], "--full-backward-error") == 0
+            || std::strcmp(argv[i], "--full-residual") == 0) {
+            options.full_backward_error = true;
             block_parameter = BlockParameter::Nb;
             continue;
         }
-        if (std::strcmp(argv[i], "--full-residual-max-n") == 0) {
+        if (std::strcmp(argv[i], "--full-backward-error-max-n") == 0
+            || std::strcmp(argv[i], "--full-residual-max-n") == 0) {
             if (i + 1 >= argc) {
-                std::cerr << "Missing value after --full-residual-max-n.\n";
+                std::cerr
+                    << "Missing value after --full-backward-error-max-n.\n";
                 return EXIT_FAILURE;
             }
-            options.full_residual_max_n = std::atoi(argv[++i]);
+            options.full_backward_error_max_n = std::atoi(argv[++i]);
             block_parameter = BlockParameter::Nb;
             continue;
         }
@@ -200,12 +203,13 @@ int main(int argc, char** argv)
     }
 
     options.error_mode = parse_benchmark_error_mode(error_input);
-    if (options.full_residual) {
-        if (options.full_residual_max_n <= 0
-            || options.n > options.full_residual_max_n) {
-            std::cerr << "Full residual requested for N=" << options.n
-                      << ", but --full-residual-max-n="
-                      << options.full_residual_max_n << ".\n";
+    if (options.full_backward_error) {
+        if (options.full_backward_error_max_n <= 0
+            || options.n > options.full_backward_error_max_n) {
+            std::cerr << "Full normwise backward error requested for N="
+                      << options.n
+                      << ", but --full-backward-error-max-n="
+                      << options.full_backward_error_max_n << ".\n";
             return EXIT_FAILURE;
         }
         if (options.error_mode == ErrorMode::None

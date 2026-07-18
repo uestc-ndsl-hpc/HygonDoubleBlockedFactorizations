@@ -51,7 +51,7 @@ double verify_relative_error_lower(
     return std::sqrt(diff_norm) / (std::sqrt(ref_norm) + 1e-20);
 }
 
-double verify_backward_error_sampled(
+double verify_sampled_relative_residual(
     const std::vector<float>& A,
     const std::vector<float>& C_original,
     const std::vector<float>& C_result,
@@ -225,7 +225,12 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
 
     std::vector<BenchmarkResult> results;
     double baseline_time = -1.0;
-    BenchmarkRunner runner(main_stream, baseline_time, results);
+    const ResidualMetric residual_metric
+        = error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both
+        ? ResidualMetric::SampledRelativeResidual
+        : ResidualMetric::None;
+    BenchmarkRunner runner(
+        main_stream, baseline_time, results, residual_metric);
 
     auto reset_c = [&]() {
         HIP_CHECK(hipMemcpy(d_C_f, h_C_f.data(), bytes_C, hipMemcpyHostToDevice));
@@ -235,7 +240,7 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         return calculate_gflops(n, k, ms);
     };
 
-    auto verify_syrk = [&] (double& f_err, double& b_err) {
+    auto verify_syrk = [&] (double& f_err, double& residual_value) {
         if (error_mode == ErrorMode::None) {
             return;
         }
@@ -252,7 +257,7 @@ void run_syrk_benchmarks(const SyrkBenchmarkOptions& options)
         }
 
         if (error_mode == ErrorMode::Backward || error_mode == ErrorMode::Both) {
-            b_err = verify_backward_error_sampled(
+            residual_value = verify_sampled_relative_residual(
                 h_A_f,
                 h_C_f,
                 h_C_out,

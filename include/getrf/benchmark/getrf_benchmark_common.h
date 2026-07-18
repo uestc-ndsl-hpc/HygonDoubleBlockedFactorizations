@@ -22,8 +22,8 @@ struct GetrfBenchmarkOptions {
     bool test_double_basic = true;
     bool test_batched_pivot = true;
     bool test_mgemm = true;
-    bool full_residual = false;
-    int full_residual_max_n = 8192;
+    bool full_backward_error = false;
+    int full_backward_error_max_n = 8192;
     getrf_outer_trsm_mode outer_trsm_mode = getrf_outer_trsm_iterative;
     int trsm_block = 2048;
     int pivot_column_tile = 2048;

@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include "utils/benchmark/residual_metric.h"
+
 struct BenchmarkResult
 {
     std::string method;
@@ -16,8 +18,9 @@ struct BenchmarkResult
     double gflops         = 0.0;
     double speedup        = 0.0;
 
-    double forward_error  = -1.0;
-    double backward_error = -1.0;
+    double forward_error = -1.0;
+    ResidualMetric residual_metric = ResidualMetric::None;
+    double residual_value = -1.0;
 
     std::vector<double> iteration_times_ms;
 };
