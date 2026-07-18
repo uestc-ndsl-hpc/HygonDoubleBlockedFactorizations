@@ -22,6 +22,7 @@ POTRF_PROFILE_EXEC=${BUILD_DIR}/profile_double_blocked_potrf
 GETRF_PROFILE_EXEC=${BUILD_DIR}/profile_double_blocked_getrf
 
 PAPER_SECTIONS=${PAPER_SECTIONS:-accuracy,scaling,profiles}
+PAPER_FACTORIZATIONS=${PAPER_FACTORIZATIONS:-potrf,getrf}
 PAPER_RUN_ID=${PAPER_RUN_ID:-$(date +%Y%m%d_%H%M%S)}
 RESULT_DIR=${PAPER_RESULT_DIR:-${ROOT_DIR}/results/fp32/paper_final/${PAPER_RUN_ID}}
 SUMMARY_LOG=${RESULT_DIR}/manifest.log
@@ -66,6 +67,16 @@ section_enabled() {
     [[ ",${PAPER_SECTIONS}," == *",${section},"* ]]
 }
 
+factorization_enabled() {
+    local factorization=$1
+    [[ ",${PAPER_FACTORIZATIONS}," == *",${factorization},"* ]]
+}
+
+if ! factorization_enabled potrf && ! factorization_enabled getrf; then
+    echo "PAPER_FACTORIZATIONS must enable potrf, getrf, or both." >&2
+    exit 2
+fi
+
 select_size_policy() {
     local n=$1
 
@@ -109,6 +120,7 @@ rm -f "${SUMMARY_LOG}"
     echo "=================================================="
     echo "Double-blocked factorization paper experiments"
     echo "Sections            : ${PAPER_SECTIONS}"
+    echo "Factorizations      : ${PAPER_FACTORIZATIONS}"
     echo "Result directory    : ${RESULT_DIR}"
     echo "Scaling sizes       : ${SCALING_NS[*]}"
     echo "Accuracy sizes      : ${ACCURACY_NS[*]}"
@@ -164,23 +176,29 @@ if [[ "${PAPER_ALLOW_DIRTY:-0}" != "1" ]] \
     exit 4
 fi
 
-check_benchmark_binary \
-    "${POTRF_EXEC}" \
-    "${SUMMARY_LOG}" \
-    "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64"
-check_benchmark_binary \
-    "${GETRF_EXEC}" \
-    "${SUMMARY_LOG}" \
-    "rocsolver|rocblas|amdhip64|hsa-runtime64"
-if section_enabled profiles; then
+if factorization_enabled potrf; then
     check_benchmark_binary \
-        "${POTRF_PROFILE_EXEC}" \
+        "${POTRF_EXEC}" \
+        "${SUMMARY_LOG}" \
+        "rocsolver|rocblas|hipblas|amdhip64|hsa-runtime64"
+    if section_enabled profiles; then
+        check_benchmark_binary \
+            "${POTRF_PROFILE_EXEC}" \
+            "${SUMMARY_LOG}" \
+            "rocsolver|rocblas|amdhip64|hsa-runtime64"
+    fi
+fi
+if factorization_enabled getrf; then
+    check_benchmark_binary \
+        "${GETRF_EXEC}" \
         "${SUMMARY_LOG}" \
         "rocsolver|rocblas|amdhip64|hsa-runtime64"
-    check_benchmark_binary \
-        "${GETRF_PROFILE_EXEC}" \
-        "${SUMMARY_LOG}" \
-        "rocsolver|rocblas|amdhip64|hsa-runtime64"
+    if section_enabled profiles; then
+        check_benchmark_binary \
+            "${GETRF_PROFILE_EXEC}" \
+            "${SUMMARY_LOG}" \
+            "rocsolver|rocblas|amdhip64|hsa-runtime64"
+    fi
 fi
 configure_numa_launch_prefix "${SUMMARY_LOG}"
 
@@ -194,38 +212,50 @@ if section_enabled accuracy || section_enabled correctness; then
     for N in "${ACCURACY_NS[@]}"; do
         select_size_policy "${N}"
 
-        export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
-        run_benchmark \
-            "${ACCURACY_DIR}/potrf_N${N}_timings.csv" \
-            "${ACCURACY_DIR}/potrf_N${N}.log" \
-            "${POTRF_EXEC}" \
-            "${N}" 0 0 2 0 0 0 2048 \
-            --methods "${POTRF_METHODS}" \
-            --double-nb "${CURRENT_POTRF_NB}" \
-            --b "${POTRF_B}" \
-            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
-            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
-            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
-            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}" \
-            --full-backward-error \
-            --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
+        if factorization_enabled potrf; then
+            CURRENT_POTRF_ACCURACY_METHODS=${POTRF_METHODS}
+            if (( N > ROCSOLVER_MAX_N )); then
+                CURRENT_POTRF_ACCURACY_METHODS=${POTRF_LARGE_METHODS}
+            fi
+            export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
+            run_benchmark \
+                "${ACCURACY_DIR}/potrf_N${N}_timings.csv" \
+                "${ACCURACY_DIR}/potrf_N${N}.log" \
+                "${POTRF_EXEC}" \
+                "${N}" 0 0 2 0 0 0 2048 \
+                --methods "${CURRENT_POTRF_ACCURACY_METHODS}" \
+                --double-nb "${CURRENT_POTRF_NB}" \
+                --b "${POTRF_B}" \
+                --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+                --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+                --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+                --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}" \
+                --full-backward-error \
+                --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
+        fi
 
-        export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
-        run_benchmark \
-            "${ACCURACY_DIR}/getrf_N${N}_timings.csv" \
-            "${ACCURACY_DIR}/getrf_N${N}.log" \
-            "${GETRF_EXEC}" \
-            "${N}" 0 1 2048 \
-            --pivot \
-            --methods "${GETRF_METHODS}" \
-            --double-nb "${CURRENT_GETRF_NB}" \
-            --b "${CURRENT_GETRF_B}" \
-            --outer-trsm "${GETRF_OUTER_TRSM}" \
-            --trsm-block "${GETRF_TRSM_BLOCK}" \
-            --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}" \
-            --full-backward-error \
-            --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
+        if factorization_enabled getrf; then
+            CURRENT_GETRF_ACCURACY_METHODS=${GETRF_METHODS}
+            if (( N > ROCSOLVER_MAX_N )); then
+                CURRENT_GETRF_ACCURACY_METHODS=${GETRF_LARGE_METHODS}
+            fi
+            export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
+            run_benchmark \
+                "${ACCURACY_DIR}/getrf_N${N}_timings.csv" \
+                "${ACCURACY_DIR}/getrf_N${N}.log" \
+                "${GETRF_EXEC}" \
+                "${N}" 0 1 2048 \
+                --pivot \
+                --methods "${CURRENT_GETRF_ACCURACY_METHODS}" \
+                --double-nb "${CURRENT_GETRF_NB}" \
+                --b "${CURRENT_GETRF_B}" \
+                --outer-trsm "${GETRF_OUTER_TRSM}" \
+                --trsm-block "${GETRF_TRSM_BLOCK}" \
+                --pivot-tile "${GETRF_PIVOT_TILE}" \
+                --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}" \
+                --full-backward-error \
+                --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
+        fi
     done
 
     unset BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR
@@ -248,32 +278,36 @@ if section_enabled scaling; then
             CURRENT_GETRF_METHODS=${GETRF_LARGE_METHODS}
         fi
 
-        run_benchmark \
-            "${SCALING_DIR}/potrf_N${N}_timings.csv" \
-            "${SCALING_DIR}/potrf_N${N}.log" \
-            "${POTRF_EXEC}" \
-            "${N}" 0 0 0 0 0 0 2048 \
-            --methods "${CURRENT_POTRF_METHODS}" \
-            --double-nb "${CURRENT_POTRF_NB}" \
-            --b "${POTRF_B}" \
-            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
-            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
-            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
-            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+        if factorization_enabled potrf; then
+            run_benchmark \
+                "${SCALING_DIR}/potrf_N${N}_timings.csv" \
+                "${SCALING_DIR}/potrf_N${N}.log" \
+                "${POTRF_EXEC}" \
+                "${N}" 0 0 0 0 0 0 2048 \
+                --methods "${CURRENT_POTRF_METHODS}" \
+                --double-nb "${CURRENT_POTRF_NB}" \
+                --b "${POTRF_B}" \
+                --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+                --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+                --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+                --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+        fi
 
-        run_benchmark \
-            "${SCALING_DIR}/getrf_N${N}_timings.csv" \
-            "${SCALING_DIR}/getrf_N${N}.log" \
-            "${GETRF_EXEC}" \
-            "${N}" 0 0 2048 \
-            --pivot \
-            --methods "${CURRENT_GETRF_METHODS}" \
-            --double-nb "${CURRENT_GETRF_NB}" \
-            --b "${CURRENT_GETRF_B}" \
-            --outer-trsm "${GETRF_OUTER_TRSM}" \
-            --trsm-block "${GETRF_TRSM_BLOCK}" \
-            --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+        if factorization_enabled getrf; then
+            run_benchmark \
+                "${SCALING_DIR}/getrf_N${N}_timings.csv" \
+                "${SCALING_DIR}/getrf_N${N}.log" \
+                "${GETRF_EXEC}" \
+                "${N}" 0 0 2048 \
+                --pivot \
+                --methods "${CURRENT_GETRF_METHODS}" \
+                --double-nb "${CURRENT_GETRF_NB}" \
+                --b "${CURRENT_GETRF_B}" \
+                --outer-trsm "${GETRF_OUTER_TRSM}" \
+                --trsm-block "${GETRF_TRSM_BLOCK}" \
+                --pivot-tile "${GETRF_PIVOT_TILE}" \
+                --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+        fi
     done
 
 fi
@@ -288,59 +322,63 @@ if section_enabled block-collapse; then
     for N in "${BLOCK_COLLAPSE_NS[@]}"; do
         select_size_policy "${N}"
 
-        run_benchmark \
-            "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}_timings.csv" \
-            "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}.log" \
-            "${POTRF_EXEC}" \
-            "${N}" 0 0 0 0 0 0 2048 \
-            --methods mgemm \
-            --double-nb "${CURRENT_POTRF_NB}" \
-            --b "${POTRF_B}" \
-            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
-            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
-            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
-            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+        if factorization_enabled potrf; then
+            run_benchmark \
+                "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}_timings.csv" \
+                "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}.log" \
+                "${POTRF_EXEC}" \
+                "${N}" 0 0 0 0 0 0 2048 \
+                --methods mgemm \
+                --double-nb "${CURRENT_POTRF_NB}" \
+                --b "${POTRF_B}" \
+                --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+                --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+                --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+                --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
 
-        run_benchmark \
-            "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}_timings.csv" \
-            "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}.log" \
-            "${POTRF_EXEC}" \
-            "${N}" 0 0 0 0 0 0 2048 \
-            --methods mgemm \
-            --double-nb "${CURRENT_POTRF_NB}" \
-            --b "${CURRENT_POTRF_NB}" \
-            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
-            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
-            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
-            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+            run_benchmark \
+                "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}_timings.csv" \
+                "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}.log" \
+                "${POTRF_EXEC}" \
+                "${N}" 0 0 0 0 0 0 2048 \
+                --methods mgemm \
+                --double-nb "${CURRENT_POTRF_NB}" \
+                --b "${CURRENT_POTRF_NB}" \
+                --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+                --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+                --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+                --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+        fi
 
-        run_benchmark \
-            "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}_timings.csv" \
-            "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}.log" \
-            "${GETRF_EXEC}" \
-            "${N}" 0 0 2048 \
-            --pivot \
-            --methods mgemm \
-            --double-nb "${CURRENT_GETRF_NB}" \
-            --b "${CURRENT_GETRF_B}" \
-            --outer-trsm "${GETRF_OUTER_TRSM}" \
-            --trsm-block "${GETRF_TRSM_BLOCK}" \
-            --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+        if factorization_enabled getrf; then
+            run_benchmark \
+                "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}_timings.csv" \
+                "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}.log" \
+                "${GETRF_EXEC}" \
+                "${N}" 0 0 2048 \
+                --pivot \
+                --methods mgemm \
+                --double-nb "${CURRENT_GETRF_NB}" \
+                --b "${CURRENT_GETRF_B}" \
+                --outer-trsm "${GETRF_OUTER_TRSM}" \
+                --trsm-block "${GETRF_TRSM_BLOCK}" \
+                --pivot-tile "${GETRF_PIVOT_TILE}" \
+                --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
 
-        run_benchmark \
-            "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}_timings.csv" \
-            "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}.log" \
-            "${GETRF_EXEC}" \
-            "${N}" 0 0 2048 \
-            --pivot \
-            --methods mgemm \
-            --double-nb "${CURRENT_GETRF_NB}" \
-            --b "${CURRENT_GETRF_NB}" \
-            --outer-trsm "${GETRF_OUTER_TRSM}" \
-            --trsm-block "${GETRF_TRSM_BLOCK}" \
-            --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+            run_benchmark \
+                "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}_timings.csv" \
+                "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}.log" \
+                "${GETRF_EXEC}" \
+                "${N}" 0 0 2048 \
+                --pivot \
+                --methods mgemm \
+                --double-nb "${CURRENT_GETRF_NB}" \
+                --b "${CURRENT_GETRF_NB}" \
+                --outer-trsm "${GETRF_OUTER_TRSM}" \
+                --trsm-block "${GETRF_TRSM_BLOCK}" \
+                --pivot-tile "${GETRF_PIVOT_TILE}" \
+                --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+        fi
     done
 fi
 
@@ -352,6 +390,7 @@ if section_enabled profiles; then
     PROFILE_GETRF_NB=${CURRENT_GETRF_NB}
     PROFILE_GETRF_B=${CURRENT_GETRF_B}
 
+    if factorization_enabled potrf; then
     run_profile \
         "${PROFILE_DIR}/potrf_basic_N${PROFILE_N}.log" \
         "${POTRF_PROFILE_EXEC}" \
@@ -386,7 +425,9 @@ if section_enabled profiles; then
         --inner-gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}" \
         --warmup "${STAGE_WARMUP}" \
         --iters "${STAGE_ITERS}"
+    fi
 
+    if factorization_enabled getrf; then
     run_profile \
         "${PROFILE_DIR}/getrf_immediate_N${PROFILE_N}.log" \
         "${GETRF_PROFILE_EXEC}" \
@@ -442,6 +483,7 @@ if section_enabled profiles; then
         --pivot-mode batched \
         --warmup "${STAGE_WARMUP}" \
         --iters "${STAGE_ITERS}"
+    fi
 fi
 
 echo "==================================================" | tee -a "${SUMMARY_LOG}"
