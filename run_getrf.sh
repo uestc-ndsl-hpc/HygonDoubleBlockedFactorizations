@@ -45,6 +45,7 @@ OUTER_TRSM=${GETRF_OUTER_TRSM:-iterative}
 TRSM_BLOCK=${GETRF_TRSM_BLOCK:-${GETRF_TRSM_LEAF:-2048}}
 PIVOT_COLUMN_TILE=${GETRF_PIVOT_COLUMN_TILE:-2048}
 INNER_GEMM_M_TILE=${GETRF_INNER_GEMM_M_TILE:-8192}
+OUTER_NB_CAP=${GETRF_OUTER_NB_CAP:-0}
 METHODS=${GETRF_METHODS:-${DEFAULT_METHODS}}
 FULL_BACKWARD_ERROR=${GETRF_FULL_BACKWARD_ERROR:-${GETRF_FULL_RESIDUAL:-0}}
 FULL_BACKWARD_ERROR_MAX_N=${GETRF_FULL_BACKWARD_ERROR_MAX_N:-${GETRF_FULL_RESIDUAL_MAX_N:-8192}}
@@ -78,6 +79,21 @@ fi
 mkdir -p "${RESULT_DIR}"
 rm -f "${SUMMARY_LOG}"
 
+if (( ${#DOUBLE_NBS[@]} == 0 )); then
+    if (( OUTER_NB_CAP > 0 )); then
+        DOUBLE_NB_POLICY="min(N/2,${OUTER_NB_CAP})"
+    else
+        DOUBLE_NB_POLICY="N/2"
+    fi
+else
+    DOUBLE_NB_POLICY="${DOUBLE_NBS[*]}"
+fi
+if (( ${#MICRO_BLOCKS[@]} == 0 )); then
+    MICRO_BLOCK_POLICY="min(N/4,4096)"
+else
+    MICRO_BLOCK_POLICY="${MICRO_BLOCKS[*]}"
+fi
+
 {
     echo "=================================================="
     echo "${MODE_NAME} benchmark"
@@ -89,11 +105,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Pivoting            : ${PIVOTING}"
     echo "Methods             : ${METHODS}"
     echo "Blocked-RL NBs     : ${BASELINE_NBS[*]}"
-    if (( ${#DOUBLE_NBS[@]} == 0 && ${#MICRO_BLOCKS[@]} == 0 )); then
-        echo "DoubleBlock NB/B   : N/2 / min(N/4,4096)"
-    else
-        echo "DoubleBlock NB/B   : ${DOUBLE_NBS[*]:-N/2} / ${MICRO_BLOCKS[*]:-N/4}"
-    fi
+    echo "DoubleBlock NB/B   : ${DOUBLE_NB_POLICY} / ${MICRO_BLOCK_POLICY}"
     echo "Outer TRSM mode    : ${OUTER_TRSM}"
     echo "TRSM block         : ${TRSM_BLOCK}"
     echo "Pivot column tile  : ${PIVOT_COLUMN_TILE}"
@@ -130,7 +142,11 @@ for N in "${NS[@]}"; do
     RUN_DOUBLE_NBS=("${DOUBLE_NBS[@]}")
     RUN_MICRO_BLOCKS=("${MICRO_BLOCKS[@]}")
     if (( ${#RUN_DOUBLE_NBS[@]} == 0 )); then
-        RUN_DOUBLE_NBS=($((N / 2)))
+        DEFAULT_OUTER_NB=$((N / 2))
+        if (( OUTER_NB_CAP > 0 && DEFAULT_OUTER_NB > OUTER_NB_CAP )); then
+            DEFAULT_OUTER_NB=${OUTER_NB_CAP}
+        fi
+        RUN_DOUBLE_NBS=("${DEFAULT_OUTER_NB}")
     fi
     if (( ${#RUN_MICRO_BLOCKS[@]} == 0 )); then
         DEFAULT_B=$((N / 4))

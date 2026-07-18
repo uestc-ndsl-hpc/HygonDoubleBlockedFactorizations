@@ -43,6 +43,7 @@ GETRF_OUTER_TRSM=${PAPER_GETRF_OUTER_TRSM:-iterative}
 GETRF_TRSM_BLOCK=${PAPER_GETRF_TRSM_BLOCK:-2048}
 GETRF_PIVOT_TILE=${PAPER_GETRF_PIVOT_TILE:-2048}
 GETRF_GEMM_M_TILE=${PAPER_GETRF_GEMM_M_TILE:-8192}
+GETRF_NB_CAP=${PAPER_GETRF_NB_CAP:-20480}
 GETRF_METHODS=${PAPER_GETRF_METHODS:-rocsolver,double,batched,mgemm}
 GETRF_LARGE_METHODS=${PAPER_GETRF_LARGE_METHODS:-double,batched,mgemm}
 ROCSOLVER_MAX_N=${PAPER_ROCSOLVER_MAX_N:-40960}
@@ -74,6 +75,9 @@ select_size_policy() {
     fi
 
     CURRENT_GETRF_NB=$((n / 2))
+    if (( GETRF_NB_CAP > 0 && CURRENT_GETRF_NB > GETRF_NB_CAP )); then
+        CURRENT_GETRF_NB=${GETRF_NB_CAP}
+    fi
     CURRENT_GETRF_B=$((n / 4))
     if (( CURRENT_GETRF_B > 4096 )); then
         CURRENT_GETRF_B=4096
@@ -118,7 +122,11 @@ rm -f "${SUMMARY_LOG}"
     echo "POTRF thresholds    : M>${POTRF_GEMM_M_THRESHOLD}, K>=${POTRF_GEMM_K_THRESHOLD}"
     echo "POTRF methods       : ${POTRF_METHODS}"
     echo "POTRF large methods : ${POTRF_LARGE_METHODS}"
-    echo "GETRF B policy      : N/2"
+    if (( GETRF_NB_CAP > 0 )); then
+        echo "GETRF B policy      : min(N/2,${GETRF_NB_CAP})"
+    else
+        echo "GETRF B policy      : N/2 (uncapped)"
+    fi
     echo "GETRF b policy      : min(N/4,4096)"
     echo "GETRF outer TRSM    : ${GETRF_OUTER_TRSM}/${GETRF_TRSM_BLOCK}"
     echo "GETRF bp/TM         : ${GETRF_PIVOT_TILE}/${GETRF_GEMM_M_TILE}"
