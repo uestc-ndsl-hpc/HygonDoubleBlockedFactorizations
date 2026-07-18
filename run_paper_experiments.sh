@@ -28,6 +28,7 @@ SUMMARY_LOG=${RESULT_DIR}/manifest.log
 
 read -r -a SCALING_NS <<< "${PAPER_NS:-8192 16384 24576 32768 40960 49152 57344 65536}"
 read -r -a ACCURACY_NS <<< "${PAPER_ACCURACY_NS:-${PAPER_CORRECTNESS_NS:-1024 2048 4096 8192 16384 24576}}"
+read -r -a BLOCK_COLLAPSE_NS <<< "${PAPER_BLOCK_COLLAPSE_NS:-8192 16384 24576 32768 40960}"
 
 POTRF_NB=${PAPER_POTRF_NB:-8192}
 POTRF_B=${PAPER_POTRF_B:-1024}
@@ -107,6 +108,7 @@ rm -f "${SUMMARY_LOG}"
     echo "Result directory    : ${RESULT_DIR}"
     echo "Scaling sizes       : ${SCALING_NS[*]}"
     echo "Accuracy sizes      : ${ACCURACY_NS[*]}"
+    echo "Block-collapse sizes: ${BLOCK_COLLAPSE_NS[*]}"
     echo "Accuracy policy     : identical to the scaling dispatch policy"
     echo "Full-error max N    : ${FULL_BACKWARD_ERROR_MAX_N}"
     echo "POTRF input seed    : 20260716"
@@ -125,6 +127,7 @@ rm -f "${SUMMARY_LOG}"
     echo "rocSOLVER max N     : ${ROCSOLVER_MAX_N}"
     echo "Stage profile N     : ${PROFILE_N}"
     echo "Scaling warmup/iters: ${PAPER_WARMUP_ITERS:-2}/${PAPER_PROFILE_ITERS:-10}"
+    echo "Collapse warmup/iters: ${PAPER_BLOCK_COLLAPSE_WARMUP:-${PAPER_WARMUP_ITERS:-2}}/${PAPER_BLOCK_COLLAPSE_ITERS:-${PAPER_PROFILE_ITERS:-10}}"
     echo "Accuracy warm/iters : ${PAPER_ACCURACY_WARMUP:-${PAPER_CORRECTNESS_WARMUP:-0}}/${PAPER_ACCURACY_ITERS:-${PAPER_CORRECTNESS_ITERS:-1}}"
     echo "Stage warmup/iters  : ${STAGE_WARMUP}/${STAGE_ITERS}"
     echo "LU normwise backward error   : ||P*A-L*U||_F / ||A||_F"
@@ -265,6 +268,72 @@ if section_enabled scaling; then
             --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
     done
 
+fi
+
+if section_enabled block-collapse; then
+    BLOCK_COLLAPSE_DIR=${RESULT_DIR}/block_collapse
+    mkdir -p "${BLOCK_COLLAPSE_DIR}"
+
+    export BENCHMARK_WARMUP_ITERS=${PAPER_BLOCK_COLLAPSE_WARMUP:-${PAPER_WARMUP_ITERS:-2}}
+    export BENCHMARK_PROFILE_ITERS=${PAPER_BLOCK_COLLAPSE_ITERS:-${PAPER_PROFILE_ITERS:-10}}
+
+    for N in "${BLOCK_COLLAPSE_NS[@]}"; do
+        select_size_policy "${N}"
+
+        run_benchmark \
+            "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}_timings.csv" \
+            "${BLOCK_COLLAPSE_DIR}/potrf_final_b_N${N}.log" \
+            "${POTRF_EXEC}" \
+            "${N}" 0 0 0 0 0 0 2048 \
+            --methods mgemm \
+            --double-nb "${CURRENT_POTRF_NB}" \
+            --b "${POTRF_B}" \
+            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+
+        run_benchmark \
+            "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}_timings.csv" \
+            "${BLOCK_COLLAPSE_DIR}/potrf_b_eq_nb_N${N}.log" \
+            "${POTRF_EXEC}" \
+            "${N}" 0 0 0 0 0 0 2048 \
+            --methods mgemm \
+            --double-nb "${CURRENT_POTRF_NB}" \
+            --b "${CURRENT_POTRF_NB}" \
+            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
+
+        run_benchmark \
+            "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}_timings.csv" \
+            "${BLOCK_COLLAPSE_DIR}/getrf_final_b_N${N}.log" \
+            "${GETRF_EXEC}" \
+            "${N}" 0 0 2048 \
+            --pivot \
+            --methods mgemm \
+            --double-nb "${CURRENT_GETRF_NB}" \
+            --b "${CURRENT_GETRF_B}" \
+            --outer-trsm "${GETRF_OUTER_TRSM}" \
+            --trsm-block "${GETRF_TRSM_BLOCK}" \
+            --pivot-tile "${GETRF_PIVOT_TILE}" \
+            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+
+        run_benchmark \
+            "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}_timings.csv" \
+            "${BLOCK_COLLAPSE_DIR}/getrf_b_eq_nb_N${N}.log" \
+            "${GETRF_EXEC}" \
+            "${N}" 0 0 2048 \
+            --pivot \
+            --methods mgemm \
+            --double-nb "${CURRENT_GETRF_NB}" \
+            --b "${CURRENT_GETRF_NB}" \
+            --outer-trsm "${GETRF_OUTER_TRSM}" \
+            --trsm-block "${GETRF_TRSM_BLOCK}" \
+            --pivot-tile "${GETRF_PIVOT_TILE}" \
+            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}"
+    done
 fi
 
 if section_enabled profiles; then
