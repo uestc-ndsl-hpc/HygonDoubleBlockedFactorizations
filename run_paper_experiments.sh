@@ -49,7 +49,7 @@ ROCSOLVER_MAX_N=${PAPER_ROCSOLVER_MAX_N:-40960}
 PROFILE_N=${PAPER_PROFILE_N:-40960}
 STAGE_WARMUP=${PAPER_STAGE_WARMUP:-1}
 STAGE_ITERS=${PAPER_STAGE_ITERS:-3}
-ACCURACY_TILE=${PAPER_ACCURACY_TILE:-${PAPER_CORRECTNESS_TILE:-1024}}
+FULL_BACKWARD_ERROR_MAX_N=${PAPER_FULL_BACKWARD_ERROR_MAX_N:-24576}
 POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR=${PAPER_POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR:-${PAPER_POTRF_CORRECTNESS_MAX_NORMWISE_BACKWARD_ERROR:-1e-5}}
 GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR=${PAPER_GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR:-${PAPER_GETRF_CORRECTNESS_MAX_NORMWISE_BACKWARD_ERROR:-5e-4}}
 
@@ -62,6 +62,21 @@ fi
 section_enabled() {
     local section=$1
     [[ ",${PAPER_SECTIONS}," == *",${section},"* ]]
+}
+
+select_size_policy() {
+    local n=$1
+
+    CURRENT_POTRF_NB=${POTRF_NB}
+    if (( CURRENT_POTRF_NB > n )); then
+        CURRENT_POTRF_NB=${n}
+    fi
+
+    CURRENT_GETRF_NB=$((n / 2))
+    CURRENT_GETRF_B=$((n / 4))
+    if (( CURRENT_GETRF_B > 4096 )); then
+        CURRENT_GETRF_B=4096
+    fi
 }
 
 run_benchmark() {
@@ -92,7 +107,8 @@ rm -f "${SUMMARY_LOG}"
     echo "Result directory    : ${RESULT_DIR}"
     echo "Scaling sizes       : ${SCALING_NS[*]}"
     echo "Accuracy sizes      : ${ACCURACY_NS[*]}"
-    echo "Accuracy tile       : ${ACCURACY_TILE}"
+    echo "Accuracy policy     : identical to the scaling dispatch policy"
+    echo "Full-error max N    : ${FULL_BACKWARD_ERROR_MAX_N}"
     echo "POTRF input seed    : 20260716"
     echo "GETRF input seed    : 1234567890"
     echo "POTRF B/b           : ${POTRF_NB}/${POTRF_B}"
@@ -165,6 +181,8 @@ if section_enabled accuracy || section_enabled correctness; then
     export BENCHMARK_PROFILE_ITERS=${PAPER_ACCURACY_ITERS:-${PAPER_CORRECTNESS_ITERS:-1}}
 
     for N in "${ACCURACY_NS[@]}"; do
+        select_size_policy "${N}"
+
         export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${POTRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
         run_benchmark \
             "${ACCURACY_DIR}/potrf_N${N}_timings.csv" \
@@ -172,14 +190,14 @@ if section_enabled accuracy || section_enabled correctness; then
             "${POTRF_EXEC}" \
             "${N}" 0 0 2 0 0 0 2048 \
             --methods "${POTRF_METHODS}" \
-            --double-nb 2048 \
-            --b 512 \
-            --syrk-k-tile "${ACCURACY_TILE}" \
-            --gemm-m-tile "${ACCURACY_TILE}" \
-            --gemm-m-threshold 0 \
-            --gemm-k-threshold 0 \
+            --double-nb "${CURRENT_POTRF_NB}" \
+            --b "${POTRF_B}" \
+            --syrk-k-tile "${POTRF_SYRK_K_TILE}" \
+            --gemm-m-tile "${POTRF_GEMM_M_TILE}" \
+            --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
+            --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}" \
             --full-backward-error \
-            --full-backward-error-max-n 24576
+            --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
 
         export BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR=${GETRF_ACCURACY_MAX_NORMWISE_BACKWARD_ERROR}
         run_benchmark \
@@ -189,14 +207,14 @@ if section_enabled accuracy || section_enabled correctness; then
             "${N}" 0 1 2048 \
             --pivot \
             --methods "${GETRF_METHODS}" \
-            --double-nb 2048 \
-            --b 512 \
+            --double-nb "${CURRENT_GETRF_NB}" \
+            --b "${CURRENT_GETRF_B}" \
             --outer-trsm "${GETRF_OUTER_TRSM}" \
             --trsm-block "${GETRF_TRSM_BLOCK}" \
             --pivot-tile "${GETRF_PIVOT_TILE}" \
-            --inner-gemm-m-tile "${ACCURACY_TILE}" \
+            --inner-gemm-m-tile "${GETRF_GEMM_M_TILE}" \
             --full-backward-error \
-            --full-backward-error-max-n 24576
+            --full-backward-error-max-n "${FULL_BACKWARD_ERROR_MAX_N}"
     done
 
     unset BENCHMARK_MAX_NORMWISE_BACKWARD_ERROR
@@ -210,16 +228,13 @@ if section_enabled scaling; then
     export BENCHMARK_PROFILE_ITERS=${PAPER_PROFILE_ITERS:-10}
 
     for N in "${SCALING_NS[@]}"; do
+        select_size_policy "${N}"
+
         CURRENT_POTRF_METHODS=${POTRF_METHODS}
         CURRENT_GETRF_METHODS=${GETRF_METHODS}
         if (( N > ROCSOLVER_MAX_N )); then
             CURRENT_POTRF_METHODS=${POTRF_LARGE_METHODS}
             CURRENT_GETRF_METHODS=${GETRF_LARGE_METHODS}
-        fi
-
-        CURRENT_POTRF_NB=${POTRF_NB}
-        if (( CURRENT_POTRF_NB > N )); then
-            CURRENT_POTRF_NB=${N}
         fi
 
         run_benchmark \
@@ -235,12 +250,6 @@ if section_enabled scaling; then
             --gemm-m-threshold "${POTRF_GEMM_M_THRESHOLD}" \
             --gemm-k-threshold "${POTRF_GEMM_K_THRESHOLD}"
 
-        GETRF_NB=$((N / 2))
-        GETRF_B=$((N / 4))
-        if (( GETRF_B > 4096 )); then
-            GETRF_B=4096
-        fi
-
         run_benchmark \
             "${SCALING_DIR}/getrf_N${N}_timings.csv" \
             "${SCALING_DIR}/getrf_N${N}.log" \
@@ -248,8 +257,8 @@ if section_enabled scaling; then
             "${N}" 0 0 2048 \
             --pivot \
             --methods "${CURRENT_GETRF_METHODS}" \
-            --double-nb "${GETRF_NB}" \
-            --b "${GETRF_B}" \
+            --double-nb "${CURRENT_GETRF_NB}" \
+            --b "${CURRENT_GETRF_B}" \
             --outer-trsm "${GETRF_OUTER_TRSM}" \
             --trsm-block "${GETRF_TRSM_BLOCK}" \
             --pivot-tile "${GETRF_PIVOT_TILE}" \
@@ -262,11 +271,9 @@ if section_enabled profiles; then
     PROFILE_DIR=${RESULT_DIR}/profiles
     mkdir -p "${PROFILE_DIR}"
 
-    PROFILE_GETRF_NB=$((PROFILE_N / 2))
-    PROFILE_GETRF_B=$((PROFILE_N / 4))
-    if (( PROFILE_GETRF_B > 4096 )); then
-        PROFILE_GETRF_B=4096
-    fi
+    select_size_policy "${PROFILE_N}"
+    PROFILE_GETRF_NB=${CURRENT_GETRF_NB}
+    PROFILE_GETRF_B=${CURRENT_GETRF_B}
 
     run_profile \
         "${PROFILE_DIR}/potrf_basic_N${PROFILE_N}.log" \
