@@ -55,6 +55,7 @@ void double_blocked_getrf_batched_pivot(
     getrf_outer_trsm_mode outer_trsm_mode,
     int trsm_block,
     int inner_gemm_m_tile,
+    int outer_gemm_m_tile,
     int* ipiv,
     int* info,
     getrf_batched_pivot_workspace* workspace);
@@ -69,6 +70,7 @@ void double_blocked_getrf_double_batched_pivot(
     getrf_outer_trsm_mode outer_trsm_mode,
     int trsm_block,
     int inner_gemm_m_tile,
+    int outer_gemm_m_tile,
     int* ipiv,
     int* info,
     getrf_batched_pivot_workspace* workspace);

@@ -285,6 +285,7 @@ void trsm_left_lower_unit_iterative(rocblas_handle handle,
 template <typename T, typename Observer>
 void gemm_nn_update_m_tiled(rocblas_handle handle,
                             Observer& observer,
+                            const char* stage_name,
                             int rows,
                             int cols,
                             int k,
@@ -300,7 +301,7 @@ void gemm_nn_update_m_tiled(rocblas_handle handle,
 
     const int tile = m_tile > 0 ? std::min(m_tile, rows) : rows;
     observer.measure(
-        "Inner GEMM",
+        stage_name,
         gemm_work(rows, cols, k),
         [&]() {
             for (int row = 0; row < rows; row += tile) {
@@ -361,6 +362,7 @@ void prepare_next_inner_panel(rocblas_handle handle,
     gemm_nn_update_m_tiled(
         handle,
         observer,
+        "Inner GEMM",
         n - next_inner,
         next_size,
         history_size,
@@ -384,10 +386,10 @@ void prepare_next_outer_panel(rocblas_handle handle,
                               int next_outer,
                               int outer_nb,
                               getrf_outer_trsm_mode outer_trsm_mode,
-                              int trsm_block)
+                              int trsm_block,
+                              int outer_gemm_m_tile)
 {
     using getrf_pivot_internal::block_ptr;
-    using getrf_pivot_internal::gemm_nn_update;
 
     if (next_outer >= n) {
         return;
@@ -422,22 +424,20 @@ void prepare_next_outer_panel(rocblas_handle handle,
             trsm_block);
     }
 
-    observer.measure(
+    gemm_nn_update_m_tiled(
+        handle,
+        observer,
         "Outer GEMM",
-        gemm_work(n - next_outer, next_size, next_outer),
-        [&]() {
-            gemm_nn_update(
-                handle,
-                n - next_outer,
-                next_size,
-                next_outer,
-                block_ptr(A, lda, next_outer, 0),
-                lda,
-                block_ptr(A, lda, 0, next_outer),
-                lda,
-                block_ptr(A, lda, next_outer, next_outer),
-                lda);
-        });
+        n - next_outer,
+        next_size,
+        next_outer,
+        block_ptr(A, lda, next_outer, 0),
+        lda,
+        block_ptr(A, lda, 0, next_outer),
+        lda,
+        block_ptr(A, lda, next_outer, next_outer),
+        lda,
+        outer_gemm_m_tile);
 
     return;
 }
@@ -453,6 +453,7 @@ bool double_blocked_getrf(rocblas_handle handle,
                           getrf_outer_trsm_mode outer_trsm_mode,
                           int trsm_block,
                           int inner_gemm_m_tile,
+                          int outer_gemm_m_tile,
                           int* ipiv,
                           int* info,
                           getrf_batched_pivot_workspace& workspace)
@@ -617,7 +618,8 @@ bool double_blocked_getrf(rocblas_handle handle,
             outer_end,
             outer_nb,
             outer_trsm_mode,
-            trsm_block);
+            trsm_block,
+            outer_gemm_m_tile);
     }
 
     return true;

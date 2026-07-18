@@ -14,7 +14,8 @@ enum class BlockParameter {
     MicroBlock,
     TrsmBlock,
     PivotTile,
-    InnerGemmMTile
+    InnerGemmMTile,
+    OuterGemmMTile
 };
 
 bool parse_methods(const char* value,
@@ -148,6 +149,10 @@ int main(int argc, char** argv)
             parameter = BlockParameter::InnerGemmMTile;
             continue;
         }
+        if (std::strcmp(argv[i], "--outer-gemm-m-tile") == 0) {
+            parameter = BlockParameter::OuterGemmMTile;
+            continue;
+        }
 
         const int value = std::atoi(argv[i]);
         if (parameter == BlockParameter::DoubleNb) {
@@ -163,6 +168,9 @@ int main(int argc, char** argv)
         } else if (parameter == BlockParameter::InnerGemmMTile) {
             options.inner_gemm_m_tile = value;
             parameter = BlockParameter::Nb;
+        } else if (parameter == BlockParameter::OuterGemmMTile) {
+            options.outer_gemm_m_tile = value;
+            parameter = BlockParameter::Nb;
         } else {
             options.nbs.push_back(value);
         }
@@ -173,6 +181,10 @@ int main(int argc, char** argv)
     }
     if (options.trsm_block <= 0) {
         std::cerr << "--trsm-block must be positive.\n";
+        return EXIT_FAILURE;
+    }
+    if (options.inner_gemm_m_tile < 0 || options.outer_gemm_m_tile < 0) {
+        std::cerr << "GEMM M-tile sizes must be nonnegative.\n";
         return EXIT_FAILURE;
     }
 
