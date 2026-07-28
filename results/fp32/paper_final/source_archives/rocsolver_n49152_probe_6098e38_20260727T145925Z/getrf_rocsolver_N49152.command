@@ -1,0 +1,1 @@
+env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 49152 0 1 2048 --pivot --methods rocsolver --pivot-tile 2048 

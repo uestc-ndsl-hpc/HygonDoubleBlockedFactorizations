@@ -1,0 +1,3 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"POTRF Benchmark Summary (N = 24576)","rocSOLVER","N/A",0,570.325805664,570.325805664,570.325805664,0,570.325805664,570.325805664,8675.39619609,1,-1,normwise_backward_error,1.69402547159e-06
+"POTRF Benchmark Summary (N = 24576)","DoubleBlock+KBSYRK","8192/1024/8192",0,268.664489746,268.664489746,268.664489746,0,268.664489746,268.664489746,18416.2869074,2.12281796602,-1,normwise_backward_error,1.77855542959e-06

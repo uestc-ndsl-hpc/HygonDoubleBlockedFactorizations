@@ -1,0 +1,117 @@
+Block-collapse correctness gate
+N                   : 16384
+POTRF B/b           : 8192/8192
+GETRF B/b           : 8192/8192
+Metric              : full-matrix normwise backward error
+Residual product    : factorization precision; FP64 norm accumulation
+Timestamp          : 2026-07-18T13:06:43+08:00
+Hostname           : dcu2
+Kernel             : Linux 4.18.0-348.el8.x86_64 x86_64 GNU/Linux
+Git commit         : ce7690bf8efb87bbf7bdbb057c570a5ce2b12ab5
+Git describe       : ce7690b
+DTK Environment    : /opt/dtk
+HIP device         : 1
+Warmup iterations  : 0
+Profile iterations : 1
+hipcc path         : /opt/dtk/bin/hipcc
+hipcc version      : dcc version: 25.10.0-0
+cmake version      : cmake version 3.20.2
+ROCm device state:
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: Card Series:		 K100_AI
+HCU[0]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[1]		: Card Series:		 K100_AI
+HCU[1]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[2]		: Card Series:		 K100_AI
+HCU[2]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[3]		: Card Series:		 K100_AI
+HCU[3]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[4]		: Card Series:		 K100_AI
+HCU[4]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[5]		: Card Series:		 K100_AI
+HCU[5]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[6]		: Card Series:		 K100_AI
+HCU[6]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[7]		: Card Series:		 K100_AI
+HCU[7]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+================================================================================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: HCU memory use (%): 0
+HCU[1]		: HCU memory use (%): 0
+HCU[2]		: HCU memory use (%): 0
+HCU[3]		: HCU memory use (%): 0
+HCU[4]		: HCU memory use (%): 0
+HCU[5]		: HCU memory use (%): 0
+HCU[6]		: HCU memory use (%): 0
+HCU[7]		: HCU memory use (%): 0
+================================================================================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x0000152ddc774000)
+	libhipblas.so.2 => /opt/dtk/lib/libhipblas.so.2 (0x0000152e05cb1000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x0000152ddb45c000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x0000152d95492000)
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x000014c85df53000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x000014c85cc3b000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014c816c71000)
+NUMA binding       : card1 -> node 0
+>>> POTRF b=nb correctness gate
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+=======================================================================================================================================
+POTRF Benchmark Summary (N = 16384)
+=======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+---------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock+KBSYRK+MGEMM | 8192/8192/8192/8192/32768/5632 |    244.706   |    5990.93   |      N/A  |                1.45e-06
+=======================================================================================================================================
+Timing Statistics (ms)
+---------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+---------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock+KBSYRK+MGEMM | 8192/8192/8192/8192/32768/5632 |      244.706 |        0.000 |      244.706 |      244.706 |          1
+=======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/block_collapse_ce7690b_20260718T050406Z/correctness/potrf_b_eq_nb_N16384_timings.csv
+>>> GETRF b=nb correctness gate
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Normwise backward error eta_F=||P*A-L*U||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 16384)
+====================================================================================================================================================
+Method                            | Parameters                         | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU+BatchedPivot+MGEMM | 8192/8192/iterative/2048/2048/8192 |    664.454   |    4412.69   |      N/A  |                5.02e-05
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                         |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU+BatchedPivot+MGEMM | 8192/8192/iterative/2048/2048/8192 |      664.454 |        0.000 |      664.454 |      664.454 |          1
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/block_collapse_ce7690b_20260718T050406Z/correctness/getrf_b_eq_nb_N16384_timings.csv
+Block-collapse correctness gate completed

@@ -1,0 +1,5 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"POTRF Benchmark Summary (N = 8192)","rocSOLVER","N/A",0,147.455047607,147.455047607,147.455047607,0,147.455047607,147.455047607,1242.76476754,1,-1,normwise_backward_error,5.40958290914e-07
+"POTRF Benchmark Summary (N = 8192)","DoubleBlock","2048/512",0,67.4860458374,67.4860458374,67.4860458374,0,67.4860458374,67.4860458374,2715.4048765,2.18497091921,-1,normwise_backward_error,4.96385247325e-07
+"POTRF Benchmark Summary (N = 8192)","DoubleBlock+KBSYRK","2048/512/1024",0,36.6229476929,36.6229476929,36.6229476929,0,36.6229476929,36.6229476929,5003.74627131,4.02630200179,-1,normwise_backward_error,6.32115512981e-07
+"POTRF Benchmark Summary (N = 8192)","DoubleBlock+KBSYRK+MGEMM","2048/512/1024/1024/0/0",0,37.1091842651,37.1091842651,37.1091842651,0,37.1091842651,37.1091842651,4938.18286744,3.97354591666,-1,normwise_backward_error,6.28448734835e-07

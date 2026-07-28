@@ -1,0 +1,7 @@
+[ 40%] Built target hygon_kernels
+[ 80%] Built target hygon_utils
+[100%] Built target profile_double_blocked_potrf
+[ 25%] Built target hygon_kernels
+[ 50%] Built target hygon_utils
+[ 87%] Built target hygon_getrf
+[100%] Built target profile_double_blocked_getrf

@@ -1,0 +1,1 @@
+setsid -f bash /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_coupled_threeway_paired_6098e38/driver.sh > /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_coupled_threeway_paired_6098e38/launcher.log 2>&1 < /dev/null

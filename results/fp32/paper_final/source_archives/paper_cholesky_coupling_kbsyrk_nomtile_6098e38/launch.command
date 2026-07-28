@@ -1,0 +1,1 @@
+setsid -f bash /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_cholesky_coupling_kbsyrk_nomtile_6098e38/driver.sh > /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_cholesky_coupling_kbsyrk_nomtile_6098e38/launcher.log 2>&1 < /dev/null

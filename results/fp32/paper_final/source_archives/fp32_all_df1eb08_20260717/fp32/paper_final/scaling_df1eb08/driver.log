@@ -1,0 +1,498 @@
+==================================================
+Double-blocked factorization paper experiments
+Sections            : scaling
+Result directory    : /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08
+Scaling sizes       : 8192 16384 24576 32768 40960 49152 57344 65536
+Correctness sizes   : 4096 5000
+Correctness tile    : 1024
+POTRF input seed    : 20260716
+GETRF input seed    : 1234567890
+POTRF B/b           : 8192/1024
+POTRF TK/TM         : 8192/8192
+POTRF thresholds    : M>32768, K>=5632
+POTRF methods       : rocsolver,double,kbsyrk,mgemm
+POTRF large methods : double,kbsyrk,mgemm
+GETRF B policy      : N/2
+GETRF b policy      : min(N/4,4096)
+GETRF outer TRSM    : iterative/2048
+GETRF bp/TM         : 2048/8192
+GETRF methods       : rocsolver,double,batched,mgemm
+GETRF large methods : double,batched,mgemm
+rocSOLVER max N     : 40960
+Stage profile N     : 40960
+Scaling warmup/iters: 2/10
+Correct warmup/iters: 0/1
+Stage warmup/iters  : 1/3
+LU backward error   : ||P*A-L*U||_F / ||A||_F
+POTRF backward error: ||A-L*L^T||_F / ||A||_F
+POTRF full limit    : 2e-6
+POTRF sampled limit : 5e-6
+GETRF full limit    : 5e-5
+GETRF sampled limit : 5e-4
+Scaling estimator   : 4096 deterministic full-matrix samples
+Correctness metric  : full FP64-accumulated Frobenius norms
+Timestamp          : 2026-07-17T18:42:17+08:00
+Hostname           : dcu2
+Kernel             : Linux 4.18.0-348.el8.x86_64 x86_64 GNU/Linux
+Git commit         : df1eb08b18e33110619d8286ed7a0cecb84ae272
+Git describe       : df1eb08
+DTK Environment    : /opt/dtk
+HIP device         : 1
+Warmup iterations  : 2
+Profile iterations : 10
+hipcc path         : /opt/dtk/bin/hipcc
+hipcc version      : dcc version: 25.10.0-0
+cmake version      : cmake version 3.20.2
+ROCm device state:
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: Card Series:		 K100_AI
+HCU[0]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[1]		: Card Series:		 K100_AI
+HCU[1]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[2]		: Card Series:		 K100_AI
+HCU[2]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[3]		: Card Series:		 K100_AI
+HCU[3]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[4]		: Card Series:		 K100_AI
+HCU[4]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[5]		: Card Series:		 K100_AI
+HCU[5]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[6]		: Card Series:		 K100_AI
+HCU[6]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[7]		: Card Series:		 K100_AI
+HCU[7]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+================================================================================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: HCU memory use (%): 0
+HCU[1]		: HCU memory use (%): 0
+HCU[2]		: HCU memory use (%): 0
+HCU[3]		: HCU memory use (%): 0
+HCU[4]		: HCU memory use (%): 0
+HCU[5]		: HCU memory use (%): 0
+HCU[6]		: HCU memory use (%): 0
+HCU[7]		: HCU memory use (%): 0
+================================================================================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+==================================================
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x000014f06a5b3000)
+	libhipblas.so.2 => /opt/dtk/lib/libhipblas.so.2 (0x000014f093af0000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x000014f06929b000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014f0232d1000)
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x00001470d31ee000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x00001470d1ed6000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014708bf0c000)
+NUMA binding       : card1 -> node 0
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 8192 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 8192)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |     46.136   |    3972.01   |     1.00x  |          N/A |     4.89e-07
+DoubleBlock              | 8192/1024                      |     32.752   |    5595.20   |     1.41x  |          N/A |     4.03e-07
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |     32.540   |    5631.65   |     1.42x  |          N/A |     4.03e-07
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |     32.572   |    5626.14   |     1.42x  |          N/A |     4.03e-07
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |       46.132 |        0.050 |       46.059 |       46.209 |         10
+DoubleBlock              | 8192/1024                      |       32.531 |        0.665 |       32.484 |       34.638 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |       32.534 |        0.049 |       32.469 |       32.621 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |       32.586 |        0.050 |       32.471 |       32.626 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N8192_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 8192 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 4096 --b 2048 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+===================================================================================================================================================
+GETRF Benchmark Summary (N = 8192)
+===================================================================================================================================================
+Method                            | Parameters                         | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+---------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                |    197.117   |    1859.32   |     1.00x  |          N/A |     2.51e-05
+DoubleBlock-LU                    | 4096/2048/iterative/2048           |    196.138   |    1868.60   |     1.00x  |          N/A |     2.26e-05
+DoubleBlock-LU+BatchedPivot       | 4096/2048/iterative/2048/2048      |    151.840   |    2413.74   |     1.30x  |          N/A |     2.26e-05
+DoubleBlock-LU+BatchedPivot+MGEMM | 4096/2048/iterative/2048/2048/8192 |    151.675   |    2416.38   |     1.30x  |          N/A |     2.26e-05
+===================================================================================================================================================
+Timing Statistics (ms)
+---------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                         |       Median |       StdDev |      Minimum |      Maximum |    Samples
+---------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                |      196.672 |        1.033 |      196.445 |      199.129 |         10
+DoubleBlock-LU                    | 4096/2048/iterative/2048           |      195.650 |        1.030 |      195.578 |      198.095 |         10
+DoubleBlock-LU+BatchedPivot       | 4096/2048/iterative/2048/2048      |      151.435 |        0.866 |      151.383 |      153.490 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 4096/2048/iterative/2048/2048/8192 |      151.465 |        0.740 |      151.308 |      153.775 |         10
+===================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N8192_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 16384 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 16384)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |    178.650   |    8206.09   |     1.00x  |          N/A |     6.82e-07
+DoubleBlock              | 8192/1024                      |    108.833   |   13470.28   |     1.64x  |          N/A |     7.56e-07
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |    108.877   |   13464.84   |     1.64x  |          N/A |     7.56e-07
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |    109.150   |   13431.15   |     1.64x  |          N/A |     7.56e-07
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |      178.546 |        0.534 |      178.109 |      179.969 |         10
+DoubleBlock              | 8192/1024                      |      108.840 |        0.066 |      108.726 |      108.912 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |      108.907 |        0.076 |      108.747 |      108.995 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |      108.940 |        0.723 |      108.786 |      111.200 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N16384_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 16384 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 8192 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+===================================================================================================================================================
+GETRF Benchmark Summary (N = 16384)
+===================================================================================================================================================
+Method                            | Parameters                         | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+---------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                |    689.268   |    4253.84   |     1.00x  |          N/A |     4.74e-05
+DoubleBlock-LU                    | 8192/4096/iterative/2048           |    719.655   |    4074.22   |     0.96x  |          N/A |     4.18e-05
+DoubleBlock-LU+BatchedPivot       | 8192/4096/iterative/2048/2048      |    495.052   |    5922.68   |     1.39x  |          N/A |     4.18e-05
+DoubleBlock-LU+BatchedPivot+MGEMM | 8192/4096/iterative/2048/2048/8192 |    493.180   |    5945.16   |     1.40x  |          N/A |     4.16e-05
+===================================================================================================================================================
+Timing Statistics (ms)
+---------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                         |       Median |       StdDev |      Minimum |      Maximum |    Samples
+---------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                |      689.261 |        1.213 |      687.990 |      690.694 |         10
+DoubleBlock-LU                    | 8192/4096/iterative/2048           |      719.548 |        1.175 |      718.430 |      721.009 |         10
+DoubleBlock-LU+BatchedPivot       | 8192/4096/iterative/2048/2048      |      494.789 |        1.125 |      493.678 |      496.691 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 8192/4096/iterative/2048/2048/8192 |      492.530 |        1.264 |      491.537 |      494.957 |         10
+===================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N16384_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 24576 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 24576)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |    471.532   |   10493.04   |     1.00x  |          N/A |     1.87e-06
+DoubleBlock              | 8192/1024                      |    286.839   |   17249.39   |     1.64x  |          N/A |     1.82e-06
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |    272.419   |   18162.47   |     1.73x  |          N/A |     1.78e-06
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |    272.191   |   18177.65   |     1.73x  |          N/A |     1.78e-06
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |      471.243 |        1.031 |      470.282 |      472.758 |         10
+DoubleBlock              | 8192/1024                      |      286.660 |        0.954 |      285.843 |      288.623 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |      272.018 |        0.863 |      271.704 |      274.199 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |      272.040 |        0.696 |      271.635 |      274.070 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N24576_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 24576 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 12288 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 24576)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |   1494.532   |    6621.21   |     1.00x  |          N/A |     7.15e-05
+DoubleBlock-LU                    | 12288/4096/iterative/2048           |   1669.456   |    5927.44   |     0.90x  |          N/A |     5.80e-05
+DoubleBlock-LU+BatchedPivot       | 12288/4096/iterative/2048/2048      |   1028.282   |    9623.44   |     1.45x  |          N/A |     5.80e-05
+DoubleBlock-LU+BatchedPivot+MGEMM | 12288/4096/iterative/2048/2048/8192 |   1030.872   |    9599.25   |     1.45x  |          N/A |     5.96e-05
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |     1494.390 |        0.886 |     1493.479 |     1496.301 |         10
+DoubleBlock-LU                    | 12288/4096/iterative/2048           |     1668.852 |        1.964 |     1667.348 |     1673.149 |         10
+DoubleBlock-LU+BatchedPivot       | 12288/4096/iterative/2048/2048      |     1028.226 |        1.437 |     1025.621 |     1030.312 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 12288/4096/iterative/2048/2048/8192 |     1031.156 |        1.215 |     1028.420 |     1032.439 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N24576_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 32768 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 32768)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |   1010.745   |   11603.44   |     1.00x  |          N/A |     1.84e-06
+DoubleBlock              | 8192/1024                      |    607.320   |   19311.27   |     1.66x  |          N/A |     1.89e-06
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |    565.641   |   20734.20   |     1.79x  |          N/A |     1.82e-06
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |    566.122   |   20716.59   |     1.79x  |          N/A |     1.82e-06
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |     1011.367 |        2.278 |     1005.804 |     1013.227 |         10
+DoubleBlock              | 8192/1024                      |      606.884 |        1.485 |      605.456 |      609.390 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |      565.415 |        1.756 |      563.268 |      568.354 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |      565.941 |        1.828 |      564.111 |      569.891 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N32768_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 32768 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 16384 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 32768)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |   3041.194   |    7712.84   |     1.00x  |          N/A |     8.89e-05
+DoubleBlock-LU                    | 16384/4096/iterative/2048           |   3809.674   |    6157.02   |     0.80x  |          N/A |     7.76e-05
+DoubleBlock-LU+BatchedPivot       | 16384/4096/iterative/2048/2048      |   2229.643   |   10520.18   |     1.36x  |          N/A |     7.76e-05
+DoubleBlock-LU+BatchedPivot+MGEMM | 16384/4096/iterative/2048/2048/8192 |   2149.240   |   10913.74   |     1.42x  |          N/A |     7.70e-05
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |     3042.534 |        3.246 |     3036.194 |     3044.619 |         10
+DoubleBlock-LU                    | 16384/4096/iterative/2048           |     3810.414 |        3.161 |     3802.270 |     3813.323 |         10
+DoubleBlock-LU+BatchedPivot       | 16384/4096/iterative/2048/2048      |     2229.466 |        1.785 |     2227.289 |     2233.078 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 16384/4096/iterative/2048/2048/8192 |     2149.078 |        1.917 |     2145.755 |     2152.783 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N32768_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 40960 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 40960)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |   1879.991   |   12184.36   |     1.00x  |          N/A |     8.61e-07
+DoubleBlock              | 8192/1024                      |   1112.289   |   20594.01   |     1.69x  |          N/A |     9.26e-07
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |   1025.699   |   22332.56   |     1.83x  |          N/A |     7.26e-07
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |   1009.363   |   22694.01   |     1.86x  |          N/A |     7.15e-07
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER                | N/A                            |     1880.903 |        4.787 |     1873.358 |     1888.757 |         10
+DoubleBlock              | 8192/1024                      |     1112.505 |        1.763 |     1109.263 |     1114.970 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |     1025.788 |        1.008 |     1024.043 |     1027.093 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |     1009.954 |        1.570 |     1006.104 |     1011.080 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N40960_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 40960 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 20480 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 40960)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |   4948.240   |    9258.44   |     1.00x  |          N/A |     1.06e-04
+DoubleBlock-LU                    | 20480/4096/iterative/2048           |   6303.478   |    7267.89   |     0.79x  |          N/A |     9.10e-05
+DoubleBlock-LU+BatchedPivot       | 20480/4096/iterative/2048/2048      |   3909.474   |   11718.45   |     1.27x  |          N/A |     9.10e-05
+DoubleBlock-LU+BatchedPivot+MGEMM | 20480/4096/iterative/2048/2048/8192 |   3675.185   |   12465.49   |     1.35x  |          N/A |     9.12e-05
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+rocSOLVER GETRF                   | N/A                                 |     4949.263 |        6.354 |     4936.319 |     4956.805 |         10
+DoubleBlock-LU                    | 20480/4096/iterative/2048           |     6301.430 |       22.131 |     6269.382 |     6340.883 |         10
+DoubleBlock-LU+BatchedPivot       | 20480/4096/iterative/2048/2048      |     3908.751 |       11.359 |     3891.478 |     3925.917 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 20480/4096/iterative/2048/2048/8192 |     3673.219 |       16.095 |     3645.559 |     3703.986 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N40960_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 49152 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 49152)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |   1812.268   |   21841.38   |      N/A  |          N/A |     2.29e-06
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |   1659.716   |   23848.91   |      N/A  |          N/A |     2.21e-06
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |   1651.071   |   23973.78   |      N/A  |          N/A |     2.18e-06
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |     1812.865 |        3.861 |     1806.320 |     1817.078 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |     1659.958 |        2.493 |     1656.402 |     1663.709 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |     1650.605 |        2.503 |     1647.584 |     1656.984 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N49152_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 49152 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 24576 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 49152)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 24576/4096/iterative/2048           |  12396.549   |    6386.04   |      N/A  |          N/A |     1.09e-04
+DoubleBlock-LU+BatchedPivot       | 24576/4096/iterative/2048/2048      |   8599.395   |    9205.86   |      N/A  |          N/A |     1.09e-04
+DoubleBlock-LU+BatchedPivot+MGEMM | 24576/4096/iterative/2048/2048/8192 |   7013.615   |   11287.31   |      N/A  |          N/A |     1.11e-04
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 24576/4096/iterative/2048           |    12396.689 |       17.014 |    12367.822 |    12435.558 |         10
+DoubleBlock-LU+BatchedPivot       | 24576/4096/iterative/2048/2048      |     8603.077 |       21.448 |     8565.318 |     8625.130 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 24576/4096/iterative/2048/2048/8192 |     7019.323 |       17.439 |     6975.314 |     7030.139 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N49152_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 57344 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 57344)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |   2804.299   |   22413.95   |      N/A  |          N/A |     2.41e-06
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |   2574.611   |   24413.56   |      N/A  |          N/A |     2.34e-06
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |   2549.490   |   24654.11   |      N/A  |          N/A |     2.34e-06
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |     2804.167 |        5.854 |     2794.583 |     2812.941 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |     2574.726 |        2.603 |     2569.843 |     2577.274 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |     2550.035 |        3.316 |     2543.340 |     2554.236 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N57344_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 57344 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 28672 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 57344)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 28672/4096/iterative/2048           |  18637.220   |    6745.15   |      N/A  |          N/A |     1.25e-04
+DoubleBlock-LU+BatchedPivot       | 28672/4096/iterative/2048/2048      |  13332.123   |    9429.17   |      N/A  |          N/A |     1.25e-04
+DoubleBlock-LU+BatchedPivot+MGEMM | 28672/4096/iterative/2048/2048/8192 |  10284.629   |   12223.18   |      N/A  |          N/A |     1.28e-04
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 28672/4096/iterative/2048           |    18639.501 |       28.585 |    18603.100 |    18683.227 |         10
+DoubleBlock-LU+BatchedPivot       | 28672/4096/iterative/2048/2048      |    13331.652 |       25.874 |    13294.377 |    13374.019 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 28672/4096/iterative/2048/2048/8192 |    10281.271 |       46.861 |    10218.147 |    10360.345 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N57344_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 65536 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Backward error ||A-L*L^T||_F/||A||_F: 4096 full-matrix samples
+
+======================================================================================================================================
+POTRF Benchmark Summary (N = 65536)
+======================================================================================================================================
+Method                   | Parameters                     | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |   4205.633   |   22309.36   |      N/A  |          N/A |     2.58e-06
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |   3734.414   |   25124.42   |      N/A  |          N/A |     2.50e-06
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |   3718.934   |   25229.00   |      N/A  |          N/A |     2.49e-06
+======================================================================================================================================
+Timing Statistics (ms)
+--------------------------------------------------------------------------------------------------------------------------------------
+Method                   | Parameters                     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+--------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock              | 8192/1024                      |     4187.088 |       69.087 |     4140.708 |     4357.171 |         10
+DoubleBlock+KBSYRK       | 8192/1024/8192                 |     3733.234 |       63.955 |     3679.026 |     3902.868 |         10
+DoubleBlock+KBSYRK+MGEMM | 8192/1024/8192/8192/32768/5632 |     3720.012 |       29.747 |     3681.971 |     3750.963 |         10
+======================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/potrf_N65536_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 65536 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 32768 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Backward error ||P*A-L*U||_F/||A||_F: 4096 full-matrix samples
+
+====================================================================================================================================================
+GETRF Benchmark Summary (N = 65536)
+====================================================================================================================================================
+Method                            | Parameters                          | Time(ms)     | GFLOPS       | Speedup    | Forward Error  | Backward Error
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 32768/4096/iterative/2048           |  32141.218   |    5838.30   |      N/A  |          N/A |     1.42e-04
+DoubleBlock-LU+BatchedPivot       | 32768/4096/iterative/2048/2048      |  22760.497   |    8244.55   |      N/A  |          N/A |     1.42e-04
+DoubleBlock-LU+BatchedPivot+MGEMM | 32768/4096/iterative/2048/2048/8192 |  16681.623   |   11248.90   |      N/A  |          N/A |     1.43e-04
+====================================================================================================================================================
+Timing Statistics (ms)
+----------------------------------------------------------------------------------------------------------------------------------------------------
+Method                            | Parameters                          |       Median |       StdDev |      Minimum |      Maximum |    Samples
+----------------------------------------------------------------------------------------------------------------------------------------------------
+DoubleBlock-LU                    | 32768/4096/iterative/2048           |    32135.929 |       55.866 |    32069.029 |    32236.680 |         10
+DoubleBlock-LU+BatchedPivot       | 32768/4096/iterative/2048/2048      |    22781.646 |       60.286 |    22653.658 |    22847.746 |         10
+DoubleBlock-LU+BatchedPivot+MGEMM | 32768/4096/iterative/2048/2048/8192 |    16664.982 |       48.852 |    16622.973 |    16773.822 |         10
+====================================================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/scaling/getrf_N65536_timings.csv
+==================================================
+Paper experiment run completed
+Manifest: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/manifest.log
+==================================================

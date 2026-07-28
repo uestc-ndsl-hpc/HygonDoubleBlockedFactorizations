@@ -1,0 +1,212 @@
+==================================================
+Double-blocked factorization paper experiments
+Sections            : accuracy
+Factorizations      : potrf
+Result directory    : /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid
+Scaling sizes       : 8192 16384 24576 32768 40960 49152 57344 65536
+Accuracy sizes      : 8192 16384 24576 32768 40960
+Block-collapse sizes: 8192 16384 24576 32768 40960
+Accuracy policy     : identical to the scaling dispatch policy
+Full-error max N    : 40960
+POTRF input seed    : 20260716
+GETRF input seed    : 1234567890
+POTRF B/b           : 8192/1024
+POTRF TK/TM         : 8192/0
+POTRF thresholds    : M>32768, K>=5632
+POTRF methods       : rocsolver,kbsyrk
+POTRF large methods : kbsyrk
+GETRF B policy      : min(N/2,20480)
+GETRF b policy      : min(N/4,4096)
+GETRF outer TRSM    : iterative/2048
+GETRF bp/TM         : 2048/8192
+GETRF methods       : rocsolver,double,batched,mgemm
+GETRF large methods : double,batched,mgemm
+rocSOLVER max N     : 40960
+Stage profile N     : 40960
+Scaling warmup/iters: 2/10
+Collapse warmup/iters: 2/10
+Accuracy warm/iters : 0/1
+Stage warmup/iters  : 1/3
+LU normwise backward error   : ||P*A-L*U||_F / ||A||_F
+POTRF normwise backward error: ||A-L*L^T||_F / ||A||_F
+POTRF backward-error limit   : 1e-5
+GETRF backward-error limit   : 5e-4
+Scaling metrics     : runtime, throughput, and timing variability only
+Accuracy metric     : full-matrix normwise backward error
+Residual product    : factorization precision; FP64 norm accumulation
+Timestamp          : 2026-07-27T23:31:42+08:00
+Hostname           : dcu2
+Kernel             : Linux 4.18.0-348.el8.x86_64 x86_64 GNU/Linux
+Git commit         : 6098e38e1f8f5e56beaeb1446df4bc207455cb12
+Git describe       : 6098e38
+DTK Environment    : /opt/dtk
+HIP device         : 7
+Warmup iterations  : 2
+Profile iterations : 10
+hipcc path         : /opt/dtk/bin/hipcc
+hipcc version      : dcc version: 25.10.0-0
+cmake version      : cmake version 3.20.2
+ROCm device state:
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: Card Series:		 K100_AI
+HCU[0]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[1]		: Card Series:		 K100_AI
+HCU[1]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[2]		: Card Series:		 K100_AI
+HCU[2]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[3]		: Card Series:		 K100_AI
+HCU[3]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[4]		: Card Series:		 K100_AI
+HCU[4]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[5]		: Card Series:		 K100_AI
+HCU[5]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[6]		: Card Series:		 K100_AI
+HCU[6]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[7]		: Card Series:		 K100_AI
+HCU[7]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+================================================================================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: HCU memory use (%): 0
+HCU[1]		: HCU memory use (%): 0
+HCU[2]		: HCU memory use (%): 0
+HCU[3]		: HCU memory use (%): 0
+HCU[4]		: HCU memory use (%): 0
+HCU[5]		: HCU memory use (%): 0
+HCU[6]		: HCU memory use (%): 0
+HCU[7]		: HCU memory use (%): 0
+================================================================================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+==================================================
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x000014bbdb0ae000)
+	libhipblas.so.2 => /opt/dtk/lib/libhipblas.so.2 (0x000014bc045eb000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x000014bbd9d96000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014bb93dcc000)
+NUMA binding       : card7 -> node 0
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 8192 0 0 2 0 0 0 2048 --methods rocsolver,kbsyrk --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 0 --gemm-m-threshold 32768 --gemm-k-threshold 5632 --full-backward-error --full-backward-error-max-n 40960
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 8192)
+========================================================================================================================
+Method             | Parameters     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |    149.928   |    1222.26   |     1.00x  |                5.41e-07
+DoubleBlock+KBSYRK | 8192/1024/8192 |     34.460   |    5317.84   |     4.35x  |                6.45e-07
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method             | Parameters     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |      149.928 |        0.000 |      149.928 |      149.928 |          1
+DoubleBlock+KBSYRK | 8192/1024/8192 |       34.460 |        0.000 |       34.460 |       34.460 |          1
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/accuracy/potrf_N8192_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 16384 0 0 2 0 0 0 2048 --methods rocsolver,kbsyrk --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 0 --gemm-m-threshold 32768 --gemm-k-threshold 5632 --full-backward-error --full-backward-error-max-n 40960
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 16384)
+========================================================================================================================
+Method             | Parameters     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |    283.944   |    5163.04   |     1.00x  |                1.45e-06
+DoubleBlock+KBSYRK | 8192/1024/8192 |    107.142   |   13682.87   |     2.65x  |                1.45e-06
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method             | Parameters     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |      283.944 |        0.000 |      283.944 |      283.944 |          1
+DoubleBlock+KBSYRK | 8192/1024/8192 |      107.142 |        0.000 |      107.142 |      107.142 |          1
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/accuracy/potrf_N16384_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 24576 0 0 2 0 0 0 2048 --methods rocsolver,kbsyrk --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 0 --gemm-m-threshold 32768 --gemm-k-threshold 5632 --full-backward-error --full-backward-error-max-n 40960
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 24576)
+========================================================================================================================
+Method             | Parameters     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |    570.326   |    8675.40   |     1.00x  |                1.69e-06
+DoubleBlock+KBSYRK | 8192/1024/8192 |    268.664   |   18416.29   |     2.12x  |                1.78e-06
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method             | Parameters     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |      570.326 |        0.000 |      570.326 |      570.326 |          1
+DoubleBlock+KBSYRK | 8192/1024/8192 |      268.664 |        0.000 |      268.664 |      268.664 |          1
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/accuracy/potrf_N24576_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 32768 0 0 2 0 0 0 2048 --methods rocsolver,kbsyrk --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 0 --gemm-m-threshold 32768 --gemm-k-threshold 5632 --full-backward-error --full-backward-error-max-n 40960
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 32768)
+========================================================================================================================
+Method             | Parameters     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |   1110.919   |   10557.13   |     1.00x  |                1.88e-06
+DoubleBlock+KBSYRK | 8192/1024/8192 |    558.622   |   20994.73   |     1.99x  |                1.97e-06
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method             | Parameters     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |     1110.919 |        0.000 |     1110.919 |     1110.919 |          1
+DoubleBlock+KBSYRK | 8192/1024/8192 |      558.622 |        0.000 |      558.622 |      558.622 |          1
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/accuracy/potrf_N32768_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 40960 0 0 2 0 0 0 2048 --methods rocsolver,kbsyrk --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 0 --gemm-m-threshold 32768 --gemm-k-threshold 5632 --full-backward-error --full-backward-error-max-n 40960
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Normwise backward error eta_F=||A-L*L^T||_F/||A||_F: full matrix, factorization-precision product, FP64 norm accumulation
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 40960)
+========================================================================================================================
+Method             | Parameters     | Time(ms)     | GFLOPS       | Speedup    | Normwise Backward Error
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |   1962.756   |   11670.57   |     1.00x  |                2.14e-06
+DoubleBlock+KBSYRK | 8192/1024/8192 |   1013.061   |   22611.16   |     1.94x  |                2.31e-06
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method             | Parameters     |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER          | N/A            |     1962.756 |        0.000 |     1962.756 |     1962.756 |          1
+DoubleBlock+KBSYRK | 8192/1024/8192 |     1013.061 |        0.000 |     1013.061 |     1013.061 |          1
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/accuracy/potrf_N40960_timings.csv
+==================================================
+Paper experiment run completed
+Manifest: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_e2e_nomgemm_6098e38_20260727T153027Z/potrf_grid/manifest.log
+==================================================

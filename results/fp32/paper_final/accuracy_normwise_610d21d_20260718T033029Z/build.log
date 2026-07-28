@@ -1,0 +1,79 @@
+[  5%] Built target hygon_kernels
+[  7%] Building CXX object src/utils/CMakeFiles/hygon_utils.dir/benchmark/benchmark_printer.cpp.o
+[ 11%] Built target hygon_gemm
+[ 13%] Linking CXX static library libhygon_utils.a
+[ 16%] Built target hygon_utils
+Consolidate compiler generated dependencies of target benchmark_gemm
+[ 17%] Building CXX object src/potrf/CMakeFiles/profile_blocked_potrf.dir/profile_blocked_potrf.cpp.o
+[ 19%] Linking CXX executable ../../profile_double_blocked_potrf
+[ 26%] Built target hygon_trsm
+[ 32%] Built target hygon_syrk
+[ 35%] Building CXX object src/gemm/CMakeFiles/benchmark_gemm.dir/gemm_benchmark.cpp.o
+[ 43%] Built target hygon_getrf
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 46%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_kblocked_cases.cpp.o
+[ 46%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/test_syrk.cpp.o
+[ 47%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/test_trsm.cpp.o
+[ 49%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_benchmark_common.cpp.o
+[ 50%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_benchmark_common.cpp.o
+[ 52%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_batched_cases.cpp.o
+[ 55%] Building CXX object src/getrf/CMakeFiles/benchmark_getrf.dir/test_getrf.cpp.o
+[ 55%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_double_blocked_cases.cpp.o
+[ 56%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_mixed_cases.cpp.o
+[ 58%] Building CXX object src/getrf/CMakeFiles/benchmark_getrf.dir/benchmark/getrf_benchmark_common.cpp.o
+[ 62%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_mixed_cases.cpp.o
+[ 62%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_recursive_cases.cpp.o
+[ 64%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_rocblas_cases.cpp.o
+[ 64%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_iterative_cases.cpp.o
+[ 68%] Building CXX object src/syrk/CMakeFiles/benchmark_syrk.dir/benchmark/syrk_recursive_cases.cpp.o
+[ 68%] Building CXX object src/trsm/CMakeFiles/benchmark_trsm.dir/benchmark/trsm_rocblas_cases.cpp.o
+[ 76%] Linking CXX executable ../../profile_double_blocked_getrf
+[ 76%] Built target hygon_potrf
+[ 76%] Building CXX object src/getrf/CMakeFiles/benchmark_getrf.dir/benchmark/getrf_double_blocked_cases.cpp.o
+[ 79%] Building CXX object src/getrf/CMakeFiles/benchmark_getrf.dir/benchmark/getrf_blocked_cases.cpp.o
+[ 79%] Building CXX object src/getrf/CMakeFiles/benchmark_getrf.dir/benchmark/getrf_rocsolver_case.cpp.o
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 80%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/test_potrf.cpp.o
+[ 82%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/benchmark/potrf_recursive_cases.cpp.o
+[ 83%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/benchmark/potrf_benchmark_common.cpp.o
+[ 85%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/benchmark/potrf_double_blocked_cases.cpp.o
+[ 86%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/benchmark/potrf_blocked_cases.cpp.o
+[ 88%] Building CXX object src/potrf/CMakeFiles/benchmark_potrf.dir/benchmark/potrf_rocsolver_cases.cpp.o
+[ 89%] Built target profile_double_blocked_potrf
+[ 91%] Built target profile_double_blocked_getrf
+[ 92%] Linking CXX executable ../../profile_blocked_potrf
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 92%] Built target profile_blocked_potrf
+[ 94%] Linking CXX executable ../../benchmark_syrk
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 94%] Built target benchmark_syrk
+[ 95%] Linking CXX executable ../../benchmark_gemm
+[ 97%] Linking CXX executable ../../benchmark_trsm
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 97%] Built target benchmark_gemm
+[ 97%] Built target benchmark_trsm
+[ 98%] Linking CXX executable ../../benchmark_getrf
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[ 98%] Built target benchmark_getrf
+[100%] Linking CXX executable ../../benchmark_potrf
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+sh: llvm-ar: command not found
+[100%] Built target benchmark_potrf

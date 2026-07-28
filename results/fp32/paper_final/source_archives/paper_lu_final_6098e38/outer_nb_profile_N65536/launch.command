@@ -1,0 +1,1 @@
+bash /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_lu_final_6098e38/outer_nb_profile_N65536/driver.sh

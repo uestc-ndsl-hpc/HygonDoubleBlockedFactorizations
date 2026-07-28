@@ -1,0 +1,13 @@
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N1024_timings.csv rows=4 min=2.47483633292e-07 max=2.51022336484e-07 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N1024_timings.csv rows=4 min=3.2021184604e-06 max=4.35977919606e-06 limit=0.0005
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N2048_timings.csv rows=4 min=3.01079832728e-07 max=3.53581254987e-07 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N2048_timings.csv rows=4 min=7.55110202068e-06 max=7.62113247728e-06 limit=0.0005
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N4096_timings.csv rows=4 min=7.40930098845e-07 max=7.5627907614e-07 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N4096_timings.csv rows=4 min=1.15336800963e-05 max=1.54444868078e-05 limit=0.0005
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N8192_timings.csv rows=4 min=4.96385247325e-07 max=6.32115512981e-07 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N8192_timings.csv rows=4 min=2.85780016914e-05 max=3.00019193475e-05 limit=0.0005
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N16384_timings.csv rows=4 min=1.40127543745e-06 max=1.46204669508e-06 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N16384_timings.csv rows=4 min=4.78982017001e-05 max=5.51897321403e-05 limit=0.0005
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/potrf_N24576_timings.csv rows=4 min=1.57707003415e-06 max=1.75836996022e-06 limit=1e-05
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/sweep/accuracy/getrf_N24576_timings.csv rows=4 min=6.72497537509e-05 max=7.85138608294e-05 limit=0.0005
+AUDIT PASSED: 12 benchmark CSVs and 24 nonempty log/CSV artifacts

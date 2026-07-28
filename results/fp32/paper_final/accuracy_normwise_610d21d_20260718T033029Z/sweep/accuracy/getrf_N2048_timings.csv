@@ -1,0 +1,5 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"GETRF Benchmark Summary (N = 2048)","rocSOLVER GETRF","N/A",0,136.429733276,136.429733276,136.429733276,0,136.429733276,136.429733276,41.974890105,1,-1,normwise_backward_error,7.62113247728e-06
+"GETRF Benchmark Summary (N = 2048)","DoubleBlock-LU","2048/512/iterative/2048",0,29.5522289276,29.5522289276,29.5522289276,0,29.5522289276,29.5522289276,193.779734021,4.61656322474,-1,normwise_backward_error,7.60936211219e-06
+"GETRF Benchmark Summary (N = 2048)","DoubleBlock-LU+BatchedPivot","2048/512/iterative/2048/2048",0,26.0679359436,26.0679359436,26.0679359436,0,26.0679359436,26.0679359436,219.680724769,5.23362239233,-1,normwise_backward_error,7.60936211219e-06
+"GETRF Benchmark Summary (N = 2048)","DoubleBlock-LU+BatchedPivot+MGEMM","2048/512/iterative/2048/2048/1024",0,26.0724163055,26.0724163055,26.0724163055,0,26.0724163055,26.0724163055,219.642974177,5.23272303102,-1,normwise_backward_error,7.55110202068e-06

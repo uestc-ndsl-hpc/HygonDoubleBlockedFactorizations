@@ -1,0 +1,2 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"GETRF Benchmark Summary (N = 16384)","DoubleBlock-LU+BatchedPivot+MGEMM","4096/4096/iterative/2048/2048/8192",0,601.641296387,601.641296387,601.641296387,0,601.641296387,601.641296387,4873.38722427,0,-1,normwise_backward_error,4.72800345496e-05

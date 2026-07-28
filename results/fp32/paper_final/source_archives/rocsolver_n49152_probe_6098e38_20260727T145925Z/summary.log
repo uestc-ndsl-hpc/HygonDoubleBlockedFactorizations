@@ -1,0 +1,42 @@
+finished_utc=2026-07-27T15:16:22Z
+potrf_exit=134
+getrf_exit=134
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: vram Total Memory (MiB): 65520
+HCU[0]		: vram Total Used Memory (MiB): 2
+HCU[1]		: vram Total Memory (MiB): 65520
+HCU[1]		: vram Total Used Memory (MiB): 2
+HCU[2]		: vram Total Memory (MiB): 65520
+HCU[2]		: vram Total Used Memory (MiB): 2
+HCU[3]		: vram Total Memory (MiB): 65520
+HCU[3]		: vram Total Used Memory (MiB): 2
+HCU[4]		: vram Total Memory (MiB): 65520
+HCU[4]		: vram Total Used Memory (MiB): 2
+HCU[5]		: vram Total Memory (MiB): 65520
+HCU[5]		: vram Total Used Memory (MiB): 2
+HCU[6]		: vram Total Memory (MiB): 65520
+HCU[6]		: vram Total Used Memory (MiB): 2
+HCU[7]		: vram Total Memory (MiB): 65520
+HCU[7]		: vram Total Used Memory (MiB): 2
+================================================================================================
+======================================== End of SMI Log ========================================
+

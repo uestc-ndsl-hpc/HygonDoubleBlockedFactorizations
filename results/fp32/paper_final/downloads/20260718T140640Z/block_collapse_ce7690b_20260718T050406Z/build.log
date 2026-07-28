@@ -1,0 +1,15 @@
+[  5%] Built target hygon_kernels
+[ 10%] Built target hygon_gemm
+[ 16%] Built target hygon_utils
+[ 19%] Built target benchmark_gemm
+[ 22%] Built target profile_blocked_potrf
+[ 28%] Built target profile_double_blocked_potrf
+[ 34%] Built target hygon_getrf
+[ 40%] Built target hygon_syrk
+[ 47%] Built target hygon_trsm
+[ 50%] Built target profile_double_blocked_getrf
+[ 59%] Built target benchmark_getrf
+[ 65%] Built target hygon_potrf
+[ 77%] Built target benchmark_syrk
+[ 89%] Built target benchmark_trsm
+[100%] Built target benchmark_potrf

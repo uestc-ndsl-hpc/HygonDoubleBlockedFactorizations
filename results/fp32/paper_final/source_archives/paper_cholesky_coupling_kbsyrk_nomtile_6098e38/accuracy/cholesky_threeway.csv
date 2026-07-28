@@ -1,0 +1,4 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"POTRF Benchmark Summary (N = 16384)","DoubleBlock+KBSYRK","8192/1024/8192",0,208.132598877,208.132598877,208.132598877,0,208.132598877,208.132598877,7043.66116414,0,-1,normwise_backward_error,1.44934582551e-06
+"POTRF Benchmark Summary (N = 16384)","DoubleBlock+KBSYRK","8192/8192/8192",0,143.166946411,143.166946411,143.166946411,0,143.166946411,143.166946411,10239.9020196,0,-1,normwise_backward_error,1.44563936319e-06
+"POTRF Benchmark Summary (N = 16384)","DoubleBlock+KBSYRK","1024/1024/8192",0,121.710342407,121.710342407,121.710342407,0,121.710342407,121.710342407,12045.1185553,0,-1,normwise_backward_error,1.4555319351e-06

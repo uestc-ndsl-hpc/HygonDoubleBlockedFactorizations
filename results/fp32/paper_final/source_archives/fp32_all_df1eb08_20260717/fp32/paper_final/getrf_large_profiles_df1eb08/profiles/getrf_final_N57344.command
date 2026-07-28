@@ -1,0 +1,1 @@
+/home/uestc_zss/HygonCholeskyDecomposition/build/profile_double_blocked_getrf --n 57344 --outer-nb 28672 --inner-nb 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192 --pivot-mode batched --warmup 1 --iters 3

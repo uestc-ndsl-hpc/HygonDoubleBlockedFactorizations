@@ -1,0 +1,3 @@
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_final_policy_f1df006_20260718T042059Z/targeted_N40960/accuracy/potrf_N40960_timings.csv rows=2 min=2.14096120296e-06 max=2.30957554672e-06 limit=1e-05 policy=matched
+/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_final_policy_f1df006_20260718T042059Z/targeted_N40960/accuracy/getrf_N40960_timings.csv rows=2 min=9.86212430824e-05 max=0.000117954317702 limit=0.0005 policy=matched
+AUDIT PASSED: N=40960 final methods match the performance policy; 4 artifacts are nonempty

@@ -1,0 +1,126 @@
+==================================================
+Double-blocked factorization paper experiments
+Sections            : scaling
+Result directory    : /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08
+Scaling sizes       : 8192 16384 24576 32768 40960 49152 57344 65536
+Correctness sizes   : 4096 5000
+Correctness tile    : 1024
+POTRF input seed    : 20260716
+GETRF input seed    : 1234567890
+POTRF B/b           : 8192/1024
+POTRF TK/TM         : 8192/8192
+POTRF thresholds    : M>32768, K>=5632
+POTRF methods       : rocsolver,double,kbsyrk,mgemm
+POTRF large methods : double,kbsyrk,mgemm
+GETRF B policy      : N/2
+GETRF b policy      : min(N/4,4096)
+GETRF outer TRSM    : iterative/2048
+GETRF bp/TM         : 2048/8192
+GETRF methods       : rocsolver,double,batched,mgemm
+GETRF large methods : double,batched,mgemm
+rocSOLVER max N     : 40960
+Stage profile N     : 40960
+Scaling warmup/iters: 2/10
+Correct warmup/iters: 0/1
+Stage warmup/iters  : 1/3
+LU backward error   : ||P*A-L*U||_F / ||A||_F
+POTRF backward error: ||A-L*L^T||_F / ||A||_F
+POTRF full limit    : 2e-6
+POTRF sampled limit : 5e-6
+GETRF full limit    : 5e-5
+GETRF sampled limit : 5e-4
+Scaling estimator   : 4096 deterministic full-matrix samples
+Correctness metric  : full FP64-accumulated Frobenius norms
+Timestamp          : 2026-07-17T18:42:17+08:00
+Hostname           : dcu2
+Kernel             : Linux 4.18.0-348.el8.x86_64 x86_64 GNU/Linux
+Git commit         : df1eb08b18e33110619d8286ed7a0cecb84ae272
+Git describe       : df1eb08
+DTK Environment    : /opt/dtk
+HIP device         : 1
+Warmup iterations  : 2
+Profile iterations : 10
+hipcc path         : /opt/dtk/bin/hipcc
+hipcc version      : dcc version: 25.10.0-0
+cmake version      : cmake version 3.20.2
+ROCm device state:
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: Card Series:		 K100_AI
+HCU[0]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[1]		: Card Series:		 K100_AI
+HCU[1]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[2]		: Card Series:		 K100_AI
+HCU[2]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[3]		: Card Series:		 K100_AI
+HCU[3]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[4]		: Card Series:		 K100_AI
+HCU[4]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[5]		: Card Series:		 K100_AI
+HCU[5]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[6]		: Card Series:		 K100_AI
+HCU[6]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[7]		: Card Series:		 K100_AI
+HCU[7]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+================================================================================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: HCU memory use (%): 0
+HCU[1]		: HCU memory use (%): 0
+HCU[2]		: HCU memory use (%): 0
+HCU[3]		: HCU memory use (%): 0
+HCU[4]		: HCU memory use (%): 0
+HCU[5]		: HCU memory use (%): 0
+HCU[6]		: HCU memory use (%): 0
+HCU[7]		: HCU memory use (%): 0
+================================================================================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+==================================================
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x000014f06a5b3000)
+	libhipblas.so.2 => /opt/dtk/lib/libhipblas.so.2 (0x000014f093af0000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x000014f06929b000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014f0232d1000)
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x00001470d31ee000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x00001470d1ed6000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x000014708bf0c000)
+NUMA binding       : card1 -> node 0
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 8192 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 8192 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 4096 --b 2048 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 16384 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 16384 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 8192 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 24576 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 24576 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 12288 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 32768 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 32768 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 16384 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 40960 0 0 2 0 0 0 2048 --methods rocsolver,double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 40960 0 1 2048 --pivot --methods rocsolver,double,batched,mgemm --double-nb 20480 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 49152 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 49152 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 24576 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 57344 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 57344 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 28672 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 65536 0 0 2 0 0 0 2048 --methods double,kbsyrk,mgemm --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 65536 0 1 2048 --pivot --methods double,batched,mgemm --double-nb 32768 --b 4096 --outer-trsm iterative --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192
+==================================================
+Paper experiment run completed
+Manifest: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/scaling_df1eb08/manifest.log
+==================================================

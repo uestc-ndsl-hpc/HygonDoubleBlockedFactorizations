@@ -1,5 +1,9 @@
 build 
 
-results
+results/*
+!results/fp32/
+results/fp32/*
+!results/fp32/paper_final/
+!results/fp32/paper_final/**
 
 paper/

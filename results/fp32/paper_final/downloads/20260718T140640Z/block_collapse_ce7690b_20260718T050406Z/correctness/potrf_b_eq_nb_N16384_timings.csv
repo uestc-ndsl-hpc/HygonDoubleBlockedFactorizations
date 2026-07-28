@@ -1,0 +1,2 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"POTRF Benchmark Summary (N = 16384)","DoubleBlock+KBSYRK+MGEMM","8192/8192/8192/8192/32768/5632",0,244.705963135,244.705963135,244.705963135,0,244.705963135,244.705963135,5990.92676337,0,-1,normwise_backward_error,1.44563936319e-06

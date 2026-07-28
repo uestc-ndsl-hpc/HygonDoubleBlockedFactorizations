@@ -1,0 +1,181 @@
+case=getrf_rocsolver_N49152
+started_utc=2026-07-27T15:11:37Z
+command=env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 49152 0 1 2048 --pivot --methods rocsolver --pivot-tile 2048 
+Could not open /var/log/hylog/.
+Invalid address access: 0x145ca0806000, Error code: 1.
+
+>>>>>>>> KERNEL VMFault !!!! <<<<<<
+
+>>>>>>>> PID: 917552, SIGNAL: 0 !!!! <<<<<<
+
+>>>>>>>> FOR DEVICE 0x17e04d0 <<<<<<
+
+
+===========================================================================================
+=========> HOSTQUEUE <0x19bd800>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x19bd800>: base_address 0x146e02000000
+HOSTQUEUE <0x19bd800>: hsa queue id 1, stream id 0
+HOSTQUEUE <0x19bd800>: get hsa queue W/R ptr: write index: 153, read index: 151
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP AQL 0x146e0a136000 PACKET WITH INDEX 151 <<<<<<<<<
+HOSTQUEUE <0x19bd800>: >>>>>>>> MATCH KERNEL COMMAND <<<<<<<<<
+HOSTQUEUE <0x19bd800>: header: 0xb02
+HOSTQUEUE <0x19bd800>: setup: 3
+HOSTQUEUE <0x19bd800>: workgroup: x:40, y:25, z:1
+HOSTQUEUE <0x19bd800>: grid: x:40, y:49125, z:1
+HOSTQUEUE <0x19bd800>: group_segment_size: 4000
+HOSTQUEUE <0x19bd800>: private_segment_size: 0
+HOSTQUEUE <0x19bd800>: completion_signal: 0x0
+HOSTQUEUE <0x19bd800>: kernel_object: 0x146e0942c500
+HOSTQUEUE <0x19bd800>: device id: 0
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> FIND MATCH KERNEL DETAILS <<<<<<<<<
+HOSTQUEUE <0x19bd800>: kernel name: _ZL19getrf_row_permutateIfiPfEvT0_S1_S1_T1_lS1_S1_lPS1_l
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP KERNEL ARGS: size: 320 <<<<<<<<<
+
+00 c0 00 00 00 00 00 00 28 00 00 00 00 00 00 00 
+00 00 c0 9f 5e 14 00 00 00 00 00 00 00 00 00 00 
+01 00 00 00 00 c0 00 00 00 00 00 00 00 00 00 00 
+c0 02 67 85 5e 14 00 00 00 c0 00 00 00 00 00 00 
+01 00 00 00 ad 07 00 00 01 00 00 00 28 00 19 00 
+01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP KERNEL ARGS PTR INFO <<<<<<<<<
+HOSTQUEUE <0x19bd800>: ptr arg index: 2, ptr: 0x145e9fc00000
+HOSTQUEUE <0x19bd800>: origin ptr: 0x145e9fc00000, size byte: 9663676416
+HOSTQUEUE <0x19bd800>: ptr arg index: 6, ptr: 0x145e856702c0
+HOSTQUEUE <0x19bd800>: origin ptr: 0x145e7f600000, size byte: 134873856
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP AQL 0x146e0a136000 PACKET WITH INDEX 152 <<<<<<<<<
+HOSTQUEUE <0x19bd800>: >>>>>>>> MATCH KERNEL COMMAND <<<<<<<<<
+HOSTQUEUE <0x19bd800>: header: 0xb02
+HOSTQUEUE <0x19bd800>: setup: 3
+HOSTQUEUE <0x19bd800>: workgroup: x:40, y:25, z:1
+HOSTQUEUE <0x19bd800>: grid: x:40, y:475, z:1
+HOSTQUEUE <0x19bd800>: group_segment_size: 100
+HOSTQUEUE <0x19bd800>: private_segment_size: 0
+HOSTQUEUE <0x19bd800>: completion_signal: 0x0
+HOSTQUEUE <0x19bd800>: kernel_object: 0x146e08eef080
+HOSTQUEUE <0x19bd800>: device id: 0
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> FIND MATCH KERNEL DETAILS <<<<<<<<<
+HOSTQUEUE <0x19bd800>: kernel name: _ZL32unit_forward_substitution_kernelIfiPfEvT0_S1_T1_S1_S1_llS2_S1_S1_ll
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP KERNEL ARGS: size: 328 <<<<<<<<<
+
+28 00 00 00 d8 01 00 00 00 00 c0 9f 5e 14 00 00 
+01 00 00 00 00 c0 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 c0 9f 5e 14 00 00 
+01 00 00 00 00 c0 00 00 00 00 1e 00 00 00 00 00 
+00 00 00 00 00 00 00 00 01 00 00 00 13 00 00 00 
+01 00 00 00 28 00 19 00 01 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 
+
+HOSTQUEUE <0x19bd800>: >>>>>>>> DUMP KERNEL ARGS PTR INFO <<<<<<<<<
+HOSTQUEUE <0x19bd800>: ptr arg index: 1, ptr: 0x145e9fc00000
+HOSTQUEUE <0x19bd800>: origin ptr: 0x145e9fc00000, size byte: 9663676416
+HOSTQUEUE <0x19bd800>: ptr arg index: 5, ptr: 0x145e9fc00000
+HOSTQUEUE <0x19bd800>: origin ptr: 0x145e9fc00000, size byte: 9663676416
+
+
+
+>>>>>>>> KERNEL VMFault Analysis END !!!! <<<<<<
+
+=========> HW QUEUE INFO ANALYSIS <==========
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Sampled relative residual sqrt(sum_S|P*A-L*U|^2)/sqrt(sum_S|A|^2): 4096 deterministic entries
+Can't read for directory: /sys/kernel/debug/kfd/process
+Please check mount/permission
+Command terminated by signal 6
+	Command being timed: "env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_getrf 49152 0 1 2048 --pivot --methods rocsolver --pivot-tile 2048"
+	User time (seconds): 270.41
+	System time (seconds): 10.60
+	Percent of CPU this job got: 100%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:38.89
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 11910084
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 3164741
+	Voluntary context switches: 126086
+	Involuntary context switches: 191
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 24
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+finished_utc=2026-07-27T15:16:17Z
+exit_code=134
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: vram Total Memory (MiB): 65520
+HCU[0]		: vram Total Used Memory (MiB): 2
+HCU[1]		: vram Total Memory (MiB): 65520
+HCU[1]		: vram Total Used Memory (MiB): 2
+HCU[2]		: vram Total Memory (MiB): 65520
+HCU[2]		: vram Total Used Memory (MiB): 2
+HCU[3]		: vram Total Memory (MiB): 65520
+HCU[3]		: vram Total Used Memory (MiB): 2
+HCU[4]		: vram Total Memory (MiB): 65520
+HCU[4]		: vram Total Used Memory (MiB): 2
+HCU[5]		: vram Total Memory (MiB): 65520
+HCU[5]		: vram Total Used Memory (MiB): 2
+HCU[6]		: vram Total Memory (MiB): 65520
+HCU[6]		: vram Total Used Memory (MiB): 2
+HCU[7]		: vram Total Memory (MiB): 65520
+HCU[7]		: vram Total Used Memory (MiB): 2
+================================================================================================
+======================================== End of SMI Log ========================================
+

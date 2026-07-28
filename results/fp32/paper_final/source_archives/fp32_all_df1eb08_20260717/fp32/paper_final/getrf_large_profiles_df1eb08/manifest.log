@@ -1,0 +1,13 @@
+commit=df1eb08b18e33110619d8286ed7a0cecb84ae272
+git_status=clean
+physical_hcu=1
+precision=fp32
+sizes=57344,65536
+outer_nb=N/2
+inner_nb=4096
+outer_trsm=iterative/2048
+pivot=batched/2048
+inner_gemm_m_tile=8192
+warmup_iters=1/3
+N57344_profiled_ms_per_iter=10314.340
+N65536_profiled_ms_per_iter=16644.672

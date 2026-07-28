@@ -1,0 +1,16 @@
+Profiling pivoted DoubleBlock GETRF: N=40960, outer_nb=20480, inner_nb=4096, outer_trsm=iterative, trsm_block=2048, pivot_mode=immediate, pivot_tile=2048, inner_gemm_m_tile=0, warmup=1, iters=3
+
+======================================================================================================================
+Pivoted DoubleBlock GETRF Stage Breakdown (N=40960, outer_nb=20480, inner_nb=4096, outer_trsm=iterative, trsm_block=2048, pivot_mode=immediate, pivot_tile=2048, inner_gemm_m_tile=0)
+======================================================================================================================
+Stage                    |    Total(ms) |      Calls |      Avg(ms) |      Share |       GFLOPS
+----------------------------------------------------------------------------------------------------------------------
+Panel GETRF              |     4781.895 |         30 |      159.396 |     25.32% |      2227.47
+Pivot propagation        |     7588.803 |         30 |      252.960 |     40.19% |         0.00
+Inner TRSM               |     1112.350 |         24 |       46.348 |      5.89% |     11120.16
+Inner GEMM               |     2159.497 |         24 |       89.979 |     11.44% |     17183.87
+Outer TRSM block         |      270.922 |         30 |        9.031 |      1.43% |      9511.90
+Outer TRSM GEMM          |      938.640 |         27 |       34.764 |      4.97% |     24708.97
+Outer GEMM               |     2031.754 |          3 |      677.251 |     10.76% |     25367.05
+======================================================================================================================
+Profiled stage time per iteration: 6294.620 ms

@@ -1,0 +1,1 @@
+env PAPER_SECTIONS=accuracy PAPER_DEVICE=1 PAPER_CONFIRM_IDLE=1 PAPER_ACCURACY_NS=1024 PAPER_ACCURACY_WARMUP=0 PAPER_ACCURACY_ITERS=1 PAPER_RESULT_DIR=/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/accuracy_normwise_610d21d_20260718T033029Z/smoke_N1024 bash /home/uestc_zss/HygonCholeskyDecomposition/run_paper_experiments.sh

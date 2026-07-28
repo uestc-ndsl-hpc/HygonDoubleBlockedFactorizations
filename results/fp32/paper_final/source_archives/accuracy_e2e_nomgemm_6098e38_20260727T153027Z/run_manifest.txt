@@ -1,0 +1,8 @@
+Run ID: accuracy_e2e_nomgemm_6098e38_20260727T153027Z
+Purpose: full normwise residuals on the end-to-end comparison grid
+POTRF policy: rocSOLVER and DoubleBlock+KBSYRK, gemm_m_tile=0
+GETRF addition: n=32768 only, to complete the five-size table
+Git head: 6098e38e1f8f5e56beaeb1446df4bc207455cb12
+Start: 2026-07-27T23:31:42+08:00
+End: 2026-07-27T23:50:22+08:00
+Audit: PASS

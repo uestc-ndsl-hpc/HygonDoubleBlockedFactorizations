@@ -1,0 +1,106 @@
+rocSOLVER N=49152 diagnostic probe
+started_utc=2026-07-27T15:01:39Z
+root=/home/uestc_zss/HygonCholeskyDecomposition
+out=/home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/rocsolver_n49152_probe_6098e38_20260727T145925Z
+physical_device=1
+n=49152
+warmups=0
+measurements=1
+git_head=6098e38e1f8f5e56beaeb1446df4bc207455cb12
+hipcc_version:
+dcc version: 25.10.0-0
+clang version 17.0.0 (http://10.4.0.1/dcutoolkit/driverruntime/llvm-project.git ff5bf917a679c83afe927af051a20b86fef7b07d)
+Target: x86_64-unknown-linux-gnu
+Thread model: posix
+InstalledDir: /opt/dtk-26.04/llvm/bin
+
+git_status:
+
+linked_libraries:
+	linux-vdso.so.1 (0x00007ffdaed67000)
+	libpthread.so.0 => /lib64/libpthread.so.0 (0x00001508c2bc6000)
+	libm.so.6 => /lib64/libm.so.6 (0x00001508c2844000)
+	librt.so.1 => /lib64/librt.so.1 (0x00001508c263c000)
+	librocblas.so.4 => /opt/dtk-26.04/lib/librocblas.so.4 (0x000015089998c000)
+	libhipblas.so.2 => /opt/dtk-26.04/lib/libhipblas.so.2 (0x00001508c2ec9000)
+	libgalaxyhip.so.5 => /opt/dtk-26.04/hip/lib/libgalaxyhip.so.5 (0x0000150898b59000)
+	libhsa-runtime64.so.1 => /opt/dtk-26.04/lib/libhsa-runtime64.so.1 (0x0000150898674000)
+	librocsolver.so.0 => /opt/dtk-26.04/lib/librocsolver.so.0 (0x00001508526aa000)
+	libstdc++.so.6 => /lib64/libstdc++.so.6 (0x0000150852315000)
+	libgcc_s.so.1 => /lib64/libgcc_s.so.1 (0x00001508520fd000)
+	libc.so.6 => /lib64/libc.so.6 (0x0000150851d38000)
+	/lib64/ld-linux-x86-64.so.2 (0x00001508c2de6000)
+	libnuma.so.1 => /lib64/libnuma.so.1 (0x0000150851b2c000)
+	libdl.so.2 => /lib64/libdl.so.2 (0x0000150851928000)
+	libelf.so.1 => /lib64/libelf.so.1 (0x000015085170f000)
+	librocprofiler-register.so.0 => /opt/hyhal/lib/librocprofiler-register.so.0 (0x000015085144d000)
+	libhydrm.so.2 => /opt/hyhal/lib/libhydrm.so.2 (0x0000150851211000)
+	libgfortran.so.5 => /lib64/libgfortran.so.5 (0x0000150850d92000)
+	librocsparse.so.1 => /opt/dtk-26.04/lib/librocsparse.so.1 (0x0000150824501000)
+	libomp.so => /opt/dtk-26.04/dcc/bin/../lib/libomp.so (0x0000150824205000)
+	libz.so.1 => /lib64/libz.so.1 (0x0000150823fee000)
+	libquadmath.so.0 => /lib64/libquadmath.so.0 (0x0000150823dad000)
+	linux-vdso.so.1 (0x00007ffc94fe1000)
+	libpthread.so.0 => /lib64/libpthread.so.0 (0x000014e285b02000)
+	libm.so.6 => /lib64/libm.so.6 (0x000014e285780000)
+	librt.so.1 => /lib64/librt.so.1 (0x000014e285578000)
+	librocblas.so.4 => /opt/dtk-26.04/lib/librocblas.so.4 (0x000014e25c8c8000)
+	libhipblas.so.2 => /opt/dtk-26.04/lib/libhipblas.so.2 (0x000014e285e05000)
+	libgalaxyhip.so.5 => /opt/dtk-26.04/hip/lib/libgalaxyhip.so.5 (0x000014e25ba95000)
+	libhsa-runtime64.so.1 => /opt/dtk-26.04/lib/libhsa-runtime64.so.1 (0x000014e25b5b0000)
+	librocsolver.so.0 => /opt/dtk-26.04/lib/librocsolver.so.0 (0x000014e2155e6000)
+	libstdc++.so.6 => /lib64/libstdc++.so.6 (0x000014e215251000)
+	libgcc_s.so.1 => /lib64/libgcc_s.so.1 (0x000014e215039000)
+	libc.so.6 => /lib64/libc.so.6 (0x000014e214c74000)
+	/lib64/ld-linux-x86-64.so.2 (0x000014e285d22000)
+	libnuma.so.1 => /lib64/libnuma.so.1 (0x000014e214a68000)
+	libdl.so.2 => /lib64/libdl.so.2 (0x000014e214864000)
+	libelf.so.1 => /lib64/libelf.so.1 (0x000014e21464b000)
+	librocprofiler-register.so.0 => /opt/hyhal/lib/librocprofiler-register.so.0 (0x000014e214389000)
+	libhydrm.so.2 => /opt/hyhal/lib/libhydrm.so.2 (0x000014e21414d000)
+	libgfortran.so.5 => /lib64/libgfortran.so.5 (0x000014e213cce000)
+	librocsparse.so.1 => /opt/dtk-26.04/lib/librocsparse.so.1 (0x000014e1e743d000)
+	libomp.so => /opt/dtk-26.04/dcc/bin/../lib/libomp.so (0x000014e1e7141000)
+	libz.so.1 => /lib64/libz.so.1 (0x000014e1e6f2a000)
+	libquadmath.so.0 => /lib64/libquadmath.so.0 (0x000014e1e6ce9000)
+
+device_before:
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: vram Total Memory (MiB): 65520
+HCU[0]		: vram Total Used Memory (MiB): 2
+HCU[1]		: vram Total Memory (MiB): 65520
+HCU[1]		: vram Total Used Memory (MiB): 2
+HCU[2]		: vram Total Memory (MiB): 65520
+HCU[2]		: vram Total Used Memory (MiB): 2
+HCU[3]		: vram Total Memory (MiB): 65520
+HCU[3]		: vram Total Used Memory (MiB): 2
+HCU[4]		: vram Total Memory (MiB): 65520
+HCU[4]		: vram Total Used Memory (MiB): 2
+HCU[5]		: vram Total Memory (MiB): 65520
+HCU[5]		: vram Total Used Memory (MiB): 2
+HCU[6]		: vram Total Memory (MiB): 65520
+HCU[6]		: vram Total Used Memory (MiB): 2
+HCU[7]		: vram Total Memory (MiB): 65520
+HCU[7]		: vram Total Used Memory (MiB): 2
+================================================================================================
+======================================== End of SMI Log ========================================
+

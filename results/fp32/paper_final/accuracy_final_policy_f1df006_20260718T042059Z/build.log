@@ -1,0 +1,22 @@
+[  5%] Built target hygon_kernels
+Consolidate compiler generated dependencies of target hygon_utils
+[ 10%] Built target hygon_gemm
+[ 16%] Built target hygon_utils
+Consolidate compiler generated dependencies of target benchmark_gemm
+Consolidate compiler generated dependencies of target profile_blocked_potrf
+[ 22%] Built target hygon_syrk
+[ 29%] Built target hygon_trsm
+[ 35%] Built target benchmark_gemm
+[ 35%] Built target profile_double_blocked_potrf
+[ 44%] Built target hygon_getrf
+[ 47%] Built target profile_blocked_potrf
+Consolidate compiler generated dependencies of target benchmark_syrk
+Consolidate compiler generated dependencies of target benchmark_trsm
+Consolidate compiler generated dependencies of target benchmark_getrf
+[ 53%] Built target profile_double_blocked_getrf
+[ 56%] Built target hygon_potrf
+[ 68%] Built target benchmark_syrk
+[ 80%] Built target benchmark_trsm
+[ 89%] Built target benchmark_getrf
+Consolidate compiler generated dependencies of target benchmark_potrf
+[100%] Built target benchmark_potrf

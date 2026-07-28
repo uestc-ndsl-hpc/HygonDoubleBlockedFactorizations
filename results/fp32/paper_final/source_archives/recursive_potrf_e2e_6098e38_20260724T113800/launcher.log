@@ -1,0 +1,267 @@
+==================================================
+Double-blocked factorization paper experiments
+Sections            : scaling
+Factorizations      : potrf
+Result directory    : /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800
+Scaling sizes       : 8192 16384 24576 32768 40960 49152 57344 65536
+Accuracy sizes      : 1024 2048 4096 8192 16384 24576
+Block-collapse sizes: 8192 16384 24576 32768 40960
+Accuracy policy     : identical to the scaling dispatch policy
+Full-error max N    : 24576
+POTRF input seed    : 20260716
+GETRF input seed    : 1234567890
+POTRF B/b           : 8192/1024
+POTRF TK/TM         : 8192/8192
+POTRF thresholds    : M>32768, K>=5632
+POTRF methods       : recursive
+POTRF large methods : recursive
+GETRF B policy      : min(N/2,20480)
+GETRF b policy      : min(N/4,4096)
+GETRF outer TRSM    : iterative/2048
+GETRF bp/TM         : 2048/8192
+GETRF methods       : rocsolver,double,batched,mgemm
+GETRF large methods : double,batched,mgemm
+rocSOLVER max N     : 40960
+Stage profile N     : 40960
+Scaling warmup/iters: 2/10
+Collapse warmup/iters: 2/10
+Accuracy warm/iters : 0/1
+Stage warmup/iters  : 1/3
+LU normwise backward error   : ||P*A-L*U||_F / ||A||_F
+POTRF normwise backward error: ||A-L*L^T||_F / ||A||_F
+POTRF backward-error limit   : 1e-5
+GETRF backward-error limit   : 5e-4
+Scaling metrics     : runtime, throughput, and timing variability only
+Accuracy metric     : full-matrix normwise backward error
+Residual product    : factorization precision; FP64 norm accumulation
+Timestamp          : 2026-07-24T11:35:34+08:00
+Hostname           : dcu2
+Kernel             : Linux 4.18.0-348.el8.x86_64 x86_64 GNU/Linux
+Git commit         : 6098e38e1f8f5e56beaeb1446df4bc207455cb12
+Git describe       : 6098e38
+DTK Environment    : /opt/dtk
+HIP device         : 1
+Warmup iterations  : 2
+Profile iterations : 10
+hipcc path         : /opt/dtk/bin/hipcc
+hipcc version      : dcc version: 25.10.0-0
+cmake version      : cmake version 3.20.2
+ROCm device state:
+
+================================= System Management Interface ==================================
+================================================================================================
+HCU[0]		: Card Series:		 K100_AI
+HCU[0]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[1]		: Card Series:		 K100_AI
+HCU[1]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[2]		: Card Series:		 K100_AI
+HCU[2]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[3]		: Card Series:		 K100_AI
+HCU[3]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[4]		: Card Series:		 K100_AI
+HCU[4]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[5]		: Card Series:		 K100_AI
+HCU[5]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[6]		: Card Series:		 K100_AI
+HCU[6]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+HCU[7]		: Card Series:		 K100_AI
+HCU[7]		: Card Vendor:		 Chengdu C-3000 IC Design Co., Ltd.
+================================================================================================
+================================================================================================
+HCU[0]		: HCU use (%): 0.0
+HCU[1]		: HCU use (%): 0.0
+HCU[2]		: HCU use (%): 0.0
+HCU[3]		: HCU use (%): 0.0
+HCU[4]		: HCU use (%): 0.0
+HCU[5]		: HCU use (%): 0.0
+HCU[6]		: HCU use (%): 0.0
+HCU[7]		: HCU use (%): 0.0
+================================================================================================
+================================================================================================
+HCU[0]		: HCU memory use (%): 0
+HCU[1]		: HCU memory use (%): 0
+HCU[2]		: HCU memory use (%): 0
+HCU[3]		: HCU memory use (%): 0
+HCU[4]		: HCU memory use (%): 0
+HCU[5]		: HCU memory use (%): 0
+HCU[6]		: HCU memory use (%): 0
+HCU[7]		: HCU memory use (%): 0
+================================================================================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+==================================================
+
+Checking binary dependencies...
+Resolved ROCm libraries:
+	librocblas.so.4 => /opt/dtk/lib/librocblas.so.4 (0x0000154e064b1000)
+	libhipblas.so.2 => /opt/dtk/lib/libhipblas.so.2 (0x0000154e2f9ee000)
+	libhsa-runtime64.so.1 => /opt/dtk/lib/libhsa-runtime64.so.1 (0x0000154e05199000)
+	librocsolver.so.0 => /opt/dtk/lib/librocsolver.so.0 (0x0000154dbf1cf000)
+NUMA binding       : card1 -> node 0
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 8192 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 8192)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |     36.008   |    5089.25   |      N/A 
+RecTiledTRSM    | 2048       |     35.983   |    5092.78   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |       35.982 |        0.080 |       35.954 |       36.215 |         10
+RecTiledTRSM    | 2048       |       35.973 |        0.063 |       35.908 |       36.116 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N8192_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 16384 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 16384)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |    128.986   |   11365.68   |      N/A 
+RecTiledTRSM    | 2048       |    129.254   |   11342.14   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |      128.888 |        0.227 |      128.791 |      129.449 |         10
+RecTiledTRSM    | 2048       |      129.014 |        0.653 |      128.765 |      130.965 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N16384_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 24576 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 24576)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |    317.630   |   15577.25   |      N/A 
+RecTiledTRSM    | 2048       |    318.640   |   15527.87   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |      318.296 |        2.193 |      314.289 |      320.203 |         10
+RecTiledTRSM    | 2048       |      318.646 |        1.088 |      317.014 |      320.451 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N24576_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 32768 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 32768)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |    636.615   |   18422.62   |      N/A 
+RecTiledTRSM    | 2048       |    637.158   |   18406.93   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |      636.558 |        1.399 |      633.760 |      638.205 |         10
+RecTiledTRSM    | 2048       |      637.337 |        1.509 |      635.322 |      639.082 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N32768_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 40960 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 40960)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |   1093.694   |   20944.14   |      N/A 
+RecTiledTRSM    | 2048       |   1111.261   |   20613.06   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |     1093.884 |        3.615 |     1086.789 |     1100.252 |         10
+RecTiledTRSM    | 2048       |     1111.016 |        2.563 |     1107.310 |     1115.126 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N40960_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 49152 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 49152)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |   1782.077   |   22211.40   |      N/A 
+RecTiledTRSM    | 2048       |   1804.188   |   21939.18   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |     1781.735 |        4.094 |     1777.469 |     1791.796 |         10
+RecTiledTRSM    | 2048       |     1804.069 |        9.179 |     1787.484 |     1818.344 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N49152_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 57344 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 57344)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |   2790.456   |   22525.14   |      N/A 
+RecTiledTRSM    | 2048       |   2788.119   |   22544.02   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |     2790.418 |        5.246 |     2781.084 |     2797.270 |         10
+RecTiledTRSM    | 2048       |     2789.687 |        4.812 |     2780.496 |     2794.879 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N57344_timings.csv
+>>> /home/uestc_zss/HygonCholeskyDecomposition/build/benchmark_potrf 65536 0 0 0 0 0 0 2048 --methods recursive --double-nb 8192 --b 1024 --syrk-k-tile 8192 --gemm-m-tile 8192 --gemm-m-threshold 32768 --gemm-k-threshold 5632
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 65536)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup   
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |   4087.998   |   22951.33   |      N/A 
+RecTiledTRSM    | 2048       |   3900.371   |   24055.40   |      N/A 
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+Recursive       | 2048       |     4087.770 |        3.942 |     4080.540 |     4094.879 |         10
+RecTiledTRSM    | 2048       |     3901.032 |        4.579 |     3892.180 |     3905.962 |         10
+========================================================================================================================
+Raw timing CSV: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/scaling/potrf_N65536_timings.csv
+==================================================
+Paper experiment run completed
+Manifest: /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_final/recursive_potrf_e2e_6098e38_20260724T113800/manifest.log
+==================================================

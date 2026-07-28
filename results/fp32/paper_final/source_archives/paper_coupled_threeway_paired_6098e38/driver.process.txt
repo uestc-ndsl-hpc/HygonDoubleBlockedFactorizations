@@ -1,0 +1,2 @@
+    PID    PPID USER     STAT     ELAPSED                  STARTED COMMAND
+ 676336       1 uestc_z+ Ss         00:00 Sat Jul 18 20:26:33 2026 bash /home/uestc_zss/HygonCholeskyDecomposition/results/fp32/paper_coupled_threeway_paired_6098e38/driver.sh
