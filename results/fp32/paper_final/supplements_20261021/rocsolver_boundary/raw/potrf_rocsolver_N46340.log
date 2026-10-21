@@ -1,0 +1,54 @@
+case=potrf_rocsolver_N46340
+started_utc=2026-08-27T06:25:13Z
+command=env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_potrf 46340 0 0 2 0 0 0 2048 --methods rocsolver 
+Running benchmark in FLOAT precision
+>>> Running Benchmarks...
+>>> Sampled relative residual sqrt(sum_S|A-L*L^T|^2)/sqrt(sum_S|A|^2): 4096 deterministic entries
+
+========================================================================================================================
+POTRF Benchmark Summary (N = 46340)
+========================================================================================================================
+Method          | Parameters | Time(ms)     | GFLOPS       | Speedup    | Sampled Rel. Residual  
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER       | N/A        |   4719.354   |    7028.53   |     1.00x  |                2.02e-06
+========================================================================================================================
+Timing Statistics (ms)
+------------------------------------------------------------------------------------------------------------------------
+Method          | Parameters |       Median |       StdDev |      Minimum |      Maximum |    Samples
+------------------------------------------------------------------------------------------------------------------------
+rocSOLVER       | N/A        |     4719.354 |        0.000 |     4719.354 |     4719.354 |          1
+========================================================================================================================
+	Command being timed: "timeout --signal=TERM 900 env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_potrf 46340 0 0 2 0 0 0 2048 --methods rocsolver"
+	User time (seconds): 496.69
+	System time (seconds): 15.66
+	Percent of CPU this job got: 96%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 8:53.26
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 20625544
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 15
+	Minor (reclaiming a frame) page faults: 7436830
+	Voluntary context switches: 119913
+	Involuntary context switches: 356
+	Swaps: 0
+	File system inputs: 1519688
+	File system outputs: 8
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+finished_utc=2026-08-27T06:34:06Z
+exit_code=0
+device_after_case_begin
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+device_after_case_end

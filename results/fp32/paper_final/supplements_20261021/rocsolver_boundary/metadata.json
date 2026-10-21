@@ -1,0 +1,13 @@
+{
+  "collection_date": "2026-08-27",
+  "source_base": "6098e38",
+  "device": "Hygon K100 AI",
+  "DTK": "26.04",
+  "rocSOLVER": "3.20.0",
+  "rocBLAS": "4.3.0",
+  "warmups": 0,
+  "requested_measurements": 1,
+  "timeout_seconds": 900,
+  "INT_MAX": 2147483647,
+  "interpretation": "Successful runs at 46340 and invalid-address faults at 46341 and 49152 bracket the signed 32-bit element-count boundary. A 32-bit indexing limitation is a hypothesis, not a source-level root-cause diagnosis. Exit codes describe process termination, not rocSOLVER API status returns."
+}

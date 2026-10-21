@@ -1,3 +1,5 @@
 *.sh text eol=lf
 CMakeLists.txt text eol=lf
 *.cmake text eol=lf
+results/fp32/paper_final/supplements_20261021/** text eol=lf
+results/fp32/paper_final/supplements_20261021/** whitespace=-blank-at-eol,-blank-at-eof

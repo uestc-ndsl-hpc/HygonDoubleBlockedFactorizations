@@ -24,6 +24,9 @@ struct GetrfBenchmarkOptions {
     bool test_mgemm = true;
     bool full_backward_error = false;
     int full_backward_error_max_n = 8192;
+    bool cpu_fp64_residual = false;
+    int cpu_residual_tile = 512;
+    unsigned int seed = 1234567890u;
     getrf_outer_trsm_mode outer_trsm_mode = getrf_outer_trsm_iterative;
     int trsm_block = 2048;
     int pivot_column_tile = 2048;

@@ -1,0 +1,28 @@
+{
+  "collection_date": "2026-10-21",
+  "device": "Hygon K100 AI, 64 GiB",
+  "host_cpu": "Hygon C86-4G OPN 7495, two 64-core sockets",
+  "software": {
+    "DTK": "26.04",
+    "rocSOLVER": "3.20.0",
+    "rocBLAS": "4.3.0",
+    "DCC": "25.10.0-0",
+    "Clang": "17.0.0"
+  },
+  "factorization_precision": "FP32",
+  "residual_metric": "cpu_fp64_full_relative_residual",
+  "residual_product_subtraction_norm_precision": "FP64",
+  "cpu_blas": "SciPy LP64 OpenBLAS 0.3.28, Haswell, prefixed CBLAS adapter",
+  "cpu_blas_library_sha256": "3e739a2435af49d2d938749f316aa338c65f41c9ae6615406e7cf83feb662f46",
+  "cpu_blas_threads_per_job": 8,
+  "cpu_residual_tile": 512,
+  "collection_concurrency": "At most four independent single-device jobs. No multi-device factorization.",
+  "warmups": 0,
+  "timed_samples_per_method": 1,
+  "validation": "Separate factorization; CPU validation is excluded from GPU timing.",
+  "scope": "45 method/order/seed records for 18 distinct matrix inputs, 25 paper-seed and 20 extra-seed points. Same random matrix families.",
+  "performance_warning": "Single-sample timings are not the paper end-to-end scaling measurements.",
+  "source_snapshot_sha256": "78becbb4ec0e82c0a5d30bf7f4516a7a9d74ad641408124a66d448a096ed114f",
+  "original_evidence_archive_sha256": "93bcde43bdf4c5770bc0df8783efbb1d36cd5453779c021e089397451c8d59f1",
+  "tests": "170 CPU residual checks passed with both portable and CPU CBLAS backends; the CBLAS precision probe preserved (1+2^-23)^2."
+}

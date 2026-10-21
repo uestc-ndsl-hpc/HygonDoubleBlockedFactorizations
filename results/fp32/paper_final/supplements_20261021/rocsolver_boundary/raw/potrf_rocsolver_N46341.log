@@ -1,0 +1,102 @@
+case=potrf_rocsolver_N46341
+started_utc=2026-08-27T06:34:16Z
+command=env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_potrf 46341 0 0 2 0 0 0 2048 --methods rocsolver 
+Could not open /var/log/hylog/.
+Invalid address access: 0x14cdbbeb4000, Error code: 3.
+Invalid address access: 0x14cdbbeb4000, Error code: 3.
+
+>>>>>>>> KERNEL VMFault !!!! <<<<<<
+
+
+>>>>>>>> KERNEL VMFault !!!! <<<<<<
+
+>>>>>>>> PID: 18614, SIGNAL: 0 !!!! <<<<<<
+>>>>>>>> PID: 18614, SIGNAL: 0 !!!! <<<<<<
+
+>>>>>>>> FOR DEVICE 0x3251ed0 <<<<<<
+
+
+>>>>>>>> FOR DEVICE 0x3251ed0 <<<<<<
+
+
+===========================================================================================
+=========> HOSTQUEUE <0x1570f5a0>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x1570f5a0>: base_address 0x14cc71600000
+HOSTQUEUE <0x1570f5a0>: hsa queue id 17, stream id 16
+HOSTQUEUE <0x1570f5a0>: get hsa queue W/R ptr: write index: 0, read index: 0
+HOSTQUEUE <0x1570f5a0>: all command executed
+
+===========================================================================================
+=========> HOSTQUEUE <0x156ec380>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x156ec380>: base_address 0x14ccacc00000
+HOSTQUEUE <0x156ec380>: hsa queue id 12, stream id 11
+HOSTQUEUE <0x156ec380>: get hsa queue W/R ptr: write index: 0, read index: 0
+HOSTQUEUE <0x156ec380>: all command executed
+
+===========================================================================================
+=========> HOSTQUEUE <0x156bcdb0>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x156bcdb0>: base_address 0x14ccffe00000
+HOSTQUEUE <0x156bcdb0>: hsa queue id 5, stream id 4
+HOSTQUEUE <0x156bcdb0>: get hsa queue W/R ptr: write index: 0, read index: 0
+HOSTQUEUE <0x156bcdb0>: all command executed
+
+===========================================================================================
+=========> HOSTQUEUE <0x156b0810>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x156b0810>: base_address 0x14cd6c800000
+HOSTQUEUE <0x156b0810>: hsa queue id 3, stream id 2
+HOSTQUEUE <0x156b0810>: get hsa queue W/R ptr: write index: 0, read index: 0
+HOSTQUEUE <0x156b0810>: all command executed
+
+===========================================================================================
+=========> HOSTQUEUE <0x33f5f90>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x33f5f90>: base_address 0x14d5c3c00000
+HOSTQUEUE <0x33f5f90>: hsa queue id 1, stream id 0
+HOSTQUEUE <0x33f5f90>: get hsa queue W/R ptr: write index: 3995, read index: 596
+
+HOSTQUEUE <0x33f5f90>: >>>>>>>> DUMP AQL 0x14d5cbd00000 PACKET WITH INDEX 596 <<<<<<<<<
+HOSTQUEUE <0x33f5f90>: >>>>>>>> MATCH KERNEL COMMAND <<<<<<<<<
+HOSTQUEUE <0x33f5f90>: header: 0xb02
+HOSTQUEUE <0x33f5f90>: setup: 3
+HOSTQUEUE <0x33f5f90>: workgroup: x:256, y:1, z:1
+HOSTQUEUE <0x33f5f90>: grid: x:23296, y:4, z:1
+HOSTQUEUE <0x33f5f90>: group_segment_size: 14336
+HOSTQUEUE <0x33f5f90>: private_segment_size: 0
+HOSTQUEUE <0x33f5f90>: completion_signal: 0x0
+HOSTQUEUE <0x33f5f90>: kernel_object: 0x14c66b1f8740
+HOSTQUEUE <0x33f5f90>: device id: 0
+timeout: the monitored command dumped core
+Command terminated by signal 11
+	Command being timed: "timeout --signal=TERM 900 env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_potrf 46341 0 0 2 0 0 0 2048 --methods rocsolver"
+	User time (seconds): 494.16
+	System time (seconds): 11.54
+	Percent of CPU this job got: 96%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 8:46.41
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 12238384
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 5339241
+	Voluntary context switches: 140197
+	Involuntary context switches: 630
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 24
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+finished_utc=2026-08-27T06:43:03Z
+exit_code=139
+device_after_case_begin
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+device_after_case_end

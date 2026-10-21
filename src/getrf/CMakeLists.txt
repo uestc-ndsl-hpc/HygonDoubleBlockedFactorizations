@@ -27,6 +27,7 @@ add_executable(benchmark_getrf
 )
 
 apply_benchmark_options(benchmark_getrf)
+configure_cpu_fp64_residual(benchmark_getrf)
 link_rocm_runtime(benchmark_getrf)
 target_link_libraries(benchmark_getrf
     rocsolver

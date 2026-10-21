@@ -5,6 +5,7 @@
 #include <string>
 
 #include "getrf/benchmark/getrf_benchmark_common.h"
+#include "utils/benchmark/seed.h"
 
 namespace {
 
@@ -74,6 +75,29 @@ int main(int argc, char** argv)
     BlockParameter parameter = BlockParameter::Nb;
     bool methods_explicit = false;
     for (int i = 4; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--cpu-fp64-residual") == 0) {
+            options.cpu_fp64_residual = true;
+            options.full_backward_error = true;
+            parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--cpu-residual-tile") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after --cpu-residual-tile.\n";
+                return EXIT_FAILURE;
+            }
+            options.cpu_residual_tile = std::atoi(argv[++i]);
+            parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--seed") == 0) {
+            if (i + 1 >= argc || !parse_benchmark_seed(argv[++i], options.seed)) {
+                std::cerr << "--seed requires an unsigned integer.\n";
+                return EXIT_FAILURE;
+            }
+            parameter = BlockParameter::Nb;
+            continue;
+        }
         if (std::strcmp(argv[i], "--pivot") == 0
             || std::strcmp(argv[i], "-p") == 0) {
             options.pivoting = true;
@@ -173,6 +197,15 @@ int main(int argc, char** argv)
     }
     if (options.trsm_block <= 0) {
         std::cerr << "--trsm-block must be positive.\n";
+        return EXIT_FAILURE;
+    }
+    if (options.cpu_residual_tile <= 0) {
+        std::cerr << "--cpu-residual-tile must be positive.\n";
+        return EXIT_FAILURE;
+    }
+    if (options.cpu_fp64_residual
+        && (options.n <= 0 || options.precision_type != 0)) {
+        std::cerr << "--cpu-fp64-residual requires N > 0 and FP32 precision (0).\n";
         return EXIT_FAILURE;
     }
 

@@ -6,6 +6,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -13,6 +14,7 @@
 #include <hip/hip_runtime.h>
 
 #include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/cpu_fp64_residual.h"
 #include "utils/benchmark/residual_sampling.h"
 #include "utils/common/error_check.h"
 #include "utils/memory/device_buffer.h"
@@ -32,9 +34,9 @@ double calculate_gflops(int n, double time_ms)
 }
 
 template <typename T>
-void generate_dense_matrix(std::vector<T>& A, int n, bool pivoting)
+void generate_dense_matrix(std::vector<T>& A, int n, bool pivoting, unsigned int seed)
 {
-    std::mt19937 gen(1234567890u);
+    std::mt19937 gen(seed);
     std::uniform_real_distribution<double> dist(-0.5, 0.5);
 
     for (T& value : A) {
@@ -254,18 +256,20 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     const size_t bytes = element_count * sizeof(T);
 
     std::vector<T> h_A_original(element_count);
-    generate_dense_matrix(h_A_original, n, options.pivoting);
+    generate_dense_matrix(h_A_original, n, options.pivoting, options.seed);
 
     DeviceBuffer<T> d_A_original(element_count);
     DeviceBuffer<T> d_A(element_count);
     DeviceBuffer<int> d_ipiv(n);
     DeviceBuffer<int> d_info(1);
+    const bool device_residual = options.full_backward_error
+        && !options.cpu_fp64_residual;
     DeviceBuffer<T> d_residual_lhs(
-        options.full_backward_error ? element_count : 0);
+        device_residual ? element_count : 0);
     DeviceBuffer<T> d_residual_rhs(
-        options.full_backward_error ? element_count : 0);
+        device_residual ? element_count : 0);
     DeviceBuffer<T> d_residual_product(
-        options.full_backward_error ? element_count : 0);
+        device_residual ? element_count : 0);
 
     const int pivot_column_tile = std::min(
         n, std::max(1, options.pivot_column_tile));
@@ -303,7 +307,9 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     double baseline_time = -1.0;
     const ResidualMetric residual_metric = options.error_mode == ErrorMode::None
         ? ResidualMetric::None
-        : (options.full_backward_error
+        : (options.cpu_fp64_residual
+              ? ResidualMetric::CpuFp64RelativeResidual
+              : options.full_backward_error
               ? ResidualMetric::NormwiseBackwardError
               : ResidualMetric::SampledRelativeResidual);
     BenchmarkRunner runner(stream, baseline_time, results, residual_metric);
@@ -324,6 +330,9 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
         int info = 0;
         HIP_CHECK(hipMemcpy(
             &info, d_info, sizeof(int), hipMemcpyDeviceToHost));
+        if (options.cpu_fp64_residual) {
+            std::cout << ">>> CPU FP64 validation: info=" << info << "\n";
+        }
         if (info != 0) {
             residual_value = std::numeric_limits<double>::infinity();
             return;
@@ -343,7 +352,12 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
                 hipMemcpyDeviceToHost));
         }
 
-        if (options.full_backward_error) {
+        if (options.cpu_fp64_residual) {
+            residual_value = benchmark_residual::getrf_cpu_fp64_full(
+                h_lu.data(), h_A_original.data(),
+                options.pivoting ? h_ipiv.data() : nullptr,
+                n, n, options.pivoting, options.cpu_residual_tile);
+        } else if (options.full_backward_error) {
             residual_value = verify_normwise_backward_error_full(
                 handle,
                 h_lu.data(),
@@ -400,7 +414,14 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
     const std::string mode = options.pivoting ? "GETRF" : "GETRF-NPVT";
     std::cout << ">>> Running " << mode << " Benchmarks...\n";
     if (options.error_mode != ErrorMode::None) {
-        if (options.full_backward_error) {
+        if (options.cpu_fp64_residual) {
+            std::cout << ">>> Full relative factorization residual "
+                         "||P*A-L*U||_F/||A||_F: CPU FP64 product, subtraction "
+                         "and norms; " << benchmark_residual::cpu_fp64_backend_name()
+                      << "; tile=" << options.cpu_residual_tile
+                      << "; seed=" << options.seed
+                      << "; validation excluded from GPU timing\n";
+        } else if (options.full_backward_error) {
             std::cout
                 << ">>> Normwise backward error "
                    "eta_F=||P*A-L*U||_F/||A||_F: full matrix, "
@@ -439,6 +460,15 @@ void run_all_benchmarks(const GetrfBenchmarkOptions& options)
 
 void run_getrf_benchmarks(const GetrfBenchmarkOptions& options)
 {
+    if (options.cpu_fp64_residual
+        && (options.precision_type != 0 || options.n <= 0
+            || options.cpu_residual_tile <= 0 || !options.full_backward_error
+            || options.error_mode != ErrorMode::Backward
+            || options.full_backward_error_max_n < options.n)) {
+        throw std::invalid_argument(
+            "CPU FP64 residual requires FP32 factors, residual-only mode, "
+            "a positive tile, and an explicit full-matrix size limit");
+    }
     if (options.precision_type == 1) {
         std::cout << "Running "
                   << (options.pivoting ? "GETRF" : "GETRF-NPVT")

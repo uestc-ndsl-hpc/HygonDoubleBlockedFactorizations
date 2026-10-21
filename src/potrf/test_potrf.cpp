@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "potrf/benchmark/potrf_benchmark_common.h"
+#include "utils/benchmark/seed.h"
 
 namespace {
 
@@ -117,6 +118,34 @@ int main(int argc, char** argv)
     BlockParameter block_parameter = BlockParameter::Nb;
     bool methods_explicit = false;
     for (int i = nb_start; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--skip-rec-tiled-trsm") == 0) {
+            options.test_recursive_tiled_trsm = false;
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--cpu-fp64-residual") == 0) {
+            options.cpu_fp64_residual = true;
+            options.full_backward_error = true;
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--cpu-residual-tile") == 0) {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value after --cpu-residual-tile.\n";
+                return EXIT_FAILURE;
+            }
+            options.cpu_residual_tile = std::atoi(argv[++i]);
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--seed") == 0) {
+            if (i + 1 >= argc || !parse_benchmark_seed(argv[++i], options.seed)) {
+                std::cerr << "--seed requires an unsigned integer.\n";
+                return EXIT_FAILURE;
+            }
+            block_parameter = BlockParameter::Nb;
+            continue;
+        }
         if (std::strcmp(argv[i], "--full-backward-error") == 0
             || std::strcmp(argv[i], "--full-residual") == 0) {
             options.full_backward_error = true;
@@ -203,6 +232,23 @@ int main(int argc, char** argv)
     }
 
     options.error_mode = parse_benchmark_error_mode(error_input);
+    if (options.cpu_residual_tile <= 0) {
+        std::cerr << "--cpu-residual-tile must be positive.\n";
+        return EXIT_FAILURE;
+    }
+    if (options.cpu_fp64_residual) {
+        if (options.n <= 0 || options.precision_type != 0) {
+            std::cerr << "--cpu-fp64-residual requires N > 0 and FP32 precision (0).\n";
+            return EXIT_FAILURE;
+        }
+        if (options.error_mode == ErrorMode::Forward
+            || options.error_mode == ErrorMode::Both) {
+            std::cerr << "CPU residual mode requires error mode 0 or 2 (residual only); "
+                         "forward/both would request a GPU FP64 reference POTRF.\n";
+            return EXIT_FAILURE;
+        }
+        options.error_mode = ErrorMode::Backward;
+    }
     if (options.full_backward_error) {
         if (options.full_backward_error_max_n <= 0
             || options.n > options.full_backward_error_max_n) {

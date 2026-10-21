@@ -1,0 +1,513 @@
+[
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567890.csv",
+    "original_basename": "getrf_N8192_seed1234567890.csv",
+    "original_sha256": "0cf6fd25c6040b2a0596f7f6dfffead7c3136da340e5847b0d613011147ae174",
+    "public_sha256": "0cf6fd25c6040b2a0596f7f6dfffead7c3136da340e5847b0d613011147ae174",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567890.log",
+    "original_basename": "getrf_N8192_seed1234567890.log",
+    "original_sha256": "b571caf65fc8f8a7640d45722e2db53467e5fbeb96c93abebd2442aad8ce72e4",
+    "public_sha256": "56afe59f58526c7959c2e4c52415d060764e68b3fe7cf806d8b16633a8548dfa",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567891.csv",
+    "original_basename": "getrf_N8192_seed1234567891.csv",
+    "original_sha256": "1c9754958611f5f50df7437a9b14888a91ee762403a4712444267f958339d03c",
+    "public_sha256": "1c9754958611f5f50df7437a9b14888a91ee762403a4712444267f958339d03c",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567891.log",
+    "original_basename": "getrf_N8192_seed1234567891.log",
+    "original_sha256": "0a0330ad0e34852235a087cbdf56ad0cb09f8f4d3caad77d84c6651d21213eb3",
+    "public_sha256": "5b7f20d96427f8a0f84bb0ad45195ecfcf541d4e87c59ef8c912f69bcb0a4228",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567892.csv",
+    "original_basename": "getrf_N8192_seed1234567892.csv",
+    "original_sha256": "be5b7f05125263db472f373e62ea487e6793232569c63051b127dd863ef1c1f0",
+    "public_sha256": "be5b7f05125263db472f373e62ea487e6793232569c63051b127dd863ef1c1f0",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N8192_seed1234567892.log",
+    "original_basename": "getrf_N8192_seed1234567892.log",
+    "original_sha256": "97e01515cb4ddec08e1dd999a1cda61bd8d9e7f63f3c32619629fa99dd488dfb",
+    "public_sha256": "fd8c15b6fbaacdfb067b35644ddc0c60eed7fc279049a7708ef6470fc1438e6b",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N16384_seed1234567890.csv",
+    "original_basename": "getrf_N16384_seed1234567890.csv",
+    "original_sha256": "d09607a3ec241ae6165cd48510ca375348b5589bfabde74f4a85d69b7789c713",
+    "public_sha256": "d09607a3ec241ae6165cd48510ca375348b5589bfabde74f4a85d69b7789c713",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N16384_seed1234567890.log",
+    "original_basename": "getrf_N16384_seed1234567890.log",
+    "original_sha256": "8fd77a1b4cfd5c739a039a886ad02cd519449e233d5d0147d964ad09c2a99aff",
+    "public_sha256": "aaff88472899dacfa950899899ed82554d03d7e97197554965268b87394866ea",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567890.csv",
+    "original_basename": "getrf_N24576_seed1234567890.csv",
+    "original_sha256": "15635389906136a8d4e392e6be4ecc8bd0ec2684aa2a1ca6f3209dc8dfd60d3b",
+    "public_sha256": "15635389906136a8d4e392e6be4ecc8bd0ec2684aa2a1ca6f3209dc8dfd60d3b",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567890.log",
+    "original_basename": "getrf_N24576_seed1234567890.log",
+    "original_sha256": "651343162cab9211281d948d1e6ba6c0c782e408cf9ec8fd73819028f3632de1",
+    "public_sha256": "676b6ebadde8e0c4212b7330b0fe2cff5b7ce673ce9943afab7bdafb984c5acf",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567891.csv",
+    "original_basename": "getrf_N24576_seed1234567891.csv",
+    "original_sha256": "445b45b2d196d07097fe22989405aff85e4a49a689b89e7125578722e45325ea",
+    "public_sha256": "445b45b2d196d07097fe22989405aff85e4a49a689b89e7125578722e45325ea",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567891.log",
+    "original_basename": "getrf_N24576_seed1234567891.log",
+    "original_sha256": "5004cf377e57fde87a3f05b8dea526af37a958655311e406e116653391b1476f",
+    "public_sha256": "642bfd52674747d6f676c4f6b184fb3c2a4e986639a870c29a9d95f3cf3e8cd2",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567892.csv",
+    "original_basename": "getrf_N24576_seed1234567892.csv",
+    "original_sha256": "ced06ee9709a3e38fb3af6c8940d85fed083823a28d67f043dbdc4a1859e82a0",
+    "public_sha256": "ced06ee9709a3e38fb3af6c8940d85fed083823a28d67f043dbdc4a1859e82a0",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N24576_seed1234567892.log",
+    "original_basename": "getrf_N24576_seed1234567892.log",
+    "original_sha256": "d4a5381d4d93adcef1520a464f3afb9de7ec891dbae9a79d148d68046481a5f9",
+    "public_sha256": "2e64f22fd556781c5a3847294f34f54a69d427b6e56c887f0e4a9f35e499da35",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N32768_seed1234567890.csv",
+    "original_basename": "getrf_N32768_seed1234567890.csv",
+    "original_sha256": "df4a57d180af077a6084a363025b17e782c05a75fef120458ff4ac5d39d26180",
+    "public_sha256": "df4a57d180af077a6084a363025b17e782c05a75fef120458ff4ac5d39d26180",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N32768_seed1234567890.log",
+    "original_basename": "getrf_N32768_seed1234567890.log",
+    "original_sha256": "4c2f0d148d5f0b9172c98f6520e0008918eada56ad39cd8a7ed23c14963a7912",
+    "public_sha256": "c6f2a33645b438bc54ae5c4723c8f854f2f92fe5e5b2b48159839348230e9d80",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N40960_seed1234567890.csv",
+    "original_basename": "getrf_N40960_seed1234567890.csv",
+    "original_sha256": "9a72c4f50365a0f74296b90d849aa4c2e2cfc633c1ea3f819501722df06b99dc",
+    "public_sha256": "9a72c4f50365a0f74296b90d849aa4c2e2cfc633c1ea3f819501722df06b99dc",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/getrf_N40960_seed1234567890.log",
+    "original_basename": "getrf_N40960_seed1234567890.log",
+    "original_sha256": "e70c89b035a0acb43bf5b42cc5ecdfa291bdee2ec9ff868000f050eb4f86f282",
+    "public_sha256": "f4ee06b8d667a24de72d8e944fbb3062b6ca579fec3b58928dc0c9c0e3bb3cbc",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260716.csv",
+    "original_basename": "potrf_N8192_seed20260716.csv",
+    "original_sha256": "9745907799d6ba47739ac76066c9c036d0e92dd817d647dda95aa48462ebb1ed",
+    "public_sha256": "9745907799d6ba47739ac76066c9c036d0e92dd817d647dda95aa48462ebb1ed",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260716.log",
+    "original_basename": "potrf_N8192_seed20260716.log",
+    "original_sha256": "d60d18f0ee3d44a02842cd3eb837895ba51ec100cec41ee7573ae619ed77007e",
+    "public_sha256": "9b1e1f05bfd3d699620429263f88e0e42c29fecbadac6e210954ca653d47d36f",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260717.csv",
+    "original_basename": "potrf_N8192_seed20260717.csv",
+    "original_sha256": "531df81ebcc0eb4b13681e47627101dea6e51b0b56a950cfacf09f581c047e76",
+    "public_sha256": "531df81ebcc0eb4b13681e47627101dea6e51b0b56a950cfacf09f581c047e76",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260717.log",
+    "original_basename": "potrf_N8192_seed20260717.log",
+    "original_sha256": "c81a4d2192dd1274a1c4cb140fcc74ac2ccffc1ad1ee7fa2441291d145f7cfa3",
+    "public_sha256": "5c2dfe3cb382e4c89fd3619a37d596c91619b42614a78acab8f36a8d031dc8d6",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260718.csv",
+    "original_basename": "potrf_N8192_seed20260718.csv",
+    "original_sha256": "02862bc5e4f26b742f47a61385edf3068d3ddc337db3c51e3232fa930c5975b0",
+    "public_sha256": "02862bc5e4f26b742f47a61385edf3068d3ddc337db3c51e3232fa930c5975b0",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N8192_seed20260718.log",
+    "original_basename": "potrf_N8192_seed20260718.log",
+    "original_sha256": "93a3634fb0a6752e25ca164c17cb67181ddee938db62965e54d5a255da63d789",
+    "public_sha256": "0e4aa6eddae8ca4880174985c2ad8074cdf0c1c23256b5317259890d041cab3c",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N16384_seed20260716.csv",
+    "original_basename": "potrf_N16384_seed20260716.csv",
+    "original_sha256": "de61059fa2512d1e5bc86d26af30de155db3aa350cf32f6a96ef2d8da209c0c3",
+    "public_sha256": "de61059fa2512d1e5bc86d26af30de155db3aa350cf32f6a96ef2d8da209c0c3",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N16384_seed20260716.log",
+    "original_basename": "potrf_N16384_seed20260716.log",
+    "original_sha256": "a78334be1ffef93aca52349c9c34e3687e2dab542fc4755fc62f59e4f273bfbf",
+    "public_sha256": "53bf5ef5fd0ad8f070f75d96b73e8a7648c0744049fd839a03d1929a7fa2b87d",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260716.csv",
+    "original_basename": "potrf_N24576_seed20260716.csv",
+    "original_sha256": "ab87741972317c90a801d4093c1cfa7d07600db01b5e3852f1d1e51b2df4db33",
+    "public_sha256": "ab87741972317c90a801d4093c1cfa7d07600db01b5e3852f1d1e51b2df4db33",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260716.log",
+    "original_basename": "potrf_N24576_seed20260716.log",
+    "original_sha256": "a9d738e06b6aef072f552b73c99aa061e23f4f9625532742ba5df8f87bccb526",
+    "public_sha256": "c59911bd862c76dede5c75036aae9b27441bef95e4d85d80ca5869cb31b4b950",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260717.csv",
+    "original_basename": "potrf_N24576_seed20260717.csv",
+    "original_sha256": "9dd8c8b22b3becd5fbc3cc103bcc37b323081e0b851f543a803fd0345ae7a7ce",
+    "public_sha256": "9dd8c8b22b3becd5fbc3cc103bcc37b323081e0b851f543a803fd0345ae7a7ce",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260717.log",
+    "original_basename": "potrf_N24576_seed20260717.log",
+    "original_sha256": "23fd6be53f44d19ff8e972b1d622a4b997cb5f42d1b57ae14889a5d88742efab",
+    "public_sha256": "06c4cf9c47bf8949f8d42b81dd52c78ae331ab074bebd3325c0f758f0abf4c94",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260718.csv",
+    "original_basename": "potrf_N24576_seed20260718.csv",
+    "original_sha256": "174a1e0eed77bac376454d70a9401032c7a30d80dba6475cee39aeb58e6054a4",
+    "public_sha256": "174a1e0eed77bac376454d70a9401032c7a30d80dba6475cee39aeb58e6054a4",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N24576_seed20260718.log",
+    "original_basename": "potrf_N24576_seed20260718.log",
+    "original_sha256": "e7ff397a188191a1ad460c210202a002ae532b2b1a3eca8337c99e143fb1244a",
+    "public_sha256": "8424e279e1f6afa3349ff12c1b68fe71cdfe342817616f3c21d99dce4b8b9674",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N32768_seed20260716.csv",
+    "original_basename": "potrf_N32768_seed20260716.csv",
+    "original_sha256": "06253223653e86c9785c9afe7f64c5ef0d267260377b2bcef1e789946dc6981c",
+    "public_sha256": "06253223653e86c9785c9afe7f64c5ef0d267260377b2bcef1e789946dc6981c",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N32768_seed20260716.log",
+    "original_basename": "potrf_N32768_seed20260716.log",
+    "original_sha256": "80d08386c47226e32a5aa3cffce75d946bf90402fc968550a3763707fdb1b45b",
+    "public_sha256": "e2f58a87cf22746fd767f9acc0da624ad155484161c3e65aba15e0b1b0e9e790",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N40960_seed20260716.csv",
+    "original_basename": "potrf_N40960_seed20260716.csv",
+    "original_sha256": "ffa1809335e04644738789f0a58f9d9da7a82b1ed4b1a7ccd68d04df05124db6",
+    "public_sha256": "ffa1809335e04644738789f0a58f9d9da7a82b1ed4b1a7ccd68d04df05124db6",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "fp64_residual/raw/potrf_N40960_seed20260716.log",
+    "original_basename": "potrf_N40960_seed20260716.log",
+    "original_sha256": "9e1b6ab190a32e499982712fb41dade194227513149a552745c3572773af3c87",
+    "public_sha256": "642af5b5cf32aa66b436b83730d3ef95b8395e3acb755ba1c7a50da46a3f5476",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_batched_untiled_N40960.log",
+    "original_basename": "getrf_batched_untiled_N40960.log",
+    "original_sha256": "4b4d4c220befc96e52b17717c7729269fd6a7bacfeebc754a194d2e94c0a7a88",
+    "public_sha256": "378a149ce7a4593dfdadcad87b4e87ae03954804d4afc5bfb11e3d3272750dfc",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_direct_outer_trsm_N40960.log",
+    "original_basename": "getrf_direct_outer_trsm_N40960.log",
+    "original_sha256": "62a0b32c1879ae824c541f1fc132df4b529fa1d07b908a0b998a7dd48058b959",
+    "public_sha256": "6fad3527fa67fc9820506142298a87dde7c21def7bad89cd42f952ac63888f6d",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_final_N40960.log",
+    "original_basename": "getrf_final_N40960.log",
+    "original_sha256": "9d3275136a7c705419f2363dc2e7dea03f5cfbbf2d1f5470243abee9a91a2ee3",
+    "public_sha256": "dfbc6f3b7ceb7def4a3bdeb3c17776ec7c5cebd3c151f950e879d5988042f762",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_immediate_N40960.log",
+    "original_basename": "getrf_immediate_N40960.log",
+    "original_sha256": "1eb16701088f3c29a1f5803206061d9ceefbc72718b6901bc4ee1e02537905ec",
+    "public_sha256": "2060967c4acd5512879d538229551f5421b66dd0a8caa6b657df470e28916b4f",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_basic_N40960.log",
+    "original_basename": "potrf_basic_N40960.log",
+    "original_sha256": "c4d669d7fb403c00e07f8396dced1d75f1bb37b16989e76d2a755515b47b5713",
+    "public_sha256": "c8e8a90be4927a177acc965dcd7bbc8d507c27051fba14b1d796712b7d8b8b3c",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_kbsyrk_N40960.log",
+    "original_basename": "potrf_kbsyrk_N40960.log",
+    "original_sha256": "e0d05ce6e5edee6c8ea7779cafa22ed6352b72d0a5c6ff5637f49f71ad8dcc95",
+    "public_sha256": "5fffb98f8e28ef9920770e05ece64c5942b5e0bea70e8af1f0b055b892ff1c5b",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_batched_untiled_N40960.command",
+    "original_basename": "getrf_batched_untiled_N40960.command",
+    "original_sha256": "cb54e3459648d112201d3a2d89c393d9e98b9666ad2e0182cd7e0870e8a9bc95",
+    "public_sha256": "38e3aaeccb50d39c77e4af882ad0b27c1bf9e133b0446e8d2dd699016831c52c",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_direct_outer_trsm_N40960.command",
+    "original_basename": "getrf_direct_outer_trsm_N40960.command",
+    "original_sha256": "35c4b8bcca70cbf84dacd432d7ea50ac1f5b9492dee3ad7ec9306bc8b13a8cd5",
+    "public_sha256": "c11d49804bfec78224bc16871fb3a7c4e7f188bcafb1da8241f472db90a75dfb",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_final_N40960.command",
+    "original_basename": "getrf_final_N40960.command",
+    "original_sha256": "5a656dc786b3510f29731556d661c61be36e55d41e8f8d1da805223f9ac51c89",
+    "public_sha256": "0f40049370ce70e264173492a8b00361331f768ff0267e65c3ad360222229c18",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_immediate_N40960.command",
+    "original_basename": "getrf_immediate_N40960.command",
+    "original_sha256": "0ec107b8cf647d354d5204bd39c4f8d5396ef45a53512bf97bc2bd86241e2713",
+    "public_sha256": "050a078cfe18546f432b9d80208b53a2a102826f9a5191275548089a25ec8686",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_basic_N40960.command",
+    "original_basename": "potrf_basic_N40960.command",
+    "original_sha256": "d1783a7bac5a6a3ce6435f73a49b09d42aad429ef60f05169e7875e5089552c0",
+    "public_sha256": "66f216dc577fbf129ffd5d6766253aa8bc4770ff35bc6fa5c3a7a0793a581cbf",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_kbsyrk_N40960.command",
+    "original_basename": "potrf_kbsyrk_N40960.command",
+    "original_sha256": "98a1c30e1b7b41267692c565564b5858b17f7e91f669129af4b73f75f679f53b",
+    "public_sha256": "de335ce8dfa42a7d096a6969118fcb5b7585f1b78188354db1f3ab5adcdbdd1b",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_batched_untiled_N40960.exit",
+    "original_basename": "getrf_batched_untiled_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_direct_outer_trsm_N40960.exit",
+    "original_basename": "getrf_direct_outer_trsm_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_final_N40960.exit",
+    "original_basename": "getrf_final_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/raw/getrf_immediate_N40960.exit",
+    "original_basename": "getrf_immediate_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_basic_N40960.exit",
+    "original_basename": "potrf_basic_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/raw/potrf_kbsyrk_N40960.exit",
+    "original_basename": "potrf_kbsyrk_N40960.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46340.log",
+    "original_basename": "getrf_rocsolver_N46340.log",
+    "original_sha256": "ab1743a02aa560a25ff613f742bc1ddbefdc5dfac8a59781c5976c8db2be9799",
+    "public_sha256": "8b59a4356664305fc2a79ad3b4be6278634ac9af6022d2686b86b8954e01d3a6",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46341.log",
+    "original_basename": "getrf_rocsolver_N46341.log",
+    "original_sha256": "c10b5043ffc27092d2272db56366fce5c16537932cd060c445a3e0d68be16e9a",
+    "public_sha256": "627d3187e8b8809f970225f916d2b61813d164af30ab92cdbf7147715c979bda",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N49152.log",
+    "original_basename": "getrf_rocsolver_N49152.log",
+    "original_sha256": "2b0dc023d22f3acb4a1e0bcda2ded2afc2532a80bbae2b5a6c7218946ba3631e",
+    "public_sha256": "65e1aa4f762de4d4ed09392bf0d3f1c0ab02ff597ba50a05a7ce73e6f07a74be",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46340.log",
+    "original_basename": "potrf_rocsolver_N46340.log",
+    "original_sha256": "8403f07b63b7737bcb8d5de1ede82b446f7ca60d911a1f2a83d6b68b14ca0b4a",
+    "public_sha256": "169ddded12183fcd93b4a705f393f626355993911ac8adf937d8c8b237527ed3",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46341.log",
+    "original_basename": "potrf_rocsolver_N46341.log",
+    "original_sha256": "c3f7ec7b8a285293d7d2d546019a7b6ab78f097d996148966e9601ff26910a5b",
+    "public_sha256": "c46a448d905a6f189e2916623ee68d50905c22af9da43eff76271ca7d32d7344",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N49152.log",
+    "original_basename": "potrf_rocsolver_N49152.log",
+    "original_sha256": "a60fe4522e81800ecf9bb92d2f028021a3f019145a115832601dca92fcd387b0",
+    "public_sha256": "5d658eb7c35bfd3d31544d287890903d1ad6138676b7fcd3b26c9563d711f02d",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46340.command",
+    "original_basename": "getrf_rocsolver_N46340.command",
+    "original_sha256": "88cb3ad0628f71a2f97a80cbd9f1003db22f7be64188090359cb052de0b67def",
+    "public_sha256": "6ea1bb1b286b4f84994ea42b205a128700739581b4fcb60199392fc2ff72b454",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46341.command",
+    "original_basename": "getrf_rocsolver_N46341.command",
+    "original_sha256": "c1307f7885df3c67a86ed7a71fd226d6917c9a555f6878db12664f99925806fa",
+    "public_sha256": "41cb5cff745240a6fe96c1f088f1f6a5a7bc830b19461ee5ea5dc7081c60f9bb",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N49152.command",
+    "original_basename": "getrf_rocsolver_N49152.command",
+    "original_sha256": "8988867df784dcfde82831fadabfc4eea62488cba208b466f898b5bedd36acf5",
+    "public_sha256": "f69a5042920ee462e77a66a74a14d0dbfe6abaa3988fd8a2d85c5ce11fd201b2",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46340.command",
+    "original_basename": "potrf_rocsolver_N46340.command",
+    "original_sha256": "abad7389973992b50532f3efd00ff087c2ebb6b4231dc67c09497a95745b9ee2",
+    "public_sha256": "aa4994e85af2c5eafddd55ccc2a13607ac92a289cd1429e924bdd53e2f67aab9",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46341.command",
+    "original_basename": "potrf_rocsolver_N46341.command",
+    "original_sha256": "f29c83a84090dece4ce89938be2235993bebb76c41e19b0807c44129f7b3917f",
+    "public_sha256": "51cde9874096dbb2efb9e46f3dd8f85b3b9966a7f566f67b7754b1b1ff5fb448",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N49152.command",
+    "original_basename": "potrf_rocsolver_N49152.command",
+    "original_sha256": "985ba954bbe018b2b360e43e48023c0af1a337c2d85b653ceaedc534bab0a801",
+    "public_sha256": "1cf1617a56688ebb962bb5cc05b019a2acbbfef9de196c55078655cec8d6e0c1",
+    "transformation": "path redaction and LF normalization"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46340.exit",
+    "original_basename": "getrf_rocsolver_N46340.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N46341.exit",
+    "original_basename": "getrf_rocsolver_N46341.exit",
+    "original_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "public_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/getrf_rocsolver_N49152.exit",
+    "original_basename": "getrf_rocsolver_N49152.exit",
+    "original_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "public_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46340.exit",
+    "original_basename": "potrf_rocsolver_N46340.exit",
+    "original_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "public_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N46341.exit",
+    "original_basename": "potrf_rocsolver_N46341.exit",
+    "original_sha256": "690e07064753123c967bbac0180f32da6a753a5bd8b79a47644cef58e776d9f0",
+    "public_sha256": "690e07064753123c967bbac0180f32da6a753a5bd8b79a47644cef58e776d9f0",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "rocsolver_boundary/raw/potrf_rocsolver_N49152.exit",
+    "original_basename": "potrf_rocsolver_N49152.exit",
+    "original_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "public_sha256": "e726b440cc164001999e718b51780d80314709efe06e7857282377be9111127b",
+    "transformation": "byte-identical"
+  },
+  {
+    "public_file": "stage_spread/stage_spread_statistics.csv",
+    "original_basename": "stage_spread_statistics.csv",
+    "original_sha256": "fdaf7ed15d052bf3796b8548c1282a057edfe6d9f36a59f319ba948beace0365",
+    "public_sha256": "fdaf7ed15d052bf3796b8548c1282a057edfe6d9f36a59f319ba948beace0365",
+    "transformation": "byte-identical"
+  }
+]

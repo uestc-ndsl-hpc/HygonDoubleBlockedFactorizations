@@ -28,6 +28,7 @@ add_executable(benchmark_potrf
 )
 
 apply_benchmark_options(benchmark_potrf)
+configure_cpu_fp64_residual(benchmark_potrf)
 link_rocm_runtime(benchmark_potrf)
 target_link_libraries(benchmark_potrf
     rocsolver

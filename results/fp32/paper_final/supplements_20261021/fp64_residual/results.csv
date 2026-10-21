@@ -1,0 +1,46 @@
+kind,n,seed,cohort,method,parameters,residual,info,raw_csv,raw_log
+getrf,8192,1234567890,paper_seed,DoubleBlock-LU+BatchedPivot+MGEMM,4096/2048/iterative/2048/2048/8192,2.237113904e-05,0,raw/getrf_N8192_seed1234567890.csv,raw/getrf_N8192_seed1234567890.log
+getrf,8192,1234567890,paper_seed,rocSOLVER GETRF,N/A,2.52827463261e-05,0,raw/getrf_N8192_seed1234567890.csv,raw/getrf_N8192_seed1234567890.log
+getrf,8192,1234567891,extra_seed,DoubleBlock-LU+BatchedPivot+MGEMM,4096/2048/iterative/2048/2048/8192,2.20691689377e-05,0,raw/getrf_N8192_seed1234567891.csv,raw/getrf_N8192_seed1234567891.log
+getrf,8192,1234567891,extra_seed,rocSOLVER GETRF,N/A,2.51748375443e-05,0,raw/getrf_N8192_seed1234567891.csv,raw/getrf_N8192_seed1234567891.log
+getrf,8192,1234567892,extra_seed,DoubleBlock-LU+BatchedPivot+MGEMM,4096/2048/iterative/2048/2048/8192,2.21998796724e-05,0,raw/getrf_N8192_seed1234567892.csv,raw/getrf_N8192_seed1234567892.log
+getrf,8192,1234567892,extra_seed,rocSOLVER GETRF,N/A,2.54397664885e-05,0,raw/getrf_N8192_seed1234567892.csv,raw/getrf_N8192_seed1234567892.log
+getrf,16384,1234567890,paper_seed,DoubleBlock-LU+BatchedPivot+MGEMM,8192/4096/iterative/2048/2048/8192,4.21592044069e-05,0,raw/getrf_N16384_seed1234567890.csv,raw/getrf_N16384_seed1234567890.log
+getrf,16384,1234567890,paper_seed,rocSOLVER GETRF,N/A,4.76703572351e-05,0,raw/getrf_N16384_seed1234567890.csv,raw/getrf_N16384_seed1234567890.log
+getrf,24576,1234567890,paper_seed,DoubleBlock-LU+BatchedPivot+MGEMM,12288/4096/iterative/2048/2048/8192,5.8590082787e-05,0,raw/getrf_N24576_seed1234567890.csv,raw/getrf_N24576_seed1234567890.log
+getrf,24576,1234567890,paper_seed,rocSOLVER GETRF,N/A,6.84300613492e-05,0,raw/getrf_N24576_seed1234567890.csv,raw/getrf_N24576_seed1234567890.log
+getrf,24576,1234567891,extra_seed,DoubleBlock-LU+BatchedPivot+MGEMM,12288/4096/iterative/2048/2048/8192,5.8587405674e-05,0,raw/getrf_N24576_seed1234567891.csv,raw/getrf_N24576_seed1234567891.log
+getrf,24576,1234567891,extra_seed,rocSOLVER GETRF,N/A,6.80498526166e-05,0,raw/getrf_N24576_seed1234567891.csv,raw/getrf_N24576_seed1234567891.log
+getrf,24576,1234567892,extra_seed,DoubleBlock-LU+BatchedPivot+MGEMM,12288/4096/iterative/2048/2048/8192,5.86250068683e-05,0,raw/getrf_N24576_seed1234567892.csv,raw/getrf_N24576_seed1234567892.log
+getrf,24576,1234567892,extra_seed,rocSOLVER GETRF,N/A,6.84371137259e-05,0,raw/getrf_N24576_seed1234567892.csv,raw/getrf_N24576_seed1234567892.log
+getrf,32768,1234567890,paper_seed,DoubleBlock-LU+BatchedPivot+MGEMM,16384/4096/iterative/2048/2048/8192,7.69963824372e-05,0,raw/getrf_N32768_seed1234567890.csv,raw/getrf_N32768_seed1234567890.log
+getrf,32768,1234567890,paper_seed,rocSOLVER GETRF,N/A,8.62189308622e-05,0,raw/getrf_N32768_seed1234567890.csv,raw/getrf_N32768_seed1234567890.log
+getrf,40960,1234567890,paper_seed,DoubleBlock-LU+BatchedPivot+MGEMM,20480/4096/iterative/2048/2048/8192,9.17543697408e-05,0,raw/getrf_N40960_seed1234567890.csv,raw/getrf_N40960_seed1234567890.log
+getrf,40960,1234567890,paper_seed,rocSOLVER GETRF,N/A,0.000102694701976,0,raw/getrf_N40960_seed1234567890.csv,raw/getrf_N40960_seed1234567890.log
+potrf,8192,20260716,paper_seed,DoubleBlock+KBSYRK,8192/1024/8192,3.21071481439e-07,0,raw/potrf_N8192_seed20260716.csv,raw/potrf_N8192_seed20260716.log
+potrf,8192,20260716,paper_seed,Recursive,2048,4.34065260527e-07,0,raw/potrf_N8192_seed20260716.csv,raw/potrf_N8192_seed20260716.log
+potrf,8192,20260716,paper_seed,rocSOLVER,N/A,4.31466227031e-07,0,raw/potrf_N8192_seed20260716.csv,raw/potrf_N8192_seed20260716.log
+potrf,8192,20260717,extra_seed,DoubleBlock+KBSYRK,8192/1024/8192,3.21525337517e-07,0,raw/potrf_N8192_seed20260717.csv,raw/potrf_N8192_seed20260717.log
+potrf,8192,20260717,extra_seed,Recursive,2048,4.3232360907e-07,0,raw/potrf_N8192_seed20260717.csv,raw/potrf_N8192_seed20260717.log
+potrf,8192,20260717,extra_seed,rocSOLVER,N/A,4.30258789053e-07,0,raw/potrf_N8192_seed20260717.csv,raw/potrf_N8192_seed20260717.log
+potrf,8192,20260718,extra_seed,DoubleBlock+KBSYRK,8192/1024/8192,3.21293034949e-07,0,raw/potrf_N8192_seed20260718.csv,raw/potrf_N8192_seed20260718.log
+potrf,8192,20260718,extra_seed,Recursive,2048,4.3242440328e-07,0,raw/potrf_N8192_seed20260718.csv,raw/potrf_N8192_seed20260718.log
+potrf,8192,20260718,extra_seed,rocSOLVER,N/A,4.29940110248e-07,0,raw/potrf_N8192_seed20260718.csv,raw/potrf_N8192_seed20260718.log
+potrf,16384,20260716,paper_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.130629865e-06,0,raw/potrf_N16384_seed20260716.csv,raw/potrf_N16384_seed20260716.log
+potrf,16384,20260716,paper_seed,Recursive,2048,1.04317533815e-06,0,raw/potrf_N16384_seed20260716.csv,raw/potrf_N16384_seed20260716.log
+potrf,16384,20260716,paper_seed,rocSOLVER,N/A,1.11228925884e-06,0,raw/potrf_N16384_seed20260716.csv,raw/potrf_N16384_seed20260716.log
+potrf,24576,20260716,paper_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.23267625041e-06,0,raw/potrf_N24576_seed20260716.csv,raw/potrf_N24576_seed20260716.log
+potrf,24576,20260716,paper_seed,Recursive,2048,1.19738444145e-06,0,raw/potrf_N24576_seed20260716.csv,raw/potrf_N24576_seed20260716.log
+potrf,24576,20260716,paper_seed,rocSOLVER,N/A,1.33339123504e-06,0,raw/potrf_N24576_seed20260716.csv,raw/potrf_N24576_seed20260716.log
+potrf,24576,20260717,extra_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.23269527745e-06,0,raw/potrf_N24576_seed20260717.csv,raw/potrf_N24576_seed20260717.log
+potrf,24576,20260717,extra_seed,Recursive,2048,1.19761074085e-06,0,raw/potrf_N24576_seed20260717.csv,raw/potrf_N24576_seed20260717.log
+potrf,24576,20260717,extra_seed,rocSOLVER,N/A,1.33371939797e-06,0,raw/potrf_N24576_seed20260717.csv,raw/potrf_N24576_seed20260717.log
+potrf,24576,20260718,extra_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.2330655637e-06,0,raw/potrf_N24576_seed20260718.csv,raw/potrf_N24576_seed20260718.log
+potrf,24576,20260718,extra_seed,Recursive,2048,1.19795985699e-06,0,raw/potrf_N24576_seed20260718.csv,raw/potrf_N24576_seed20260718.log
+potrf,24576,20260718,extra_seed,rocSOLVER,N/A,1.3350659783e-06,0,raw/potrf_N24576_seed20260718.csv,raw/potrf_N24576_seed20260718.log
+potrf,32768,20260716,paper_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.33278032305e-06,0,raw/potrf_N32768_seed20260716.csv,raw/potrf_N32768_seed20260716.log
+potrf,32768,20260716,paper_seed,Recursive,2048,1.40381998041e-06,0,raw/potrf_N32768_seed20260716.csv,raw/potrf_N32768_seed20260716.log
+potrf,32768,20260716,paper_seed,rocSOLVER,N/A,1.3898922168e-06,0,raw/potrf_N32768_seed20260716.csv,raw/potrf_N32768_seed20260716.log
+potrf,40960,20260716,paper_seed,DoubleBlock+KBSYRK,8192/1024/8192,1.43263367405e-06,0,raw/potrf_N40960_seed20260716.csv,raw/potrf_N40960_seed20260716.log
+potrf,40960,20260716,paper_seed,Recursive,2048,1.57157202561e-06,0,raw/potrf_N40960_seed20260716.csv,raw/potrf_N40960_seed20260716.log
+potrf,40960,20260716,paper_seed,rocSOLVER,N/A,1.57535446225e-06,0,raw/potrf_N40960_seed20260716.csv,raw/potrf_N40960_seed20260716.log

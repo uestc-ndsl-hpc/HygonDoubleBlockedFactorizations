@@ -80,7 +80,7 @@ void run_recursive_cases(PotrfBenchmarkContext<T>& context)
             context.calc_gflops);
 
         if constexpr (std::is_same_v<T, float>) {
-            if (context.precision_type != 2) {
+            if (context.precision_type != 2 && context.test_recursive_tiled_trsm) {
                 context.runner.execute(
                     "RecTiledTRSM",
                     std::to_string(nb),

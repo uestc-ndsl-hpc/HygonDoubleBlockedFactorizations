@@ -1,0 +1,10 @@
+mechanism,variant,case,mean_ms,sample_sd_ms,rsd_percent,min_ms,max_ms
+Chol. K-blocked SYRK,reference,potrf_basic,325.8356,0.9665,0.2966,324.784,327.694
+Chol. K-blocked SYRK,optimized,potrf_kbsyrk,237.8545,0.7996,0.3362,237.264,239.760
+LU batched pivots,reference,getrf_immediate,2529.7810,3.6038,0.1425,2523.901,2536.906
+LU batched pivots,optimized,getrf_batched_untiled,131.8160,1.7237,1.3076,130.414,136.378
+LU M-tiled GEMM,reference,getrf_batched_untiled,719.0071,2.3203,0.3227,715.175,721.612
+LU M-tiled GEMM,optimized,getrf_final,486.1503,1.8624,0.3831,483.262,488.389
+LU iterative TRSM,reference,getrf_direct_outer_trsm,683.0941,1.7499,0.2562,680.411,685.917
+LU iterative TRSM,optimized,getrf_final,405.9230,1.7061,0.4203,403.581,408.894
+

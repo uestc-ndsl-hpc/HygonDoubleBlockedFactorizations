@@ -18,12 +18,16 @@ struct PotrfBenchmarkOptions {
     bool test_blocked = true;
     bool test_double_blocked = true;
     bool test_recursive = true;
+    bool test_recursive_tiled_trsm = true;
     bool test_double_basic = true;
     bool test_double_dbtrsm = true;
     bool test_double_kbsyrk = true;
     bool test_double_mgemm = true;
     bool full_backward_error = false;
     int full_backward_error_max_n = 8192;
+    bool cpu_fp64_residual = false;
+    int cpu_residual_tile = 512;
+    unsigned int seed = 20260716u;
     ErrorMode error_mode = ErrorMode::None;
     int precision_type = 0;
     int syrk_k_tile = 0;
@@ -61,6 +65,7 @@ struct PotrfBenchmarkContext {
     std::function<void()> reset;
     std::function<void(double&, double&)> verify;
     std::function<double(double)> calc_gflops;
+    bool test_recursive_tiled_trsm = true;
 };
 
 void run_potrf_benchmarks(const PotrfBenchmarkOptions& options);

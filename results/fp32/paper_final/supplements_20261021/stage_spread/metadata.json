@@ -1,0 +1,10 @@
+{
+  "collection_date": "2026-08-27",
+  "source_base": "6098e38",
+  "n": 40960,
+  "warmups": 1,
+  "measured_runs_per_case": 10,
+  "cases": 6,
+  "statistics": "Sample SD (ddof=1); sum component stages within each run before computing statistics.",
+  "acquisition": "Stage profilers were instrumented to print STAGE_SAMPLE tables for every measured run. The temporary instrumented executables and patch were not retained in the public source. Archived per-run tables permit complete reanalysis, not bitwise reconstruction of the profiler executable."
+}

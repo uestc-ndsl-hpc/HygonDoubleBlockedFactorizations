@@ -1,0 +1,3 @@
+benchmark,method,parameters,iteration,time_ms,mean_ms,median_ms,stddev_ms,min_ms,max_ms,gflops,speedup,forward_error,residual_metric,residual_value
+"GETRF Benchmark Summary (N = 24576)","rocSOLVER GETRF","N/A",0,1588.78344727,1588.78344727,1588.78344727,0,1588.78344727,1588.78344727,6228.41625586,1,-1,cpu_fp64_full_relative_residual,6.84300613492e-05
+"GETRF Benchmark Summary (N = 24576)","DoubleBlock-LU+BatchedPivot+MGEMM","12288/4096/iterative/2048/2048/8192",0,1019.59051514,1019.59051514,1019.59051514,0,1019.59051514,1019.59051514,9705.46950278,1.55825640164,-1,cpu_fp64_full_relative_residual,5.8590082787e-05

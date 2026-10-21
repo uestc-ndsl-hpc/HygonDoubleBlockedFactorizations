@@ -1,0 +1,7 @@
+routine,n,n_squared,exit_code,invalid_address_fault,error_codes,log
+getrf,46340,2147395600,0,False,,raw/getrf_rocsolver_N46340.log
+getrf,46341,2147488281,134,True,1,raw/getrf_rocsolver_N46341.log
+getrf,49152,2415919104,134,True,1,raw/getrf_rocsolver_N49152.log
+potrf,46340,2147395600,0,False,,raw/potrf_rocsolver_N46340.log
+potrf,46341,2147488281,139,True,3;3,raw/potrf_rocsolver_N46341.log
+potrf,49152,2415919104,134,True,1;1,raw/potrf_rocsolver_N49152.log

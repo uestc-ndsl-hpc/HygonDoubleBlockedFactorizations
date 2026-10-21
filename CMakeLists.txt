@@ -8,4 +8,5 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/BenchmarkCommon.cmake)
+include(cmake/CpuFp64Residual.cmake)
 add_subdirectory(src)

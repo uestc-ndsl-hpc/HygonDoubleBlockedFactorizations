@@ -1,0 +1,1 @@
+env HIP_VISIBLE_DEVICES=1 <BUILD_DIR>/profile_double_blocked_getrf_stage_samples --n 40960 --outer-nb 20480 --inner-nb 4096 --outer-trsm direct --trsm-block 2048 --pivot-tile 2048 --inner-gemm-m-tile 8192 --pivot-mode batched --warmup 1 --iters 10 

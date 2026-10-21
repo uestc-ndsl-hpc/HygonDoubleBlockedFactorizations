@@ -1,0 +1,152 @@
+case=getrf_rocsolver_N49152
+started_utc=2026-08-27T07:02:05Z
+command=env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_getrf 49152 0 1 2048 --pivot --methods rocsolver --pivot-tile 2048 
+Could not open /var/log/hylog/.
+Invalid address access: 0x14d590f56000, Error code: 1.
+
+>>>>>>>> KERNEL VMFault !!!! <<<<<<
+
+>>>>>>>> PID: 34685, SIGNAL: 0 !!!! <<<<<<
+
+>>>>>>>> FOR DEVICE 0x2fd94d0 <<<<<<
+
+
+===========================================================================================
+=========> HOSTQUEUE <0x31b6800>: VMFault HSA QUEUE ANALYSIS <=========
+HOSTQUEUE <0x31b6800>: base_address 0x14e6e0c00000
+HOSTQUEUE <0x31b6800>: hsa queue id 1, stream id 0
+HOSTQUEUE <0x31b6800>: get hsa queue W/R ptr: write index: 153, read index: 151
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP AQL 0x14e6e4a98000 PACKET WITH INDEX 151 <<<<<<<<<
+HOSTQUEUE <0x31b6800>: >>>>>>>> MATCH KERNEL COMMAND <<<<<<<<<
+HOSTQUEUE <0x31b6800>: header: 0xb02
+HOSTQUEUE <0x31b6800>: setup: 3
+HOSTQUEUE <0x31b6800>: workgroup: x:40, y:25, z:1
+HOSTQUEUE <0x31b6800>: grid: x:40, y:49125, z:1
+HOSTQUEUE <0x31b6800>: group_segment_size: 4000
+HOSTQUEUE <0x31b6800>: private_segment_size: 0
+HOSTQUEUE <0x31b6800>: completion_signal: 0x0
+HOSTQUEUE <0x31b6800>: kernel_object: 0x14e6e396c500
+HOSTQUEUE <0x31b6800>: device id: 0
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> FIND MATCH KERNEL DETAILS <<<<<<<<<
+HOSTQUEUE <0x31b6800>: kernel name: _ZL19getrf_row_permutateIfiPfEvT0_S1_S1_T1_lS1_S1_lPS1_l
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP KERNEL ARGS: size: 320 <<<<<<<<<
+
+00 c0 00 00 00 00 00 00 28 00 00 00 00 00 00 00 
+00 00 c0 7f d7 14 00 00 00 00 00 00 00 00 00 00 
+01 00 00 00 00 c0 00 00 00 00 00 00 00 00 00 00 
+c0 02 67 65 d7 14 00 00 00 c0 00 00 00 00 00 00 
+01 00 00 00 ad 07 00 00 01 00 00 00 28 00 19 00 
+01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP KERNEL ARGS PTR INFO <<<<<<<<<
+HOSTQUEUE <0x31b6800>: ptr arg index: 2, ptr: 0x14d77fc00000
+HOSTQUEUE <0x31b6800>: origin ptr: 0x14d77fc00000, size byte: 9663676416
+HOSTQUEUE <0x31b6800>: ptr arg index: 6, ptr: 0x14d7656702c0
+HOSTQUEUE <0x31b6800>: origin ptr: 0x14d75f600000, size byte: 134873856
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP AQL 0x14e6e4a98000 PACKET WITH INDEX 152 <<<<<<<<<
+HOSTQUEUE <0x31b6800>: >>>>>>>> MATCH KERNEL COMMAND <<<<<<<<<
+HOSTQUEUE <0x31b6800>: header: 0xb02
+HOSTQUEUE <0x31b6800>: setup: 3
+HOSTQUEUE <0x31b6800>: workgroup: x:40, y:25, z:1
+HOSTQUEUE <0x31b6800>: grid: x:40, y:475, z:1
+HOSTQUEUE <0x31b6800>: group_segment_size: 100
+HOSTQUEUE <0x31b6800>: private_segment_size: 0
+HOSTQUEUE <0x31b6800>: completion_signal: 0x0
+HOSTQUEUE <0x31b6800>: kernel_object: 0x14e6e391f080
+HOSTQUEUE <0x31b6800>: device id: 0
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> FIND MATCH KERNEL DETAILS <<<<<<<<<
+HOSTQUEUE <0x31b6800>: kernel name: _ZL32unit_forward_substitution_kernelIfiPfEvT0_S1_T1_S1_S1_llS2_S1_S1_ll
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP KERNEL ARGS: size: 328 <<<<<<<<<
+
+28 00 00 00 d8 01 00 00 00 00 c0 7f d7 14 00 00 
+01 00 00 00 00 c0 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 c0 7f d7 14 00 00 
+01 00 00 00 00 c0 00 00 00 00 1e 00 00 00 00 00 
+00 00 00 00 00 00 00 00 01 00 00 00 13 00 00 00 
+01 00 00 00 28 00 19 00 01 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+00 00 00 00 00 00 00 00 
+
+HOSTQUEUE <0x31b6800>: >>>>>>>> DUMP KERNEL ARGS PTR INFO <<<<<<<<<
+HOSTQUEUE <0x31b6800>: ptr arg index: 1, ptr: 0x14d77fc00000
+HOSTQUEUE <0x31b6800>: origin ptr: 0x14d77fc00000, size byte: 9663676416
+HOSTQUEUE <0x31b6800>: ptr arg index: 5, ptr: 0x14d77fc00000
+HOSTQUEUE <0x31b6800>: origin ptr: 0x14d77fc00000, size byte: 9663676416
+
+
+
+>>>>>>>> KERNEL VMFault Analysis END !!!! <<<<<<
+
+=========> HW QUEUE INFO ANALYSIS <==========
+Running GETRF benchmark in FLOAT precision
+>>> Running GETRF Benchmarks...
+>>> Sampled relative residual sqrt(sum_S|P*A-L*U|^2)/sqrt(sum_S|A|^2): 4096 deterministic entries
+Can't read for directory: /sys/kernel/debug/kfd/process
+Please check mount/permission
+timeout: the monitored command dumped core
+Command terminated by signal 6
+	Command being timed: "timeout --signal=TERM 900 env HIP_VISIBLE_DEVICES=1 BENCHMARK_WARMUP_ITERS=0 BENCHMARK_PROFILE_ITERS=1 <REPOSITORY>/build/benchmark_getrf 49152 0 1 2048 --pivot --methods rocsolver --pivot-tile 2048"
+	User time (seconds): 269.51
+	System time (seconds): 9.75
+	Percent of CPU this job got: 100%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:38.76
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 11913680
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 3165868
+	Voluntary context switches: 123937
+	Involuntary context switches: 170
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 32
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
+finished_utc=2026-08-27T07:06:44Z
+exit_code=134
+device_after_case_begin
+
+================================= System Management Interface ==================================
+================================================================================================
+No KFD PIDs currently running!
+================================================================================================
+======================================== End of SMI Log ========================================
+
+device_after_case_end

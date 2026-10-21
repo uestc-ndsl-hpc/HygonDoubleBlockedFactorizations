@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -13,6 +14,7 @@
 
 #include "utils/common/error_check.h"
 #include "utils/benchmark/benchmark_printer.h"
+#include "utils/benchmark/cpu_fp64_residual.h"
 #include "utils/benchmark/residual_sampling.h"
 #include "utils/matrix/matrix_generator.h"
 #include "utils/memory/device_buffer.h"
@@ -217,12 +219,14 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
     DeviceBuffer<int> d_info(1);
     DeviceBuffer<T> d_A_orig(num_elements);
+    const bool device_residual = options.full_backward_error
+        && !options.cpu_fp64_residual;
     DeviceBuffer<T> d_residual_lower(
-        options.full_backward_error ? num_elements : 0);
+        device_residual ? num_elements : 0);
     DeviceBuffer<T> d_residual_product(
-        options.full_backward_error ? num_elements : 0);
+        device_residual ? num_elements : 0);
 
-    generate_spd_matrix<T>(handle, d_A_orig, n, n, 20260716u);
+    generate_spd_matrix<T>(handle, d_A_orig, n, n, options.seed);
 
     std::vector<T> h_A(num_elements);
     HIP_CHECK(hipMemcpy(h_A.data(), d_A_orig, bytes, hipMemcpyDeviceToHost));
@@ -269,7 +273,9 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         = options.error_mode == ErrorMode::Backward
         || options.error_mode == ErrorMode::Both;
     const ResidualMetric residual_metric = residual_requested
-        ? (options.full_backward_error
+        ? (options.cpu_fp64_residual
+              ? ResidualMetric::CpuFp64RelativeResidual
+              : options.full_backward_error
               ? ResidualMetric::NormwiseBackwardError
               : ResidualMetric::SampledRelativeResidual)
         : ResidualMetric::None;
@@ -293,6 +299,9 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         int info = 0;
         HIP_CHECK(hipMemcpy(
             &info, d_info, sizeof(int), hipMemcpyDeviceToHost));
+        if (options.cpu_fp64_residual) {
+            std::cout << ">>> CPU FP64 validation: info=" << info << "\n";
+        }
         if (info != 0) {
             f_err = std::numeric_limits<double>::infinity();
             residual_value = std::numeric_limits<double>::infinity();
@@ -311,7 +320,10 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         }
 
         if (options.error_mode == ErrorMode::Backward || options.error_mode == ErrorMode::Both) {
-            if (options.full_backward_error) {
+            if (options.cpu_fp64_residual) {
+                residual_value = benchmark_residual::potrf_cpu_fp64_full(
+                    h_res.data(), h_A.data(), n, n, options.cpu_residual_tile);
+            } else if (options.full_backward_error) {
                 residual_value = verify_normwise_backward_error_full(
                     handle,
                     h_res.data(),
@@ -357,11 +369,19 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
         verify_potrf,
         calc_gflops_potrf
     };
+    context.test_recursive_tiled_trsm = options.test_recursive_tiled_trsm;
 
     std::cout << ">>> Running Benchmarks...\n";
     if (options.error_mode == ErrorMode::Backward
         || options.error_mode == ErrorMode::Both) {
-        if (options.full_backward_error) {
+        if (options.cpu_fp64_residual) {
+            std::cout << ">>> Full relative factorization residual "
+                         "||A-L*L^T||_F/||A||_F: CPU FP64 product, subtraction "
+                         "and norms; " << benchmark_residual::cpu_fp64_backend_name()
+                      << "; tile=" << options.cpu_residual_tile
+                      << "; seed=" << options.seed
+                      << "; validation excluded from GPU timing\n";
+        } else if (options.full_backward_error) {
             std::cout
                 << ">>> Normwise backward error "
                    "eta_F=||A-L*L^T||_F/||A||_F: full matrix, "
@@ -409,6 +429,16 @@ void run_all_benchmarks(const PotrfBenchmarkOptions& options)
 
 void run_potrf_benchmarks(const PotrfBenchmarkOptions& options)
 {
+    if (options.cpu_fp64_residual
+        && (options.precision_type != 0 || options.n <= 0
+            || options.cpu_residual_tile <= 0 || !options.full_backward_error
+            || options.error_mode != ErrorMode::Backward
+            || options.full_backward_error_max_n < options.n)) {
+        throw std::invalid_argument(
+            "CPU FP64 residual requires FP32 factors, residual-only mode, "
+            "a positive tile, and an explicit full-matrix size limit; "
+            "GPU FP64 reference factorization is not used");
+    }
     if (options.precision_type == 1) {
         std::cout << "Running benchmark in DOUBLE precision\n";
         run_all_benchmarks<double>(options);
